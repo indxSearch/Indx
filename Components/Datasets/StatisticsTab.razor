@@ -1,7 +1,7 @@
 ﻿@* The statistics dashboard for one dataset (Notes/statistics-design.md, "Presentation"):
    hero tiles for the window's totals and rates, one time-series chart (one axis - searches and
    selects share the unit), then one section at a time behind a tab bar, each with its own view
-   settings: top queries, partial matches, top documents, browsing and changes. All reads go
+   settings: top queries, partial matches, top documents, browsing, journeys and changes. All reads go
    through StatisticsStore (the N-tier rule: no SQL here), on a background thread. Document
    titles come from the engine WITHOUT waking it: FindEngine only, a hibernated dataset shows
    keys - never resolve an engine from a dashboard. *@
@@ -96,7 +96,7 @@ else
         @* The detail sections, one at a time, just above the table they choose: each can carry its
            own view settings, and a phone shows one table rather than five. *@
         <div class="stats-sections">
-            <Tabs Items="SectionItems" Active="@_section" ActiveChanged="@(v => _section = v ?? "overview")"
+            <Tabs Items="SectionItems" Active="@_section" ActiveChanged="SetSection"
                   Scrollable AriaLabel="Statistics sections" />
         </div>
 
@@ -300,7 +300,7 @@ else
             {
             var lowClick = _queryOrder == QueryOrder.LowestClickThrough && Ctx.IsEditor && (ObservrSubscription.Visible && ObservrStore.IsEnabled(Ctx.TeamId, Ctx.Name));
             <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" ResizableColumns ColumnStorageKey="stats:top-queries" AriaLabel="Top queries" Class="stats-table">
-                <thead><tr><th data-column="query" data-width="240" data-fill>Query</th><th class="stats-num" data-column="searches" data-width="100">Searches</th><th class="stats-num" data-column="click-through" data-width="110">Click-through</th><th class="stats-num" data-column="position" data-width="110">Avg. position</th>@if (lowClick) { <th data-column="actions" data-width="200"></th> }</tr></thead>
+                <thead><tr><th data-column="query" data-width="240" data-fill>Query</th><th class="stats-num" data-column="searches" data-width="100">Searches</th><th class="stats-num" data-column="click-through" data-width="110">Click-through</th><th class="stats-num" data-column="position" data-width="110">Avg. position</th><th data-column="journey" data-width="110"></th>@if (lowClick) { <th data-column="actions" data-width="200"></th> }</tr></thead>
                 <tbody>
                     @foreach (var q in _topQueries)
                     {
@@ -309,6 +309,11 @@ else
                             <td class="stats-num">@N(q.Searches)</td>
                             <td class="stats-num">@Pct(q.ClickedSearches, q.Searches)</td>
                             <td class="stats-num">@(q.Selects > 0 ? ((double)q.PositionSum / q.Selects).ToString("0.0") : "–")</td>
+                            @* What the visitors who searched it did next, in Journeys. *@
+                            <td class="stats-action">
+                                @{ var asked = q.QueryText; }
+                                <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Journeys" @onclick="() => OpenJourney(asked)">Journey</Button>
+                            </td>
                             @if (lowClick)
                             {
                                 <td class="stats-action">
@@ -714,8 +719,15 @@ else
         {
             @* Browsing paths (28 Oct 2026): the routes people take through the filters, as a tree by
                containment of the searches' filters (StatisticsStore.BrowsingPaths), no session and no
-               visitor, so it works whatever the client sends. Read once a period, on opening. *@
+               visitor, so it works whatever the client sends. Read once a period, on opening. Two
+               views, the paths and the filters behind them (16 Nov 2026). *@
+            <div class="stats-view">
+                <SegmentedControl Size="micro" Items="BrowsingViews" Value="@_browsingView" ValueChanged="@(v => _browsingView = v ?? "paths")" AriaLabel="Browsing view" />
+            </div>
+            @if (_browsingView == "paths")
+            {
             var paths = Paths();
+            @if (paths.Searches == 0) { <p class="stats-empty">No filters were used in this period, or Browsing is switched off on the Options tab.</p> }
             @if (paths.Searches > 0)
             {
                 <div class="stats-chart-head stats-paths-head">
@@ -796,6 +808,9 @@ else
                     }
                 </div>
             }
+            }
+            else
+            {
             <p class="stats-help">What people narrowed the catalogue by, with or without typing, and how often it left them nothing.</p>
             @if (_topFilters.Count == 0) { <p class="stats-empty">No filters were used in this period, or Browsing is switched off on the Options tab.</p> }
             else {
@@ -815,6 +830,96 @@ else
                     }
                 </tbody>
             </Table>
+            }
+            }
+        }
+
+        @if (_section == "journeys")
+        {
+            @* Journeys (16 Nov 2026, Notes/statistics-browsing-journeys-plan-2026-11-15.md): how visits
+               went on from how they started, one start at a time (StatisticsStore.Journeys). A visit
+               is a session's searches, so only clients that send ?session= are in it; Browsing needs
+               none. Read on opening, off the page's thread, once a period. *@
+            @if (_journeys == null)
+            {
+                <span class="stats-view-busy" aria-live="polite"><Spinner Size="14" /> Reading the journeys…</span>
+            }
+            else if (_journeys.Root.Children.Count == 0)
+            {
+                <p class="stats-empty">No searches with a session in this period. A journey follows a visit by the session id its searches carry: intrface sends one per page load, and a client of your own can send <code>?session=</code> with each search.</p>
+            }
+            else
+            {
+                var forest = _journeys;
+                var starts = JourneyStarts();
+                <p class="stats-help">
+                    How visits went on from how they started, a search, a value picked from a facet's search or a catalogue page: open a start for what followed it, to a chosen result, a conversion or nothing.
+                    From @N(forest.Sessions) @(forest.Sessions == 1 ? "visit" : "visits")@(forest.Sampled ? ", a sample spread over the period" : ""); @Pct(forest.WithSession, forest.Searches) of the searches carried a session, and a search without one is in Browsing only. Kept @(Stats.RetentionDays) days.
+                </p>
+                @if (_journeyMissing != null)
+                {
+                    <p class="stats-help">"@_journeyMissing" began no visit with a session in this period, or too few to be listed, so it is among the starts seen once or twice.</p>
+                }
+                <div class="stats-journeys">
+                    <nav class="stats-journey-menu" aria-label="How visits start">
+                        <SearchField Size="micro" Filled Placeholder="Filter starts" Value="@_journeyFilter" ValueChanged="@(v => _journeyFilter = v ?? "")" aria-label="Filter starts" />
+                        <SegmentedControl Size="micro" Items="JourneyOrders" Value="@_journeyOrder" ValueChanged="@(v => _journeyOrder = v ?? "visits")" AriaLabel="Order starts by" />
+                        <span class="stats-path-note">@N(starts.Count) of @N(forest.Root.Children.Count) starts@(_journeyOrder == "visits" ? "" : $", those with {JourneyRateMinVisits} visits or more")</span>
+                        <div class="stats-journey-list">
+                            @foreach (var s in starts.Take(JourneyStartsShown))
+                            {
+                                var start = s;
+                                <div class="stats-journey-start">
+                                    <Button Variant="@(start.Id == _journeyStart ? "secondary" : "ghost")" Size="micro" @onclick="() => OpenStart(start.Id)">
+                                        <span class="stats-journey-start-label">@StepSentence(start)</span><span class="stats-path-count">@StartFigure(start)</span>
+                                    </Button>
+                                </div>
+                            }
+                        </div>
+                    </nav>
+                    <div class="stats-paths stats-journey-board" data-tree-fullscreen>
+                        <TreeCanvas @key="_journeyStart" Roots="JourneyRoots()" Selected="@_journeySelected" SelectedChanged="@(id => _journeySelected = id)"
+                                    OpenDepth="3" MaxChildren="5" Pattern="grid-12" Format="@(n => N(n))" AriaLabel="What followed this start" />
+                        @if (_journeySelected != null && _journeyInfo.TryGetValue(_journeySelected, out var step))
+                        {
+                            <Surface Class="stats-path-panel">
+                                <div class="stats-path-panel-head">
+                                    <div class="stats-path-panel-title">@StepSentence(step)</div>
+                                    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.No" AriaLabel="Close" @onclick="@(() => _journeySelected = null)" />
+                                </div>
+                                <div class="stats-path-panel-stats">
+                                    <Stat Label="Visits" Value="@N(step.Visits)" />
+                                    <Stat Label="Chose a result" Value="@Pct(step.Clicked, step.Visits)" />
+                                    <Stat Label="Converted" Value="@Pct(step.Converted, step.Visits)" />
+                                </div>
+                                @if (step.Texts is { Count: > 0 } texts)
+                                {
+                                    <div class="stats-path-panel-sub">@(step.Kind switch { JourneyStepKind.Pick => "What was typed for it", JourneyStepKind.Tail => "Among them", _ => "What was searched, the most common" })</div>
+                                    <ul class="stats-path-list">
+                                        @foreach (var t in texts)
+                                        {
+                                            <li><span>@t.Text@if (t.NearMatch) { <span class="stats-muted"> near match</span> }</span><span class="stats-path-count">@N(t.Visits)</span></li>
+                                        }
+                                    </ul>
+                                    @if (step.Kind == JourneyStepKind.Pick && texts.Any(t => t.NearMatch))
+                                    {
+                                        <p class="stats-path-note">A near match: no value held every word typed, and the visitor picked this one. A name typed that way often is a spelling the data does not hold.</p>
+                                    }
+                                }
+                                @if (step.Children.Count > 0)
+                                {
+                                    <div class="stats-path-panel-sub">Where visits went next</div>
+                                    <ul class="stats-path-list">
+                                        @foreach (var c in step.Children.Take(6))
+                                        {
+                                            <li><span>@StepSentence(c)</span><span class="stats-path-count">@Pct(c.Visits, step.Visits)</span></li>
+                                        }
+                                    </ul>
+                                }
+                            </Surface>
+                        }
+                    </div>
+                </div>
             }
         }
 
@@ -956,15 +1061,18 @@ else
                                            ChangeDescriptions.Describe(c.Kind, c.Summary)))
         .ToList();
 
-    /// <summary>The section to open on: queries, fuzzy, documents, browsing or changes.</summary>
+    /// <summary>The section to open on: queries, fuzzy, documents, browsing, journeys or changes.</summary>
     [Parameter] public string? InitialSection { get; set; }
     /// <summary>The Search or ask view to open on: overview, questions or offers.</summary>
     [Parameter] public string? InitialAskView { get; set; }
+    /// <summary>The Browsing view to open on: paths or filters.</summary>
+    [Parameter] public string? InitialBrowsingView { get; set; }
 
     protected override void OnInitialized()
     {
         if (!string.IsNullOrEmpty(InitialSection)) _section = InitialSection;
         if (!string.IsNullOrEmpty(InitialAskView)) _askView = InitialAskView;
+        if (!string.IsNullOrEmpty(InitialBrowsingView)) _browsingView = InitialBrowsingView;
     }
 
     /// <summary>The detail sections, in the order they matter. Changes carries how many fell in
@@ -978,6 +1086,7 @@ else
         new("Top documents", "documents", DatasetIcons.TopDocuments),
         .. SearchOrAskSection,
         new("Browsing", "browsing", DatasetIcons.Browsing),
+        new("Journeys", "journeys", DatasetIcons.Journeys),
         new("Changes", "changes", DatasetIcons.Changes,
             Badge: _changes.Count switch { 0 => null, > 99 => "99+", var n => n.ToString() },
             BadgeTitle: $"{_changes.Count} changes in the last {_days} days", BadgeTone: "info"),
@@ -1072,6 +1181,135 @@ else
         return new TreeCanvas.Node(id, n.Step, (int)Math.Min(n.Searches, int.MaxValue),
             n.Children.Select(c => PathTree(c, id, path)).ToList(), Muted: n.Step is "Other" or "…");
     }
+    // Browsing's two views: the paths tree and the filter table.
+    private string _browsingView = "paths";
+    private static readonly IReadOnlyList<SegmentedControl.Item> BrowsingViews = [new("paths", "Paths"), new("filters", "Filters")];
+
+    // ── Journeys ────────────────────────────────────────────────────────────────────────────────
+    // Read on opening the section, off the page's thread, and kept for the period; a newer read
+    // (another period, another surface) wins over an older one.
+    private JourneyForest? _journeys;
+    private int _journeyRead;
+    private string _journeyFilter = "";
+    private string _journeyOrder = "visits";
+    private string? _journeyStart, _journeySelected;
+    // A query sent from Top queries to open, and one that is not among the listed starts.
+    private string? _journeyAsked, _journeyMissing;
+    // The canvas's tree for the open start, made once per start, and every step by its id for the panel.
+    private IReadOnlyList<TreeCanvas.Node>? _journeyRoots;
+    private readonly Dictionary<string, JourneyNode> _journeyInfo = new();
+    private const int JourneyStartsShown = StatisticsStore.JourneyListedStarts;
+    private const int JourneyRateMinVisits = 20;
+    private static readonly IReadOnlyList<SegmentedControl.Item> JourneyOrders =
+        [new("visits", "Visits"), new("converted", "Converts"), new("noclick", "No click")];
+
+    private async Task SetSection(string? value)
+    {
+        _section = value ?? "overview";
+        if (_section == "journeys") await LoadJourneysAsync();
+    }
+
+    /// <summary>Top queries' Journey: the query's journey, read first when it is not yet.</summary>
+    private Task OpenJourney(string queryText)
+    {
+        _journeyAsked = StatisticsStore.JourneyText(queryText);
+        _journeyFilter = "";
+        return SetSection("journeys");
+    }
+
+    private async Task LoadJourneysAsync()
+    {
+        if (_journeys == null)
+        {
+            var store = Stats.Store;
+            if (store == null) return;
+            var read = ++_journeyRead;
+            var (team, ds, from, to, source) = (Ctx.TeamId, Ctx.Name, _fromDay, _toDay, _source);
+            var forest = await Task.Run(() => store.Journeys(team, ds, from, to, source));
+            if (read != _journeyRead) return;
+            _journeys = forest;
+        }
+        // The query asked for, else the start already open, else the most taken.
+        var starts = _journeys.Root.Children;
+        _journeyMissing = null;
+        if (_journeyAsked is { } asked)
+        {
+            var found = starts.FirstOrDefault(s => s.Kind == JourneyStepKind.Search && s.Label == asked);
+            if (found != null) OpenStart(found.Id);
+            else _journeyMissing = asked;
+            _journeyAsked = null;
+        }
+        if (_journeyStart == null || !starts.Any(s => s.Id == _journeyStart))
+        {
+            if (starts.Count > 0) OpenStart(starts[0].Id);
+        }
+        StateHasChanged();
+    }
+
+    /// <summary>The starts the menu lists: those the filter matches, in the order chosen; a rate
+    /// orders only the starts with enough visits to mean something.</summary>
+    private List<JourneyNode> JourneyStarts()
+    {
+        if (_journeys == null) return [];
+        var needle = _journeyFilter.Trim();
+        IEnumerable<JourneyNode> shown = _journeys.Root.Children
+            .Where(s => needle.Length == 0 || StepSentence(s).Contains(needle, StringComparison.OrdinalIgnoreCase));
+        return _journeyOrder switch
+        {
+            "converted" => shown.Where(s => s.Visits >= JourneyRateMinVisits).OrderByDescending(s => (double)s.Converted / s.Visits).ThenByDescending(s => s.Visits).ToList(),
+            "noclick" => shown.Where(s => s.Visits >= JourneyRateMinVisits).OrderByDescending(s => (double)(s.Visits - s.Clicked) / s.Visits).ThenByDescending(s => s.Visits).ToList(),
+            _ => shown.ToList(),
+        };
+    }
+
+    private string StartFigure(JourneyNode s) => _journeyOrder switch
+    {
+        "converted" => Pct(s.Converted, s.Visits),
+        "noclick" => Pct(s.Visits - s.Clicked, s.Visits),
+        _ => N(s.Visits),
+    };
+
+    private void OpenStart(string id)
+    {
+        if (_journeys?.Root.Children.FirstOrDefault(s => s.Id == id) is not { } start) return;
+        _journeyStart = id;
+        _journeySelected = id;
+        _journeyInfo.Clear();
+        _journeyRoots = [JourneyTree(start)];
+    }
+
+    private IReadOnlyList<TreeCanvas.Node> JourneyRoots() => _journeyRoots ?? [];
+
+    /// <summary>A step as a pill of the canvas, its icon after the count; the folds and the endings
+    /// with no click dimmed.</summary>
+    private TreeCanvas.Node JourneyTree(JourneyNode n)
+    {
+        _journeyInfo[n.Id] = n;
+        RenderFragment<int>? icon = n.Kind switch
+        {
+            JourneyStepKind.Search or JourneyStepKind.Again => DatasetIcons.Search,
+            JourneyStepKind.Pick => DatasetIcons.FacetPick,
+            JourneyStepKind.Filter or JourneyStepKind.Unfilter => DatasetIcons.Filter,
+            JourneyStepKind.Click => DatasetIcons.ClickPosition,
+            JourneyStepKind.Convert => DatasetIcons.Conversions,
+            _ => null,
+        };
+        return new TreeCanvas.Node(n.Id, StepSentence(n), (int)Math.Min(n.Visits, int.MaxValue),
+            n.Children.Count == 0 ? null : n.Children.Select(JourneyTree).ToList(),
+            icon == null ? null : [new TreeCanvas.Mark(icon, n.Kind.ToString())],
+            Muted: n.Kind is JourneyStepKind.Left or JourneyStepKind.Rest or JourneyStepKind.More);
+    }
+
+    /// <summary>A step as a line, the same in the menu, on the canvas and in the panel.</summary>
+    private static string StepSentence(JourneyNode n) => n.Kind switch
+    {
+        JourneyStepKind.Search => $"Searched \"{n.Label}\"",
+        JourneyStepKind.Pick => $"Picked {n.Label}",
+        JourneyStepKind.Filter => $"Filtered {n.Label}",
+        JourneyStepKind.Unfilter => $"Removed {n.Label}",
+        _ => n.Label,
+    };
+
     private List<ChangeStat> _changes = [];
     private (long Inserted, long Updated, long Deleted) _documentTotals;
     private IReadOnlyList<Chart.ChartSeries> _series = [];
@@ -1274,6 +1512,10 @@ else
             _pathRoots = null;
             _pathSelected = null;
             _pathResults = null;
+            _journeys = null;
+            _journeyRead++;
+            _journeyRoots = null;
+            _journeyInfo.Clear();
             _changes = store.Changes(team, ds, fromDay, toDay);
             if (_changeKind != null && !_changes.Any(c => c.Kind == _changeKind)) _changeKind = null;
             var documentDays = store.DocumentChanges(team, ds, fromDay, toDay);
@@ -1329,6 +1571,7 @@ else
         _label = null;   // the label field may have changed on the Options tab
         _loaded = true;
         await Render();
+        if (_section == "journeys") await LoadJourneysAsync();
     }
 
     /// <summary>The lists whose rows depend on a section's view settings.</summary>

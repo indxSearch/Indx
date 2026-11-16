@@ -299,3 +299,16 @@
 /* A found score below the dataset's line: the list missed what was asked. In the ink and
    heavier, not in a colour: a low score is a finding, not an error. */
 .stats-tab ::deep .stats-num.stats-low { color: var(--lv8); font-weight: var(--med); }
+
+/* Journeys: the starts in a menu on the left, the open start's board beside it, as tall as the
+   paths' board; on a narrow screen the menu above the board. */
+.stats-journeys { display: grid; grid-template-columns: 260px minmax(0, 1fr); gap: 16px; align-items: start; margin: 8px 0 24px; }
+.stats-journeys .stats-journey-board { margin: 0; height: 520px; }
+.stats-journey-menu { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.stats-journey-list { display: flex; flex-direction: column; gap: 1px; max-height: 400px; overflow-y: auto; }
+.stats-journey-start ::deep .indx-btn { width: 100%; justify-content: space-between; gap: 8px; }
+.stats-journey-start-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; }
+@media (max-width: 900px) {
+    .stats-journeys { grid-template-columns: minmax(0, 1fr); }
+    .stats-journey-list { max-height: 240px; }
+}

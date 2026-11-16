@@ -97,6 +97,9 @@ namespace IndxServer.Components.Datasets
         public static readonly RenderFragment<int> PartialSearch = Of<Icons.PartialSearch>();
         public static readonly RenderFragment<int> TopDocuments = Of<Icons.SortAscending>();
         public static readonly RenderFragment<int> Browsing = Of<Icons.InternetBrowser>();
+        // Statistics' Journeys: the section, and a value picked from a facet's own search as a step of one.
+        public static readonly RenderFragment<int> Journeys = Of<Icons.Milestone>();
+        public static readonly RenderFragment<int> FacetPick = Of<Icons.SearchAsYouType>();
         public static readonly RenderFragment<int> Changes = Of<Icons.Update>();
         public static readonly RenderFragment<int> Mail = Of<Icons.Mail>();
         public static readonly RenderFragment<int> Bell = Of<Icons.Bell>();

@@ -16,7 +16,13 @@ namespace IndxServer.Services
     public readonly record struct SearchEventRow(
         string QueryId, string TeamId, string DataSet, string QueryText, string? FilterKey,
         int HitCount, string? Subject, long Timestamp, string? Source = null, string? Session = null,
-        bool? Covered = null, bool Counted = true, string? Typed = null, string? Locale = null);
+        bool? Covered = null, bool Counted = true, string? Typed = null, string? Locale = null,
+        string? PickField = null, string? PickValue = null, string? PickText = null, bool? PickFallback = null);
+    // Pick*: the search a tick made when the value was found by typing into its facet's own search
+    // field (intrface's ValueFilterPanel, Nov 2026): the field and value ticked, what was typed, and
+    // whether the value came from the fallback (no value held every word typed). Journeys show it as
+    // a step of its own. What was typed into a facet without a pick is not recorded at all: a facet
+    // search is flat, with nothing for an owner to tune.
     // Locale: the language the page was in (?locale=, a BCP 47 tag such as nb-NO), as the
     // storefront reports it; what "which languages do people search in" is read from. Not where
     // they are: that would take their address, which the statistics do not keep.
@@ -166,7 +172,11 @@ CREATE TABLE IF NOT EXISTS SearchEvents (
     Session     TEXT    NULL,                 -- per-page-load id, for the keystroke rule
     Superseded  INTEGER NOT NULL DEFAULT 0,   -- 1: the same session extended it within the window
     Covered     INTEGER NULL,                 -- 1: coverage confirmed a result, 0: none (fuzzy only), NULL: coverage off
-    Counted     INTEGER NOT NULL DEFAULT 1    -- 0: stored but not a visitor's (the console, ?count=false)
+    Counted     INTEGER NOT NULL DEFAULT 1,   -- 0: stored but not a visitor's (the console, ?count=false)
+    PickField   TEXT    NULL,                 -- a value ticked from its facet's search: the field,
+    PickValue   TEXT    NULL,                 -- the value,
+    PickText    TEXT    NULL,                 -- what was typed for it,
+    PickFallback INTEGER NULL                 -- 1: from the fallback (no value held every word)
 );
 CREATE INDEX IF NOT EXISTS IX_Search_TeamDsTime ON SearchEvents(TeamId, DataSet, Timestamp);
 CREATE INDEX IF NOT EXISTS IX_Search_ZeroHits   ON SearchEvents(TeamId, DataSet, Timestamp) WHERE HitCount = 0;
@@ -387,6 +397,18 @@ CREATE TABLE IF NOT EXISTS SubjectDocumentStats (
                     logger.LogInformation("statistics: where a search came from and whether it counts are separate now ({Uncounted} uncounted); re-rolling the kept days", uncounted);
             }
             catch (SqliteException) { /* already there */ }
+            foreach (var col in new[] { "PickField TEXT NULL", "PickValue TEXT NULL", "PickText TEXT NULL", "PickFallback INTEGER NULL" })
+            {
+                try
+                {
+                    cmd.CommandText = $"ALTER TABLE SearchEvents ADD COLUMN {col}";
+                    cmd.ExecuteNonQuery();
+                }
+                catch (SqliteException) { /* already there */ }
+            }
+            // Journeys read a session's settled searches in order (StatisticsStore.Journeys).
+            cmd.CommandText = "CREATE INDEX IF NOT EXISTS IX_Search_Journey ON SearchEvents(TeamId, DataSet, Session, Timestamp) WHERE Session IS NOT NULL AND Superseded = 0";
+            cmd.ExecuteNonQuery();
             // The keystroke rule counts a session's superseded searches per settled one (Typing):
             // without this it scanned the table once per search, minutes on 300k events (25 Oct
             // 2026). After the migrations, since it names Superseded, which a file from before the
@@ -433,8 +455,13 @@ UPDATE SearchEvents SET Superseded = 1 WHERE QueryId IN (
                 using var cmd = conn.CreateCommand();
                 cmd.Transaction = tx;
                 cmd.CommandText = @"INSERT OR IGNORE INTO SearchEvents
-                    (QueryId, TeamId, DataSet, QueryText, FilterKey, HitCount, Subject, Timestamp, Source, Session, Covered, Counted, Locale)
-                    VALUES ($qid, $team, $ds, $text, $filter, $hits, $subj, $ts, $src, $sess, $cov, $cnt, $loc)";
+                    (QueryId, TeamId, DataSet, QueryText, FilterKey, HitCount, Subject, Timestamp, Source, Session, Covered, Counted, Locale,
+                     PickField, PickValue, PickText, PickFallback)
+                    VALUES ($qid, $team, $ds, $text, $filter, $hits, $subj, $ts, $src, $sess, $cov, $cnt, $loc, $pf, $pv, $pt, $pfb)";
+                var pf = cmd.Parameters.Add("$pf", SqliteType.Text);
+                var pv = cmd.Parameters.Add("$pv", SqliteType.Text);
+                var pt = cmd.Parameters.Add("$pt", SqliteType.Text);
+                var pfb = cmd.Parameters.Add("$pfb", SqliteType.Integer);
                 var loc = cmd.Parameters.Add("$loc", SqliteType.Text);
                 var qid = cmd.Parameters.Add("$qid", SqliteType.Text);
                 var team = cmd.Parameters.Add("$team", SqliteType.Text);
@@ -457,6 +484,9 @@ UPDATE SearchEvents SET Superseded = 1 WHERE QueryId IN (
                     sess.Value = (object?)e.Session ?? DBNull.Value;
                     cov.Value = e.Covered is bool covered ? (covered ? 1 : 0) : DBNull.Value;
                     cnt.Value = e.Counted ? 1 : 0;
+                    pf.Value = (object?)e.PickField ?? DBNull.Value; pv.Value = (object?)e.PickValue ?? DBNull.Value;
+                    pt.Value = (object?)e.PickText ?? DBNull.Value;
+                    pfb.Value = e.PickFallback is bool fb ? (fb ? 1 : 0) : DBNull.Value;
                     cmd.ExecuteNonQuery();
                 }
             }

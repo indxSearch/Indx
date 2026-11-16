@@ -58,6 +58,19 @@ namespace IndxServer.Services
             return string.IsNullOrEmpty(s) ? null : s.Length <= 40 ? s : s[..40];
         }
 
+        /// <summary>A value ticked from its facet's search, as sent (?pickField=, ?pickValue=,
+        /// ?pickText=, ?pickFallback=): null unless both the field and the value are there. Each cut
+        /// to a length a field name, a facet value or a typed text has; the typed text may be absent.</summary>
+        public static (string Field, string Value, string? Text, bool Fallback)? CleanPick(string? field, string? value, string? text, string? fallback)
+        {
+            var f = field?.Trim();
+            if (string.IsNullOrEmpty(f) || string.IsNullOrEmpty(value)) return null;
+            var t = text?.Trim();
+            return (f.Length <= 200 ? f : f[..200], value.Length <= 500 ? value : value[..500],
+                string.IsNullOrEmpty(t) ? null : t.Length <= 200 ? t : t[..200],
+                string.Equals(fallback?.Trim(), "true", StringComparison.OrdinalIgnoreCase));
+        }
+
         /// <summary>The page's language as sent (?locale=), a BCP 47 tag: trimmed, the language part
         /// in lower case and the region in upper (nb-NO), anything past the region dropped, so one
         /// language is one row however the page spelt it. Null when empty or not shaped like a tag.</summary>

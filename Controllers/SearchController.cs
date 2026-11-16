@@ -532,6 +532,12 @@ namespace IndxServer.Controllers
                     // that references an unrecorded search is accepted as an orphan and still
                     // counts on the document.
                     var filterKey = statistics.FilterKeyToRecord(resolvedFilterKey, ctx.OwnerKey, dataSetName);
+                    // ?pickField=&pickValue=&pickText=&pickFallback=true: this search is the one a tick
+                    // made, of a value found by typing into its facet's own search field (intrface's
+                    // ValueFilterPanel). Only with the filter recorded: the pick is a step of it.
+                    var pick = filterKey == null ? null : StatisticsService.CleanPick(
+                        Request.Query["pickField"].FirstOrDefault(), Request.Query["pickValue"].FirstOrDefault(),
+                        Request.Query["pickText"].FirstOrDefault(), Request.Query["pickFallback"].FirstOrDefault());
                     if (StatisticsService.ShouldRecord(query, filterKey, res))
                         statistics.Writer!.RecordSearch(new SearchEventRow(
                             queryId, ctx.OwnerKey, dataSetName, query.Text ?? string.Empty,
@@ -544,7 +550,8 @@ namespace IndxServer.Controllers
                             Source: source, Counted: counted,
                             Covered: StatisticsService.CoverageConfirmed(query, res),
                             Typed: string.IsNullOrWhiteSpace(typed) ? null : typed.Length > 1000 ? typed[..1000] : typed,
-                            Locale: locale));
+                            Locale: locale,
+                            PickField: pick?.Field, PickValue: pick?.Value, PickText: pick?.Text, PickFallback: pick?.Fallback));
                 }
                 return new SearchOutcome(res, null, refocused, fromDataset, minted, tSearch);
             }
