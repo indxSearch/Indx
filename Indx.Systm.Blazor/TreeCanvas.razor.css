@@ -24,6 +24,18 @@
     transform-origin: 0 0;
 }
 
+/* A new tree until its first view is set (initial in the module takes the class off). Shown after
+   a second whatever happens, so a page without the module (prerendered, or one whose script failed)
+   still shows its tree: a step, not a fade. */
+.indx-tree-view-pending {
+    visibility: hidden;
+    animation: indx-tree-view-reveal 0s 1s forwards;
+}
+
+@keyframes indx-tree-view-reveal {
+    to { visibility: visible; }
+}
+
 .indx-tree-sheet {
     position: relative;
     padding: 16px;

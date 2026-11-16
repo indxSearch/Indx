@@ -39,7 +39,10 @@ else
         {
             <div class="indx-tree-empty">Nothing matches</div>
         }
-        <div class="indx-tree-view" @ref="_view">
+        @* Hidden until its first view is set: drawn before the pills are measured and the view
+           fitted, a new tree showed for a moment at the top left (16 Nov 2026). Hidden, not removed,
+           so the measuring still has a layout; initial() in the module shows it. *@
+        <div class="indx-tree-view @(_viewPending ? "indx-tree-view-pending" : "")" @ref="_view">
         <div class="indx-tree-sheet" style="width: @F(width)px; height: @F(_height)px;" @ref="_sheet">
             <svg class="indx-tree-edges" width="@F(width)" height="@F(_height)" aria-hidden="true">
                 @foreach (var p in placed)

@@ -46,7 +46,13 @@ export function attach(canvas, view, grid, pan) {
 // none), from the left, with the first root a third of the way down.
 export function initial(canvas, zoom) {
     const s = states.get(canvas);
-    if (!s) return;
+    if (s) place(s, zoom);
+    // Shown once it is where it opens: the component draws a new tree hidden. Shown either way,
+    // so a board that could not be placed is still seen.
+    canvas?.querySelector('.indx-tree-view-pending')?.classList.remove('indx-tree-view-pending');
+}
+
+function place(s, zoom) {
     const { cw, ch, sw, sh, cl } = sizes(s);
     if (zoom == null) {
         const fit = fitZoom(cw, ch, sw, sh);
