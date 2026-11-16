@@ -41,7 +41,7 @@ else
         }
         @* Hidden until its first view is set: drawn before the pills are measured and the view
            fitted, a new tree showed for a moment at the top left (16 Nov 2026). Hidden, not removed,
-           so the measuring still has a layout; initial() in the module shows it. *@
+           so the measuring still has a layout; drawn again once initial() has placed it. *@
         <div class="indx-tree-view @(_viewPending ? "indx-tree-view-pending" : "")" @ref="_view">
         <div class="indx-tree-sheet" style="width: @F(width)px; height: @F(_height)px;" @ref="_sheet">
             <svg class="indx-tree-edges" width="@F(width)" height="@F(_height)" aria-hidden="true">
@@ -395,9 +395,13 @@ else
             if (changed) StateHasChanged();
             else if (_viewPending)
             {
-                // The pills are measured and the layout is final: now the first view can be fitted.
+                // The pills are measured and the layout is final: now the first view can be fitted,
+                // and the tree shown where it opens. Shown by drawing again, not only by the module:
+                // a browser holding the module from before the hiding (it is not fingerprinted) never
+                // took the class off, and the tree waited for the fallback (16 Nov 2026).
                 _viewPending = false;
                 await _module.InvokeVoidAsync("initial", _canvas, Zoom);
+                StateHasChanged();
             }
         }
         catch (JSDisconnectedException) { }
