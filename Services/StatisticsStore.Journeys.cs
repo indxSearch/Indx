@@ -307,7 +307,9 @@ SELECT s.Session, s.QueryText, s.FilterKey, s.PickField, s.PickValue, s.PickText
                 var texts = b.Texts?.OrderByDescending(kv => kv.Value).ThenBy(kv => kv.Key.Text, StringComparer.Ordinal).Take(JourneyTexts)
                     .Select(kv => new JourneyText(kv.Key.Text, kv.Value, kv.Key.Near)).ToList();
                 return new JourneyNode(b.Id, b.Step.Kind, b.Step.Label, b.Visits, b.Clicked, b.Converted,
-                    kids.OrderByDescending(c => c.Visits).ThenBy(c => c.Id, StringComparer.Ordinal).Select(c => Freeze(c, depth + 1)).ToList(), texts);
+                    // The fold last, whatever its visits: it is the rest, not a way on.
+                    kids.OrderBy(c => c.Step.Kind == JourneyStepKind.Rest).ThenByDescending(c => c.Visits).ThenBy(c => c.Id, StringComparer.Ordinal)
+                        .Select(c => Freeze(c, depth + 1)).ToList(), texts);
             }
             return Freeze(root, 0);
         }

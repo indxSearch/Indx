@@ -879,7 +879,7 @@ else
                     </nav>
                     <div class="stats-paths stats-journey-board" data-tree-fullscreen>
                         <TreeCanvas @key="_journeyStart" Roots="JourneyRoots()" Selected="@_journeySelected" SelectedChanged="@(id => _journeySelected = id)"
-                                    OpenDepth="3" MaxChildren="5" Pattern="grid-12" Format="@(n => N(n))" AriaLabel="What followed this start" />
+                                    OpenDepth="3" MaxChildren="@(StatisticsStore.JourneyKeptWays + 1)" Pattern="grid-12" Format="@(n => N(n))" AriaLabel="What followed this start" />
                         @if (_journeySelected != null && _journeyInfo.TryGetValue(_journeySelected, out var step))
                         {
                             <Surface Class="stats-path-panel">
