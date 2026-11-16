@@ -23,7 +23,7 @@ namespace IndxServer.Services.Observr
             : Kind.StartsWith(ObservrClient.DigestKind + "/") ? Kind[(ObservrClient.DigestKind.Length + 1)..]
             : Kind == ObservrChat.Kind && Proposals.Count > 0 && Proposals.All(p => p.Kind == ObservrProposal.SearchOrAskKind) ? "search-or-ask"
             : Kind == ObservrChat.Kind && Proposals.Count > 0 && Proposals.All(p => p.Kind == ObservrProposal.QueryParametersKind) ? "query-parameters"
-            : Kind == ObservrChat.Kind && Proposals.Count > 0 && Proposals.All(p => p.Kind == ObservrProposal.FieldKind) ? "fields"
+            : Kind == ObservrChat.Kind && Proposals.Count > 0 && Proposals.All(p => p.Kind is ObservrProposal.FieldKind or ObservrProposal.ProfileKind) ? "fields"
             : Kind == ObservrChat.Kind && Proposals.Count > 0 && Proposals.All(p => p.Kind == ObservrProposal.Synonym) ? "synonyms"
             : "statistics";
 

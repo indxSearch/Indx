@@ -215,10 +215,13 @@ else if (Ctx.EditedFields is { } fields)
     /// again, unless the working copy holds edits, which stay with a notice.</summary>
     protected override void OnObservrApplied(IReadOnlySet<string> kinds)
     {
-        if (!kinds.Contains(IndxServer.Services.Observr.ObservrProposal.FieldKind)) return;
+        if (!kinds.Contains(IndxServer.Services.Observr.ObservrProposal.FieldKind)
+            && !kinds.Contains(IndxServer.Services.Observr.ObservrProposal.ProfileKind)) return;
         if (Ctx.IsDirty) { _changedUnderEdit = true; return; }
         _changedUnderEdit = false;
         Ctx.RefreshFieldsFromEngine();
+        // The profiles too: a Yes may have made one, or given a field another.
+        Ctx.SetSavedProfiles(ProfileStore.Load(Ctx.TeamId, Ctx.Name));
         Ctx.RefreshStatus();
     }
 

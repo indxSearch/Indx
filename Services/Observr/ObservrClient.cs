@@ -34,10 +34,12 @@ namespace IndxServer.Services.Observr
 
     /// <summary>A field profile of the dataset as Observr reads it (Nov 2026): the five built-ins and
     /// the dataset's own, with their values; <see cref="Pattern"/> the pattern setup in words.</summary>
-    public sealed record ObservrProfileInfo(string Id, string Name, string About, bool BuiltIn, string Tolerance, float RerankWeight, string Pattern)
+    public sealed record ObservrProfileInfo(string Id, string Name, string About, bool BuiltIn, string Tolerance, float RerankWeight, string Pattern,
+        int? TypingPrefixFrom = null)
     {
         public static ObservrProfileInfo Of(FieldProfile p) => new(p.Id, p.Name, p.About ?? "", p.BuiltIn, p.Tolerance.ToString(), p.RerankWeight,
-            $"pieces of {string.Join(" and ", p.IndexSizes)} letters, {p.NumberOfStartCharacters} start mark(s){(p.NumberOfStopCharacters > 0 ? ", a whole value first" : "")}");
+            $"pieces of {string.Join(" and ", p.IndexSizes)} letters, {p.NumberOfStartCharacters} start mark(s){(p.NumberOfStopCharacters > 0 ? ", a whole value first" : "")}",
+            p.TypingPrefixFrom);
     }
 
     /// <summary>The dataset's setup for review: every field with its evidence, the key field, and
@@ -115,6 +117,35 @@ namespace IndxServer.Services.Observr
         };
     }
 
+    /// <summary>A field profile Observr proposes in a chat, on the owner's request (Nov 2026): a new
+    /// one of the dataset's own (no <see cref="Id"/>), or a change to one it has. Null leaves a value
+    /// as it is, or for a new profile as the library has it. <see cref="Fields"/> are searched fields
+    /// that get the profile with the Yes. A built-in is not changed this way: every dataset's fields
+    /// on it would follow.</summary>
+    public sealed record ObservrProfileChange(string? Id, string? Name, string? About = null, string? Tolerance = null, float? RerankWeight = null,
+        int? TypingPrefixFrom = null, int[]? IndexSizes = null, int? StartCharacters = null, int? StopCharacters = null, List<string>? Fields = null)
+    {
+        [JsonIgnore]
+        public bool IsNew => string.IsNullOrWhiteSpace(Id);
+
+        /// <summary>The values as words: "exact words only", "the start of a longer word from 8 letters".</summary>
+        [JsonIgnore]
+        public IEnumerable<string> Parts
+        {
+            get
+            {
+                if (Tolerance != null) yield return ObservrText.ToleranceText(Tolerance);
+                if (TypingPrefixFrom is { } from)
+                    yield return from < 0 ? "the start of a longer word as the search has it"
+                        : from == 0 ? "never the start of a longer word" : $"the start of a longer word from {from} letters";
+                if (RerankWeight != null) yield return $"rerank weight {RerankWeight.Value.ToString("0.##", CultureInfo.InvariantCulture)}";
+                if (IndexSizes is { Length: > 0 }) yield return $"pieces of {string.Join(" and ", IndexSizes)} letters";
+                if (StartCharacters != null) yield return $"{StartCharacters} start mark{(StartCharacters == 1 ? "" : "s")}";
+                if (StopCharacters != null) yield return StopCharacters > 0 ? "a whole value first" : "no whole value first";
+            }
+        }
+    }
+
     /// <summary>A record with how often visitors chose it for a query, and where in the list it stood.</summary>
     public sealed record ObservrChosen(long Key, string Name, long Selects, double? AvgPosition);
 
@@ -189,14 +220,15 @@ namespace IndxServer.Services.Observr
     /// (<see cref="SearchOrAsk"/>), query parameters (<see cref="QueryParameters"/>) or a support
     /// ticket to send to Indx (<see cref="Ticket"/>).</summary>
     public sealed record ObservrProposal(string Kind, string[] Terms, string Direction, string Reason, ObservrFieldChange? Field = null,
-        ObservrSearchOrAskChange? SearchOrAsk = null, ObservrQueryParametersChange? QueryParameters = null, ObservrTicketDraft? Ticket = null)
+        ObservrSearchOrAskChange? SearchOrAsk = null, ObservrQueryParametersChange? QueryParameters = null, ObservrTicketDraft? Ticket = null,
+        ObservrProfileChange? Profile = null)
     {
         /// <summary>What this server can carry out, sent to Observr as <see cref="AcceptsHeader"/> on
         /// every request: the kinds, and as <c>kind.part</c> each part added to a kind after it first
         /// shipped. Observr is deployed ahead of every installed server and narrows what it proposes
         /// to this list. A part added here must be applied in the same change, or Observr sends it
         /// and a yes leaves it out.</summary>
-        public static readonly string[] Accepted = [Synonym, FieldKind, SearchOrAskKind, QueryParametersKind, FieldProfilePart];
+        public static readonly string[] Accepted = [Synonym, FieldKind, SearchOrAskKind, QueryParametersKind, FieldProfilePart, ProfileKind];
 
         /// <summary>A field change that gives the field one of the dataset's profiles (Nov 2026).</summary>
         public const string FieldProfilePart = "field.profile";
@@ -219,6 +251,7 @@ namespace IndxServer.Services.Observr
             SearchOrAskKind => SearchOrAsk?.Parts.Any() == true,
             QueryParametersKind => QueryParameters?.Parts.Any() == true,
             SupportTicketKind => Ticket is { Subject.Length: > 0, Body.Length: > 0 },
+            ProfileKind => Profile != null && (!Profile.IsNew || !string.IsNullOrWhiteSpace(Profile.Name)),
             _ => false,
         };
 
@@ -257,6 +290,21 @@ namespace IndxServer.Services.Observr
                     case SupportTicketKind when Ticket != null:
                         return (Ticket.Kind switch { "feature" => "Send Indx a feature request:", "feedback" => "Send Indx feedback:", _ => "Send Indx a support request:" },
                             [Ticket.Subject], "");
+                    case ProfileKind when Profile != null:
+                    {
+                        // "Create the profile [ISBN] with exact words only and the start of a longer
+                        // word from 8 letters, for isbn"; "Change the profile [ISBN] to up to one typo".
+                        var c = Profile;
+                        var parts = c.Parts.ToList();
+                        var values = parts.Count == 0 ? "" : (c.IsNew ? "with " : "to ") + (parts.Count == 1 ? parts[0] : string.Join(", ", parts[..^1]) + " and " + parts[^1]);
+                        var shown = c.Name is { Length: > 0 } name ? name : c.Id ?? "";
+                        var fields = c.Fields is { Count: > 0 } ? string.Join(", ", c.Fields) : "";
+                        // A profile it has, with nothing changed: only handed to fields.
+                        if (!c.IsNew && parts.Count == 0 && fields.Length > 0) return ("Give the profile", [shown], "to " + fields);
+                        var given = fields.Length == 0 ? "" : (c.IsNew ? "for " : "and give it to ") + fields;
+                        var after = values.Length > 0 && given.Length > 0 ? $"{values}, {given}" : values + given;
+                        return (c.IsNew ? "Create the profile" : "Change the profile", [shown], after);
+                    }
                     default:
                         return (Label, [], "");
                 }
@@ -279,6 +327,8 @@ namespace IndxServer.Services.Observr
         public const string SearchOrAskKind = "searchOrAsk";
         public const string QueryParametersKind = "queryParameters";
         public const string SupportTicketKind = "supportTicket";
+        /// <summary>A field profile made or changed on the owner's request in a chat (Nov 2026).</summary>
+        public const string ProfileKind = "profile";
 
         /// <summary>What the proposal is, as a label, for a panel that is not a synonym's or a field's.</summary>
         [JsonIgnore]
@@ -289,6 +339,7 @@ namespace IndxServer.Services.Observr
             SearchOrAskKind => "Search or ask",
             QueryParametersKind => "Query parameters",
             SupportTicketKind => "Send to Indx",
+            ProfileKind => "Profile",
             _ => Kind,
         };
 
@@ -300,6 +351,7 @@ namespace IndxServer.Services.Observr
             SearchOrAskKind when SearchOrAsk != null => SearchOrAsk.Parts,
             QueryParametersKind when QueryParameters != null => QueryParameters.Parts,
             SupportTicketKind when Ticket != null => [Ticket.Subject],
+            ProfileKind when Profile != null => [(Profile.Name ?? Profile.Id) + ": " + string.Join(", ", Profile.Parts)],
             _ => [],
         };
     }
@@ -320,6 +372,10 @@ namespace IndxServer.Services.Observr
         /// <summary>Each changed field's profile as it was, null where it had none (Nov 2026): an undo
         /// puts the choice back with the values.</summary>
         public Dictionary<string, string?> ProfilesBefore { get; set; } = [];
+        /// <summary>The dataset's own profiles and choices as they were before a profile was made or
+        /// changed (null when it had none): an undo puts the whole of it back.</summary>
+        public bool HasProfileStore { get; set; }
+        public string? ProfileStoreBefore { get; set; }
         /// <summary>An undo kept before 9 Nov 2026: each field's roles as one searchable flag.</summary>
         public List<ObservrFieldChange> FieldsBefore { get; set; } = [];
     }
@@ -1086,6 +1142,9 @@ namespace IndxServer.Services.Observr
         /// carried out. Returns why it stopped, or null.</summary>
         private string? Apply(ObservrFinding f, List<ObservrProposal> chosen, HashSet<string> done, ObservrUndo undo)
         {
+            // Read before anything here changes it: a field change below may record a profile choice.
+            var profileChanges = chosen.Where(p => p.Kind == ObservrProposal.ProfileKind && p.Profile != null).Select(p => p.Profile!).ToList();
+            var profileStoreBefore = profileChanges.Count > 0 ? profiles.Load(f.TeamId, f.DataSetName) : null;
             foreach (var p in chosen.Where(p => p.Kind == ObservrProposal.Synonym))
             {
                 var had = HasSynonym(f.TeamId, f.DataSetName, p.Terms);
@@ -1130,6 +1189,86 @@ namespace IndxServer.Services.Observr
                 foreach (var (n, id) in profilesBefore) undo.ProfilesBefore[n] = id;
                 done.Add(ObservrProposal.FieldKind);
             }
+            // After the field changes, so a field made searched by the same Yes can take the profile.
+            foreach (var c in profileChanges)
+            {
+                if (ApplyProfile(f.TeamId, f.DataSetName, c, out var fieldsBefore) is { } why) return why;
+                if (!undo.HasProfileStore)
+                {
+                    undo.HasProfileStore = true;
+                    undo.ProfileStoreBefore = profileStoreBefore == null ? null : JsonSerializer.Serialize(profileStoreBefore, UndoJson);
+                }
+                undo.FieldConfigurationBefore.AddRange(fieldsBefore.Where(x => !undo.FieldConfigurationBefore.Any(b => b.FieldName == x.FieldName)));
+                done.Add(ObservrProposal.ProfileKind);
+                if (fieldsBefore.Count > 0) done.Add(ObservrProposal.FieldKind);
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Makes or changes one of the dataset's own profiles as the profile editor's Save does: a
+        /// new one is added and given to the fields named; a changed one writes its values onto every
+        /// field that has it, and onto the fields named. Checked whole first (<see cref="FieldProfiles.Merge"/>),
+        /// the fields then the store, as a field change with a profile. A built-in is refused.
+        /// <paramref name="fieldsBefore"/> is each field it wrote to as it was. Returns why not, or null.
+        /// </summary>
+        public string? ApplyProfile(string teamId, string dataSetName, ObservrProfileChange c, out List<FieldProxy> fieldsBefore)
+        {
+            fieldsBefore = [];
+            var own = profiles.Load(teamId, dataSetName)?.Copy() ?? new DatasetFieldProfiles();
+            var all = FieldProfiles.All(own);
+            var configuration = engines.FindSearchEngine(dataSetName, teamId)?.GetFieldConfiguration().ToList() ?? [];
+            FieldProfile profile;
+            IReadOnlyList<FieldProxy> having = [];
+            if (c.IsNew)
+            {
+                var name = c.Name?.Trim() ?? "";
+                if (name.Length == 0) return "The profile needs a name.";
+                if (all.Any(p => string.Equals(p.Name, name, StringComparison.OrdinalIgnoreCase))) return $"The dataset already has a profile named {name}.";
+                profile = new FieldProfile { Id = FieldProfiles.NewId(name, all), Name = name };
+            }
+            else
+            {
+                if (FieldProfiles.IsBuiltInId(c.Id!)) return "A built-in profile is changed in the profile manager on the Fields page: every field on it follows.";
+                if (own.Profiles.FirstOrDefault(p => p.Id == c.Id) is not { } existing) return $"The dataset has no profile '{c.Id}'.";
+                profile = string.IsNullOrWhiteSpace(c.Name) ? existing : existing with { Name = c.Name.Trim() };
+                having = FieldProfiles.FieldsWith(existing.Id, configuration, own);
+            }
+            var tolerance = profile.Tolerance;
+            if (c.Tolerance != null && !Enum.TryParse(c.Tolerance, out tolerance)) return $"'{c.Tolerance}' is not a typo tolerance.";
+            profile = profile with
+            {
+                About = c.About?.Trim() ?? profile.About,
+                Tolerance = tolerance,
+                RerankWeight = c.RerankWeight ?? profile.RerankWeight,
+                // A negative number hands the start of a word back to the search, as a field takes it.
+                TypingPrefixFrom = c.TypingPrefixFrom is { } from ? from < 0 ? null : from : profile.TypingPrefixFrom,
+                IndexSizes = c.IndexSizes is { Length: > 0 } sizes ? (int[])sizes.Clone() : profile.IndexSizes,
+                NumberOfStartCharacters = c.StartCharacters ?? profile.NumberOfStartCharacters,
+                NumberOfStopCharacters = c.StopCharacters ?? profile.NumberOfStopCharacters,
+            };
+            var named = (c.Fields ?? []).Distinct(StringComparer.Ordinal).ToList();
+            var (merged, refused) = FieldProfiles.Merge(own, [.. own.Profiles.Where(p => p.Id != profile.Id), profile],
+                named.ToDictionary(n => n, _ => (string?)profile.Id), null,
+                n => configuration.Any(x => x.FieldName == n),
+                n => configuration.FirstOrDefault(x => x.FieldName == n) is { } x && FieldProfiles.IsSearched(x));
+            if (merged == null) return refused;
+
+            var targets = having.Select(x => x.FieldName).Concat(named).Distinct(StringComparer.Ordinal).ToList();
+            if (targets.Count > 0)
+            {
+                var proxies = new List<FieldProxy>();
+                foreach (var n in targets)
+                {
+                    var now = configuration.First(x => x.FieldName == n);
+                    fieldsBefore.Add(Restorable(now));
+                    var proxy = Restorable(now);
+                    FieldProfiles.Apply(proxy, profile);
+                    proxies.Add(proxy);
+                }
+                if (ApplyFieldProxies(teamId, dataSetName, proxies.ToArray()) is { } why) { fieldsBefore = []; return why; }
+            }
+            profiles.Save(teamId, dataSetName, merged);
             return null;
         }
 
@@ -1213,6 +1352,21 @@ namespace IndxServer.Services.Observr
                     // Kept before 9 Nov 2026 as one flag: searched puts both roles back.
                     why = ApplyFieldProxies(f.TeamId, f.DataSetName, undo.FieldsBefore.Select(b => b.ToProxy()).ToArray());
                     if (why == null) done.Add(ObservrProposal.FieldKind);
+                }
+                if (why == null && undo.HasProfileStore)
+                {
+                    // The profiles as they were, a made one gone with it; then each field's choice
+                    // as it was before this finding's first Yes, which may be older than the copy.
+                    var back = undo.ProfileStoreBefore is { } json ? JsonSerializer.Deserialize<DatasetFieldProfiles>(json, UndoJson) : null;
+                    if (back == null && undo.ProfilesBefore.Values.Any(id => id != null)) back = new DatasetFieldProfiles();
+                    if (back == null) profiles.Delete(f.TeamId, f.DataSetName);
+                    else
+                    {
+                        foreach (var (n, id) in undo.ProfilesBefore)
+                            if (id == null) back.Assignments.Remove(n); else back.Assignments[n] = id;
+                        profiles.Save(f.TeamId, f.DataSetName, back);
+                    }
+                    done.Add(ObservrProposal.ProfileKind);
                 }
                 if (why == null)
                 {
@@ -1313,7 +1467,9 @@ namespace IndxServer.Services.Observr
             NumberOfStartCharacters = x.PatternMatching == true ? x.NumberOfStartCharacters : null,
             NumberOfStopCharacters = x.PatternMatching == true ? x.NumberOfStopCharacters : null,
             Filterable = x.Filterable, Facetable = x.Facetable, Sortable = x.Sortable, Weight = x.Weight,
-            Tolerance = x.Tolerance, RerankWeight = x.RerankWeight, TypingPrefixFrom = x.TypingPrefixFrom,
+            // The engine reads back null where the field follows the search, and a proxy's null
+            // leaves the value alone: a negative number is how "follows the search" is put back.
+            Tolerance = x.Tolerance, RerankWeight = x.RerankWeight, TypingPrefixFrom = FieldProfiles.StartsOf(x) ?? -1,
         };
 
         /// <summary>Carries out field changes as the Fields tab's Save does: refused as a whole when

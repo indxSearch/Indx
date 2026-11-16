@@ -358,7 +358,9 @@ namespace IndxServer.Services
         public static string NewId(string name, IEnumerable<FieldProfile> existing)
         {
             var taken = existing.Select(p => p.Id).ToHashSet(StringComparer.Ordinal);
-            var stem = new string(name.Trim().ToLowerInvariant().Select(c => char.IsLetterOrDigit(c) ? c : '-').ToArray()).Trim('-');
+            // The letters an id may have (Merge): a name's other letters become dashes.
+            var stem = new string(name.Trim().ToLowerInvariant().Select(c => char.IsAsciiLetterOrDigit(c) ? c : '-').ToArray()).Trim('-');
+            if (stem.Length > 48) stem = stem[..48].Trim('-');
             if (stem.Length == 0) stem = "profile";
             var id = stem;
             for (int n = 2; taken.Contains(id); n++) id = $"{stem}-{n}";

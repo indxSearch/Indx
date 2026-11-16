@@ -348,7 +348,9 @@ namespace IndxServer.Services.Observr
             // The profiles a searched field may be given, by id, as a proposal names them.
             if (ask.Profiles is { Count: > 0 } profiles)
                 sb.AppendLine("Profiles: " + string.Join("; ", profiles.Select(p =>
-                    $"{p.Id}{(p.BuiltIn ? "" : " (the dataset's own)")}: {ObservrText.ToleranceText(p.Tolerance)}, rerank weight {p.RerankWeight:0.##}")) + ".");
+                    $"{p.Id}{(p.BuiltIn ? "" : $" (the dataset's own, named {p.Name})")}: {ObservrText.ToleranceText(p.Tolerance)}, rerank weight {p.RerankWeight:0.##}"
+                    + (p.TypingPrefixFrom is { } from ? from == 0 ? ", never the start of a longer word" : $", the start of a longer word from {from} letters" : "")
+                    + $", {p.Pattern}")) + ".");
             foreach (var f in ask.FieldEvidence)
             {
                 var roles = new List<string>();
