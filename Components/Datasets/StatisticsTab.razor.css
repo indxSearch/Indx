@@ -130,6 +130,11 @@
     margin-left: 6px;
 }
 
+/* A tile's number and the line beside it: the line goes under the number when the tile is too
+   narrow for both (Search or ask's seven tiles), rather than the number breaking in two ("3 1" over
+   "90", 16 Nov 2026). The value may break anywhere (Stat), so it needs the room first. */
+.stats-tab ::deep .indx-stat-value { flex-wrap: wrap; row-gap: 2px; }
+
 /* The Observr row under a query that found nothing: full width, no cell padding of its own. */
 .stats-action { text-align: right; white-space: nowrap; }
 ::deep .stats-observr-row td { padding-top: 0; }
