@@ -78,6 +78,62 @@
             </div>
         </div>
 
+        @if (_providers.Count > 0)
+        {
+            @* How the account is signed in to. A provider's login is added here, signed in, and
+               nowhere else: an account is not found by the address a provider gives. *@
+            <div style="margin-top: 28px;">
+                <h3 style="margin-bottom: 4px;">Sign-in methods</h3>
+                <p style="font:var(--text-xs); color:var(--lv4); margin:0 0 16px;">
+                    Add a Google or Microsoft account to sign in with it instead of your password.
+                </p>
+
+                @if (!string.IsNullOrEmpty(Linked))
+                {
+                    <Alert>You can now sign in with @Linked.</Alert>
+                }
+                else if (!string.IsNullOrEmpty(Unlinked))
+                {
+                    <Alert>@Unlinked no longer signs in to this account.</Alert>
+                }
+                else if (!string.IsNullOrEmpty(LinkError))
+                {
+                    <Alert Variant="destructive">@LinkError</Alert>
+                }
+
+                <div class="appearance-rows" style="margin-top: 12px;">
+                    @foreach (var provider in _providers)
+                    {
+                        var login = _logins.FirstOrDefault(l => l.LoginProvider == provider.Name);
+                        <span class="appearance-label">@(provider.DisplayName ?? provider.Name)</span>
+                        @if (login == null)
+                        {
+                            <form method="post" action="account/manage/link-external-login" data-enhance="false" style="display:contents;">
+                                <AntiforgeryToken />
+                                <input type="hidden" name="provider" value="@provider.Name" />
+                                <span><Button Type="submit" Variant="secondary" Size="micro">Add</Button></span>
+                            </form>
+                        }
+                        else
+                        {
+                            <form method="post" action="account/manage/remove-external-login" data-enhance="false" style="display:contents;">
+                                <AntiforgeryToken />
+                                <input type="hidden" name="provider" value="@login.LoginProvider" />
+                                <input type="hidden" name="providerKey" value="@login.ProviderKey" />
+                                <span style="display:inline-flex; align-items:center; gap:12px;">
+                                    <span style="display:inline-flex; align-items:center; gap:6px; color: var(--lv7);"><Indx.Systm.Blazor.Icons.Check Size="14" Color="currentColor" />Added</span>
+                                    @if (_canRemoveLogin)
+                                    {
+                                        <Button Type="submit" Variant="ghost" Size="micro">Remove</Button>
+                                    }
+                                </span>
+                            </form>
+                        }
+                    }
+                </div>
+            </div>
+        }
+
         <div style="margin-top: 28px;">
             <h3 style="margin-bottom: 4px;">Display</h3>
             <p style="font:var(--text-xs); color:var(--lv4); margin:0 0 16px;">
@@ -157,6 +213,18 @@ else
     private RenderFragment<int> _iconLogout => size => @<Logout Size="size" />;
 
     private ApplicationUser? user;
+
+    // Sign-in methods: what the redirects from the link and remove endpoints say.
+    [SupplyParameterFromQuery(Name = "linked")] private string? Linked { get; set; }
+    [SupplyParameterFromQuery(Name = "unlinked")] private string? Unlinked { get; set; }
+    [SupplyParameterFromQuery(Name = "linkError")] private string? LinkError { get; set; }
+
+    /// <summary>The providers a login can be added from: those set up, but for Entra ID, whose
+    /// accounts are the directory's and are not added to another.</summary>
+    private List<Microsoft.AspNetCore.Authentication.AuthenticationScheme> _providers = [];
+    private IList<UserLoginInfo> _logins = [];
+    /// <summary>A login is removed only while another way to sign in is left.</summary>
+    private bool _canRemoveLogin;
     private bool isResending = false;
     private bool emailResendSuccess = false;
     private string? emailResendError = null;
@@ -185,6 +253,11 @@ else
 
         if (user != null)
         {
+            _providers = (await SignInManager.GetExternalAuthenticationSchemesAsync())
+                .Where(p => p.Name != EntraSignIn.Scheme).ToList();
+            _logins = await UserManager.GetLoginsAsync(user);
+            _canRemoveLogin = await UserManager.HasPasswordAsync(user) || _logins.Count > 1;
+
             _appearance = Appearance.Of(user);
 
             // Admin-only event types are hidden from regular users (they never receive them).

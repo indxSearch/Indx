@@ -1,6 +1,7 @@
 ﻿@page "/account/external-login"
 
 @using System.Security.Claims
+@using Microsoft.AspNetCore.Authentication
 @using System.Text
 @using Microsoft.AspNetCore.WebUtilities
 @using Microsoft.AspNetCore.Identity.UI.Services
@@ -29,6 +30,9 @@
 
 @code {
     public const string LoginCallbackAction = "LoginCallback";
+
+    /// <summary>The callback of a login being added to the signed-in account (the account page).</summary>
+    public const string LinkCallbackAction = "LinkLoginCallback";
 
     private ExternalLoginInfo externalLoginInfo = default!;
 
@@ -70,11 +74,54 @@
                 await OnLoginCallbackAsync();
                 return;
             }
+            if (Action == LinkCallbackAction)
+            {
+                await OnLinkCallbackAsync();
+                return;
+            }
 
             // We should only reach this page via the login callback, so redirect back to
             // the login page if we get here some other way.
             RedirectManager.RedirectTo("account/login");
         }
+    }
+
+    /// <summary>
+    /// Adds the login that came back to the account that is signed in, and to no other: the
+    /// external login is read with that account's id as the XSRF value it was sent out with
+    /// (the link-external-login endpoint). The address the provider gives plays no part.
+    /// </summary>
+    private async Task OnLinkCallbackAsync()
+    {
+        string Back(string name, string value) => $"/account/manage?{name}={Uri.EscapeDataString(value)}";
+
+        var current = await UserManager.GetUserAsync(HttpContext.User);
+        if (current == null)
+        {
+            NavigationManager.NavigateTo("/account/login");
+            return;
+        }
+        var info = await SignInManager.GetExternalLoginInfoAsync(current.Id);
+        // Spent either way: the external cookie is for this one round.
+        await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
+        if (info == null || info.LoginProvider == EntraSignIn.Scheme)
+        {
+            NavigationManager.NavigateTo(Back("linkError", "The sign-in could not be added. Try again."));
+            return;
+        }
+
+        var result = await UserManager.AddLoginAsync(current, info);
+        if (!result.Succeeded)
+        {
+            Logger.LogWarning("Adding {Provider} to {Email} failed: {Errors}", info.LoginProvider, current.Email,
+                string.Join(", ", result.Errors.Select(e => e.Description)));
+            NavigationManager.NavigateTo(Back("linkError", result.Errors.Any(e => e.Code == "LoginAlreadyAssociated")
+                ? $"That {info.ProviderDisplayName ?? info.LoginProvider} account already signs in to another account here."
+                : "The sign-in could not be added."));
+            return;
+        }
+        Logger.LogInformation("{Email} added {Provider} as a way to sign in", current.Email, info.LoginProvider);
+        NavigationManager.NavigateTo(Back("linked", info.ProviderDisplayName ?? info.LoginProvider));
     }
 
     private async Task OnLoginCallbackAsync()
@@ -142,7 +189,7 @@
                 // The address is only claimed: it does not sign anyone in as the account that has it.
                 Logger.LogWarning("{Provider} sign-in for {Email} refused: the address has an account and the provider does not vouch for it",
                     externalLoginInfo.LoginProvider, email);
-                NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString("An account with this email address already exists. Sign in with its password.")}");
+                NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString("An account with this email address already exists. Sign in with its password; you can then add this sign-in on your account page.")}");
                 return;
             }
             if (!existingUser.EmailConfirmed)

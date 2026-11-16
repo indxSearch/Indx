@@ -103,23 +103,56 @@ namespace Microsoft.AspNetCore.Routing
                 return TypedResults.LocalRedirect("~/");
             });
 
-            // Removed: LinkExternalLogin endpoint - external login linking functionality has been removed
-            // manageGroup.MapPost("/link-external-login", async (
-            //     HttpContext context,
-            //     [FromServices] SignInManager<ApplicationUser> signInManager,
-            //     [FromForm] string provider) =>
-            // {
-            //     // Clear the existing external cookie to ensure a clean login process
-            //     await context.SignOutAsync(IdentityConstants.ExternalScheme);
-            //
-            //     var redirectUrl = UriHelper.BuildRelative(
-            //         context.Request.PathBase,
-            //         "/account/manage/external-logins",
-            //         QueryString.Create("Action", ExternalLogins.LinkLoginCallbackAction));
-            //
-            //     var properties = signInManager.ConfigureExternalAuthenticationProperties(provider, redirectUrl, signInManager.UserManager.GetUserId(context.User));
-            //     return TypedResults.Challenge(properties, [provider]);
-            // });
+            // Adds a provider's login to the account that is signed in (the account page's "Sign-in
+            // methods"). This is how a login is attached to an account that already exists: being
+            // signed in is what shows the account is theirs, which the address a provider gives
+            // does not (ExternalEmail). The user id rides along as the callback's XSRF value, so
+            // the login that comes back is added to this account and no other.
+            manageGroup.MapPost("/link-external-login", async (
+                HttpContext context,
+                [FromServices] SignInManager<ApplicationUser> signInManager,
+                [FromForm] string provider) =>
+            {
+                // Entra ID's accounts are the directory's, with rules of their own (EntraSignIn).
+                if (provider == IndxServer.Services.EntraSignIn.Scheme)
+                    return Results.LocalRedirect("~/account/manage?linkError=" + Uri.EscapeDataString("A work account is not added here: sign in with it."));
+                // A clean start: no external cookie left by an earlier attempt.
+                await context.SignOutAsync(IdentityConstants.ExternalScheme);
+
+                var redirectUrl = UriHelper.BuildRelative(
+                    context.Request.PathBase,
+                    "/account/external-login",
+                    QueryString.Create("Action", ExternalLogin.LinkCallbackAction));
+
+                var properties = signInManager.ConfigureExternalAuthenticationProperties(
+                    provider, redirectUrl, signInManager.UserManager.GetUserId(context.User));
+                return TypedResults.Challenge(properties, [provider]);
+            });
+
+            // Takes a provider's login off the account, unless it is the only way left to sign in.
+            manageGroup.MapPost("/remove-external-login", async (
+                HttpContext context,
+                [FromServices] SignInManager<ApplicationUser> signInManager,
+                [FromServices] UserManager<ApplicationUser> userManager,
+                [FromForm] string provider,
+                [FromForm] string providerKey) =>
+            {
+                var appUser = await userManager.GetUserAsync(context.User);
+                if (appUser == null) return Results.LocalRedirect("~/account/login");
+                string Back(string name, string value) => $"~/account/manage?{name}={Uri.EscapeDataString(value)}";
+
+                if (provider == IndxServer.Services.EntraSignIn.Scheme)
+                    return Results.LocalRedirect(Back("linkError", "A work account is not removed here."));
+                var logins = await userManager.GetLoginsAsync(appUser);
+                if (!await userManager.HasPasswordAsync(appUser) && logins.Count <= 1)
+                    return Results.LocalRedirect(Back("linkError", "This is the only way you sign in. Set a password first."));
+
+                var result = await userManager.RemoveLoginAsync(appUser, provider, providerKey);
+                if (!result.Succeeded)
+                    return Results.LocalRedirect(Back("linkError", string.Join(" ", result.Errors.Select(e => e.Description))));
+                await signInManager.RefreshSignInAsync(appUser);
+                return Results.LocalRedirect(Back("unlinked", provider));
+            });
 
             var loggerFactory = endpoints.ServiceProvider.GetRequiredService<ILoggerFactory>();
             var downloadLogger = loggerFactory.CreateLogger("DownloadPersonalData");
