@@ -22,6 +22,31 @@ namespace IndxServer.Services.Webhooks
             return $"t={t},sha256={Hex(secret, t, body)}";
         }
 
+        /// <summary>Whether a signature's time, in milliseconds, is within the tolerance of now. On
+        /// the numbers: a time no date can hold is a time too far off, not an exception.</summary>
+        public static bool WithinTolerance(long nowMs, long sentMs) =>
+            sentMs >= nowMs - (long)Tolerance.TotalMilliseconds && sentMs <= nowMs + (long)Tolerance.TotalMilliseconds;
+
+        /// <summary>
+        /// What can be said of a signature before the body is read: null when the header is there,
+        /// well formed and of now, else why not. A sync's body may be hundreds of megabytes, and is
+        /// not read for a call that carries no signature to check it against.
+        /// </summary>
+        public static string? CheckHeader(string? header, DateTimeOffset now)
+        {
+            if (string.IsNullOrWhiteSpace(header)) return $"No {Header} header.";
+            string? t = null, sig = null;
+            foreach (var part in header.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries))
+            {
+                if (part.StartsWith("t=", StringComparison.Ordinal)) t = part[2..];
+                else if (part.StartsWith("sha256=", StringComparison.Ordinal)) sig = part[7..];
+            }
+            if (t == null || sig is not { Length: 64 } || !long.TryParse(t, NumberStyles.None, CultureInfo.InvariantCulture, out var seconds))
+                return $"{Header} must read t=<unix seconds>,sha256=<hex>.";
+            return WithinTolerance(now.ToUnixTimeMilliseconds(), seconds > long.MaxValue / 1000 ? long.MaxValue : seconds * 1000)
+                ? null : "The signature's time is more than five minutes from now: sign each call when it is sent.";
+        }
+
         /// <summary>Null when the signature is good, else why not, for the 401 and the log.</summary>
         public static string? Check(string secret, string? header, string body, DateTimeOffset now)
         {
@@ -34,8 +59,7 @@ namespace IndxServer.Services.Webhooks
             }
             if (t == null || sig == null || !long.TryParse(t, NumberStyles.None, CultureInfo.InvariantCulture, out var seconds))
                 return $"{Header} must read t=<unix seconds>,sha256=<hex>.";
-            var sent = DateTimeOffset.FromUnixTimeSeconds(seconds);
-            if ((now - sent).Duration() > Tolerance)
+            if (!WithinTolerance(now.ToUnixTimeMilliseconds(), seconds > long.MaxValue / 1000 ? long.MaxValue : seconds * 1000))
                 return "The signature's time is more than five minutes from now: sign each call when it is sent.";
             var expected = Encoding.ASCII.GetBytes(Hex(secret, t, body));
             var given = Encoding.ASCII.GetBytes(sig.ToLowerInvariant());

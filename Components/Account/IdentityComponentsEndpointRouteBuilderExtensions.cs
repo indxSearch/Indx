@@ -90,7 +90,8 @@ namespace Microsoft.AspNetCore.Routing
                 // the account below; the team and its datasets survive.
 
                 // Step 3: Delete from Identity database
-                memoryCache.Remove($"user_exists_{userId}");
+                // The account's tokens stop at once, not when the validation cache next looks.
+                IndxServer.Services.TokenValidationCache.EvictUser(memoryCache, userId);
                 var result = await userManager.DeleteAsync(appUser);
                 if (!result.Succeeded)
                 {

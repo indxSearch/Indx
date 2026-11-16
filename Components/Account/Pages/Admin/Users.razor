@@ -13,6 +13,7 @@
 @inject IndxServer.Services.IEditionService Edition
 @inject IndxServer.Data.ApplicationDbContext Db
 @inject IndxServer.Services.InviteService Invites
+@inject Microsoft.Extensions.Caching.Memory.IMemoryCache MemoryCache
 
 <PageTitle>Admin — Users</PageTitle>
 
@@ -427,6 +428,8 @@ else
         var result = await UserManager.DeleteAsync(user);
         if (result.Succeeded)
         {
+            // The account's tokens stop at once, not when the validation cache next looks.
+            IndxServer.Services.TokenValidationCache.EvictUser(MemoryCache, userId);
             Logger.LogInformation("Deleted user {Email}", email);
             _message = $"{email} deleted.";
             await LoadUsers();

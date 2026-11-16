@@ -371,7 +371,9 @@ namespace IndxServer.Services
                 stored = old;
                 return WriteOutcome.VersionMismatch;
             }
-            if (old != null && item.SourceUpdatedUtc is { } sent && old.SourceUpdatedUtc is { } had && sent < had)
+            if (old != null && item.SourceUpdatedUtc is { } sent && old.SourceUpdatedUtc is { } had
+                // As instants: the stored one is UTC, the sent one as its JSON gave it (local with an offset).
+                && sent.ToUniversalTime() < had.ToUniversalTime())
             {
                 objection = $"the item '{item.Name}' holds what its source changed at {had:o}; this write is of {sent:o}, older.";
                 stored = old;

@@ -22,6 +22,7 @@ namespace IndxServer.Components.Shared
         [Inject] protected AuthenticationStateProvider AuthenticationStateProvider { get; set; } = default!;
         [Inject] internal InstanceSettingsService InstanceSettingsService { get; set; } = default!;
         [Inject] protected ActiveTeamState ActiveTeam { get; set; } = default!;
+        [Inject] internal Microsoft.AspNetCore.Identity.UserManager<ApplicationUser> Users { get; set; } = default!;
 
         [Parameter] public string? TeamName { get; set; }
 
@@ -52,6 +53,13 @@ namespace IndxServer.Components.Shared
             }
             UserId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
             if (UserId.Length == 0) { NoTeam = true; return; }
+            // An account still on the password it was given (the seeded admin's) changes it before
+            // it uses the console, as its API tokens must before they use the API.
+            if (await Users.FindByIdAsync(UserId) is { MustChangePassword: true })
+            {
+                NavigationManager.NavigateTo("/account/change-password", forceLoad: true);
+                return;
+            }
             await ActiveTeam.EnsureInitializedAsync(UserId);
             ActiveTeam.OnChange += HandleActiveTeamChanged;
             await ResolveTeamAsync();

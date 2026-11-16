@@ -751,6 +751,8 @@
         var id = (key, item.Name, item.Language);
         if (_coldOpen.Remove(id)) return;
         var stored = await Task.Run(() => ColdItems.Get(new ColdScope(Ctx.TeamId, Ctx.Name, key), item.Name, item.Language));
+        // Read as the listing was: an item made private since the list was drawn is not opened by a Viewer.
+        if (stored != null && !ColdValues.Reads(Ctx.IsEditor ? ColdAccess.All : ColdAccess.Answer, stored.Visibility)) stored = null;
         _coldOpen[id] = stored == null ? "This item is no longer stored." : PrettyCold(stored);
     }
 

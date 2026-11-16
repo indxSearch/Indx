@@ -82,7 +82,7 @@ namespace IndxServer.Services.Webhooks
             if (string.IsNullOrEmpty(given) || string.IsNullOrEmpty(signedList)
                 || !long.TryParse(call.Header(TimestampHeader), NumberStyles.None, CultureInfo.InvariantCulture, out var ms))
                 return "No Contentful signature headers.";
-            if ((now - DateTimeOffset.FromUnixTimeMilliseconds(ms)).Duration() > WebhookSignature.Tolerance)
+            if (!WebhookSignature.WithinTolerance(now.ToUnixTimeMilliseconds(), ms))
                 return "The signature's time is more than five minutes from now.";
             var signed = signedList.Split(',', StringSplitOptions.TrimEntries | StringSplitOptions.RemoveEmptyEntries)
                 .Select(n => n.ToLowerInvariant()).ToHashSet(StringComparer.Ordinal);

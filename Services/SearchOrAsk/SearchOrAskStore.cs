@@ -142,17 +142,31 @@ namespace IndxServer.Services.SearchOrAsk
         }
 
         /// <summary>Moves a dataset's settings to a new owning team (on dataset transfer).</summary>
-        public void Transfer(string fromTeamId, string toTeamId, string dataSetName)
-        {
-            if (Load(fromTeamId, dataSetName) is { } s) Save(toTeamId, dataSetName, s);
-            Delete(fromTeamId, dataSetName);
-        }
+        public void Transfer(string fromTeamId, string toTeamId, string dataSetName) => Move(fromTeamId, dataSetName, toTeamId, dataSetName);
 
-        /// <summary>Re-keys the settings under the dataset's new name (same team).</summary>
-        public void Rename(string teamId, string dataSetName, string newName)
+        /// <summary>Re-keys the dataset's row under its new name (same team).</summary>
+        public void Rename(string teamId, string dataSetName, string newName) => Move(teamId, dataSetName, teamId, newName);
+
+        /// <summary>The row follows the dataset, moved in SQL (<see cref="DatasetRowMove"/>).</summary>
+        private void Move(string fromTeam, string fromName, string toTeam, string toName)
         {
-            if (Load(teamId, dataSetName) is { } s) Save(teamId, newName, s);
-            Delete(teamId, dataSetName);
+            try
+            {
+                if (DbExists())
+                {
+                    using var conn = Connection();
+                    DatasetRowMove.Move(conn, Table, fromTeam, fromName, toTeam, toName);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to move the Search or ask settings of {Team}/{Dataset} to {NewTeam}/{NewDataset}", fromTeam, fromName, toTeam, toName);
+            }
+            finally
+            {
+            _cache.Invalidate(Key(fromTeam, fromName));
+            _cache.Invalidate(Key(toTeam, toName));
+            }
         }
     }
 }

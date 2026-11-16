@@ -90,7 +90,7 @@ namespace IndxServer.Services.Webhooks
             var m = Regex.Match(header.Trim(), "^t=(\\d+)[, ]+v1=([^, ]+)$");
             if (!m.Success || !long.TryParse(m.Groups[1].Value, NumberStyles.None, CultureInfo.InvariantCulture, out var ms))
                 return $"{Header} must read t=<milliseconds>,v1=<signature>.";
-            if ((now - DateTimeOffset.FromUnixTimeMilliseconds(ms)).Duration() > WebhookSignature.Tolerance)
+            if (!WebhookSignature.WithinTolerance(now.ToUnixTimeMilliseconds(), ms))
                 return "The signature's time is more than five minutes from now.";
             var expected = Encoding.ASCII.GetBytes(Hash(secret, m.Groups[1].Value, body));
             var given = Encoding.ASCII.GetBytes(m.Groups[2].Value);

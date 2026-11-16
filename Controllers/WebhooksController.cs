@@ -293,6 +293,10 @@ namespace IndxServer.Controllers
         {
             if (store.Get(webhookId) is not { } hook)
                 return ApiProblems.Problem(StatusCodes.Status404NotFound, "webhookNotFound", "No such webhook", "No webhook has this address.");
+            // Before the body, which may be the size of the dataset: a call with no signature of
+            // now to check it against is answered without reading it.
+            if (WebhookSignature.CheckHeader(Request.Headers[WebhookSignature.Header], DateTimeOffset.UtcNow) is { } unsigned)
+                return ApiProblems.Problem(StatusCodes.Status401Unauthorized, "badSignature", "The signature does not hold", unsigned);
             using var reader = new StreamReader(Request.Body);
             var body = await reader.ReadToEndAsync(HttpContext.RequestAborted);
             // The full set pushed is the Indx scheme's, whatever the webhook's source.

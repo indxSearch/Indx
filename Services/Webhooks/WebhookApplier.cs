@@ -498,9 +498,24 @@ namespace IndxServer.Services.Webhooks
                 ct.ThrowIfCancellationRequested();
                 if (waiting.Contains(item.WebhookId)) continue;
                 if (store.Get(item.WebhookId) is not { } hook) { store.Done(item.Seq); continue; }
-                var outcome = item.Kind == WebhookKinds.Sync
-                    ? await applier.ApplySyncAsync(hook, item.Body, item.ReceivedUtc)
-                    : await applier.ApplyAsync(hook, item.Body, item.ReceivedUtc);
+                WebhookOutcome outcome;
+                try
+                {
+                    outcome = item.Kind == WebhookKinds.Sync
+                        ? await applier.ApplySyncAsync(hook, item.Body, item.ReceivedUtc)
+                        : await applier.ApplyAsync(hook, item.Body, item.ReceivedUtc);
+                }
+                catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
+                catch (Exception ex)
+                {
+                    // One webhook's call that throws keeps that webhook waiting, as a busy dataset
+                    // does, and is tried again; the others go on. It used to leave the loop, and
+                    // with the call still first in the queue no webhook on the instance moved.
+                    logger.LogError(ex, "Webhook {Hook} threw on a call for {Team}/{Dataset}; it is tried again, the other webhooks go on",
+                        hook.Id, hook.TeamId, hook.DatasetName);
+                    waiting.Add(hook.Id);
+                    continue;
+                }
                 if (outcome == WebhookOutcome.Retry) { waiting.Add(hook.Id); continue; }
                 store.Done(item.Seq);
             }

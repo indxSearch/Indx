@@ -917,6 +917,7 @@ namespace IndxServer.Engine
             // nothing can appear behind the removal.
             persistence.DeleteDataSet();
             DisposeDataSetInstance(dataSetName, teamId);
+            ForgetOutcomes(dataSetName, teamId);
             // A sleeping dataset has no instance for the dispose to forget it by.
             Services.DatasetRecordCounts.Forget(dataSetName, teamId);
             DeleteSavedEmbeddings(dataSetName, teamId);
@@ -1166,6 +1167,7 @@ namespace IndxServer.Engine
             var db = new SqLiteManager(SearchDbConnectionString);
             db.RenameDataSet(dataSetName, teamId, newName);
             DisposeDataSetInstance(dataSetName, teamId);
+            ForgetOutcomes(dataSetName, teamId);
             Services.DatasetRecordCounts.Forget(dataSetName, teamId);
             Services.DatasetRecordCounts.Forget(newName, teamId);
             _boostStore?.Rename(teamId, dataSetName, newName);
@@ -1220,6 +1222,7 @@ namespace IndxServer.Engine
             var db = new SqLiteManager(SearchDbConnectionString);
             db.TransferOwnership(dataSetName, currentTeamId, newTeamId);
             DisposeDataSetInstance(dataSetName, currentTeamId);
+            ForgetOutcomes(dataSetName, currentTeamId);
             Services.DatasetRecordCounts.Forget(dataSetName, currentTeamId);
             Services.DatasetRecordCounts.Forget(dataSetName, newTeamId);
             _boostStore?.Transfer(currentTeamId, newTeamId, dataSetName);

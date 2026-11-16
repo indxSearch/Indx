@@ -269,27 +269,35 @@ namespace IndxServer.Services
         }
 
         /// <summary>Moves a dataset's metadata (description + key field) to a new owning team.</summary>
-        public void Transfer(string fromTeamId, string toTeamId, string dataSetName)
-        {
-            var description = Load(fromTeamId, dataSetName);
-            var keyField = LoadKeyField(fromTeamId, dataSetName);
-            var category = LoadCategory(fromTeamId, dataSetName);
-            if (!string.IsNullOrEmpty(description)) Save(toTeamId, dataSetName, description);
-            if (!string.IsNullOrEmpty(keyField)) SaveKeyField(toTeamId, dataSetName, keyField);
-            if (category.Field.Length > 0) SaveCategory(toTeamId, dataSetName, category);
-            Delete(fromTeamId, dataSetName);
-        }
+        public void Transfer(string fromTeamId, string toTeamId, string dataSetName) => Move(fromTeamId, dataSetName, toTeamId, dataSetName);
 
-        /// <summary>Re-keys the description and key field under the dataset's new name (same team).</summary>
-        public void Rename(string teamId, string dataSetName, string newName)
+        /// <summary>Re-keys the dataset's row under its new name (same team).</summary>
+        public void Rename(string teamId, string dataSetName, string newName) => Move(teamId, dataSetName, teamId, newName);
+
+        /// <summary>The row follows the dataset, moved in SQL (<see cref="DatasetRowMove"/>).</summary>
+        private void Move(string fromTeam, string fromName, string toTeam, string toName)
         {
-            var description = Load(teamId, dataSetName);
-            var keyField = LoadKeyField(teamId, dataSetName);
-            var category = LoadCategory(teamId, dataSetName);
-            if (!string.IsNullOrEmpty(description)) Save(teamId, newName, description);
-            if (!string.IsNullOrEmpty(keyField)) SaveKeyField(teamId, newName, keyField);
-            if (category.Field.Length > 0) SaveCategory(teamId, newName, category);
-            Delete(teamId, dataSetName);
+            try
+            {
+                if (DbExists())
+                {
+                    using var conn = Connection();
+                    DatasetRowMove.Move(conn, Table, fromTeam, fromName, toTeam, toName);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to move the metadata of {Team}/{Dataset} to {NewTeam}/{NewDataset}", fromTeam, fromName, toTeam, toName);
+            }
+            finally
+            {
+            _cache.Invalidate(Key(fromTeam, fromName));
+            _cache.Invalidate(Key(toTeam, toName));
+            _keyFieldCache.Invalidate(Key(fromTeam, fromName));
+            _keyFieldCache.Invalidate(Key(toTeam, toName));
+            _categoryCache.Invalidate(Key(fromTeam, fromName));
+            _categoryCache.Invalidate(Key(toTeam, toName));
+            }
         }
     }
 }

@@ -79,11 +79,7 @@ namespace IndxServer.Engine
                 _replaceProgress[key] = new ReplaceProgress(ReplaceStep.Swapping, -1);
                 IServerSearchEngine? swappedOut;
                 var live = shadow;
-                lock (_dictionaryLock)
-                {
-                    swappedOut = container.theInstance;
-                    container.theInstance = shadow;
-                }
+                swappedOut = SwapIn(container, shadow, key, dataSetName);
                 // Ownership transferred, before anything that can throw: a throw with the shadow
                 // still held made the finally dispose the engine just made live (16 Nov 2026).
                 shadow = null;

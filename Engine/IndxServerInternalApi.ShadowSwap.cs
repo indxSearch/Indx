@@ -195,11 +195,7 @@ namespace IndxServer.Engine
                 // already-routed searches pointing at the same SearchEngineInstance; only
                 // the inner theInstance pointer flips.
                 IServerSearchEngine? swappedOut;
-                lock (_dictionaryLock)
-                {
-                    swappedOut = container.theInstance;
-                    container.theInstance = shadow;
-                }
+                swappedOut = SwapIn(container, shadow, key, dataSetName);
                 shadow = null; // ownership transferred to the container
 
                 if (swappedOut != null)
@@ -365,11 +361,7 @@ namespace IndxServer.Engine
 
                 IServerSearchEngine? swappedOut;
                 var live = shadow;
-                lock (_dictionaryLock)
-                {
-                    swappedOut = container.theInstance;
-                    container.theInstance = shadow;
-                }
+                swappedOut = SwapIn(container, shadow, key, dataSetName);
                 // The container owns it from here. Given up before anything that can throw: until
                 // 16 Nov 2026 the save below came first, and when it threw (the database locked by
                 // another dataset's load, a full disk) the finally disposed the engine that had
@@ -412,6 +404,36 @@ namespace IndxServer.Engine
                 }
                 ReleaseShadowBuild(key, failure);
             }
+        }
+
+        /// <summary>
+        /// The swap: the rebuilt engine takes the place of the one serving, in the instance the
+        /// build started from, and the one it replaces is returned for disposal. Only while that
+        /// instance is still the dataset's (16 Nov 2026). A dataset deleted, transferred or
+        /// disposed while its index was being rebuilt has left the registry, and the engine was
+        /// swapped into an instance nothing would find or dispose again: the build now fails
+        /// there, and its engine is disposed as any abandoned shadow is.
+        /// </summary>
+        private IServerSearchEngine? SwapIn(SearchEngineInstance container, SearchEngine shadow, string key, string dataSetName)
+        {
+            lock (_dictionaryLock)
+            {
+                if (!_instances.TryGetValue(key, out var current) || !ReferenceEquals(current, container))
+                    throw new InvalidOperationException(
+                        $"Dataset '{dataSetName}' was deleted, moved or reloaded while its index was being rebuilt; the rebuilt index is discarded.");
+                var swappedOut = container.theInstance;
+                container.theInstance = shadow;
+                return swappedOut;
+            }
+        }
+
+        /// <summary>What is kept per dataset about its last build and wake, forgotten when the
+        /// dataset is deleted or moved: a dataset made later under the name is not told of them.</summary>
+        private void ForgetOutcomes(string dataSetName, string teamId)
+        {
+            var key = MakeKey(dataSetName, teamId);
+            _shadowOutcomes.TryRemove(key, out _);
+            _wakeErrors.TryRemove(key, out _);
         }
 
         /// <summary>

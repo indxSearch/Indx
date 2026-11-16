@@ -197,7 +197,12 @@ namespace IndxServer.Services
             // Statistics are keyed on the customer's names and survive dataset deletion, but a
             // deleted TEAM id is ours and nothing can resume it - so the team's rows go with it.
             if (statistics.Enabled)
+            {
+                // Flushed first: the datasets' delete events are still queued, and written after
+                // the purge they would be left under a team that is gone.
+                statistics.Writer?.Flush();
                 statistics.Store!.PurgeTeam(owner);
+            }
 
             db.Invites.RemoveRange(db.Invites.Where(i => i.TeamId == team.Id));
             // The keys that reach this team, its own and its members' personal ones: a key is bound to

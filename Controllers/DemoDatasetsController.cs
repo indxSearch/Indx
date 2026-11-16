@@ -23,6 +23,11 @@ namespace IndxServer.Controllers
         {
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
+            // A key held to some datasets makes none: the route names no dataset for its list to
+            // be checked against, and the one made would be outside it.
+            if (ApiKeyScope.For(HttpContext) is { Datasets: not null })
+                return ApiProblems.Problem(StatusCodes.Status403Forbidden, "insufficientKeyScope", "API key scope too narrow",
+                    "This key is limited to some datasets and cannot create one. Use a key for the whole team.");
             if (!DemoDatasets.FilmsAvailable)
                 return ApiProblems.OperationFailed("This build does not include the demo films.");
             try

@@ -188,18 +188,31 @@ namespace IndxServer.Services
             }
         }
 
-        public void Transfer(string fromTeamId, string toTeamId, string dataSetName)
-        {
-            var rules = Load(fromTeamId, dataSetName);
-            if (rules.Count > 0) Save(toTeamId, dataSetName, rules);
-            Delete(fromTeamId, dataSetName);
-        }
+        public void Transfer(string fromTeamId, string toTeamId, string dataSetName) => Move(fromTeamId, dataSetName, toTeamId, dataSetName);
 
-        public void Rename(string teamId, string dataSetName, string newName)
+        /// <summary>Re-keys the dataset's row under its new name (same team).</summary>
+        public void Rename(string teamId, string dataSetName, string newName) => Move(teamId, dataSetName, teamId, newName);
+
+        /// <summary>The row follows the dataset, moved in SQL (<see cref="DatasetRowMove"/>).</summary>
+        private void Move(string fromTeam, string fromName, string toTeam, string toName)
         {
-            var rules = Load(teamId, dataSetName);
-            if (rules.Count > 0) Save(teamId, newName, rules);
-            Delete(teamId, dataSetName);
+            try
+            {
+                if (DbExists())
+                {
+                    using var conn = Connection();
+                    DatasetRowMove.Move(conn, table, fromTeam, fromName, toTeam, toName);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to move the rules of {Team}/{Dataset} to {NewTeam}/{NewDataset}", fromTeam, fromName, toTeam, toName);
+            }
+            finally
+            {
+            _cache.Invalidate(Key(fromTeam, fromName));
+            _cache.Invalidate(Key(toTeam, toName));
+            }
         }
 
         /// <summary>The filter a rule's conditions make, joined as the rule says; null when a
