@@ -63,6 +63,14 @@ else
                                         @* The ticket as it will go, read before the Yes sends it. *@
                                         <span class="ofl-ticket">@ticket.Body</span>
                                     }
+                                    @if (p.SearchOrAsk is { } soa)
+                                    {
+                                        @* The texts a Yes writes into the dataset's answering, read before it
+                                           does: they become what the model that answers visitors is told. *@
+                                        @if (!string.IsNullOrWhiteSpace(soa.SiteDescription)) { <span class="ofl-ticket"><strong>About the site.</strong> @soa.SiteDescription</span> }
+                                        @if (!string.IsNullOrWhiteSpace(soa.FilterNotes)) { <span class="ofl-ticket"><strong>Notes about the fields.</strong> @soa.FilterNotes</span> }
+                                        @if (!string.IsNullOrWhiteSpace(soa.AnswerInstructions)) { <span class="ofl-ticket"><strong>Answer instructions.</strong> @soa.AnswerInstructions</span> }
+                                    }
                                     @if (!string.IsNullOrWhiteSpace(p.Reason) && p.Reason != f.Answer) { <span class="ofl-why">@p.Reason</span> }
                                 </div>
                             </div>
