@@ -361,7 +361,7 @@
     /// <summary>
     /// The rows to render, with every nested field placed directly under its container. Analyze
     /// returns the flattened names in its own order and puts a container wherever it first saw one,
-    /// which for gyldendal-sanity is after all its children, so the list has to be rebuilt rather
+    /// which can be after all its children, so the list has to be rebuilt rather
     /// than filtered.
     /// <para>A container is emitted only when at least one of its children is visible, so hiding
     /// unused fields cannot leave an empty group behind. It is also synthesized when absent from
