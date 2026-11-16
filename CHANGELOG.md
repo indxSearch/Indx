@@ -10,7 +10,7 @@ without changing the HTTP contract.
 
 ## [2.0.0-beta.4] - Unreleased
 
-Runs on IndxSearchLib 6.0.0-preview.1 or later, and changes the HTTP API: read the v5 to v6
+Runs on IndxSearchLib 6.0.0-beta1 or later, and changes the HTTP API: read the v5 to v6
 migration guide before upgrading a client.
 
 ### Added
