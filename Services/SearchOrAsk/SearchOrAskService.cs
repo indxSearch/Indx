@@ -185,7 +185,7 @@ namespace IndxServer.Services.SearchOrAsk
         /// <summary>
         /// While the provider refuses answers in a way that does not pass by itself (out of credit, a
         /// key's cap spent, a key refused or a call it will not make), no offer is shown: a visitor would
-        /// only click into "the answer could not be written", again and again (2 Nov 2026, gyldendal.no).
+        /// only click into "the answer could not be written", again and again (2 Nov 2026).
         /// Search is untouched. The first refusal pauses for two minutes; offers then come back and the
         /// next answer is the test, each refusal after doubling the pause up to half an hour. An answer
         /// that succeeds ends it. Too much in flight at once and a rate limit pass on their own and

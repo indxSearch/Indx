@@ -308,7 +308,7 @@ else
 
     /// <summary>Re-read the team's datasets: the names render at once, each card's state is
     /// filled in off the circuit thread as it is read, every card at once (a sleeping dataset's
-    /// record count is a COUNT(*) on disk the first time, 8 s for 646 276 records on App Service,
+    /// record count is a COUNT(*) on disk the first time, 8 s for a few hundred thousand records on App Service,
     /// and the cards after it waited for it while they were read one by one, 11 Nov 2026).</summary>
     public void Reload()
     {

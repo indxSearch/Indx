@@ -4,8 +4,7 @@ namespace IndxServer.Models
 {
     /// <summary>
     /// A search as the server's search routes take it: the library's <see cref="QueryProxy"/>, with
-    /// what only the server does (12 Nov 2026, asked for by Gyldendal: Notes/Jens/
-    /// from-anders-one-search-per-keystroke-gyldendal-2026-11-12.md). A subclass, not new members on
+    /// what only the server does (12 Nov 2026). A subclass, not new members on
     /// QueryProxy, because QueryProxy ships in IndxSearchLib and these mean nothing to the library.
     /// </summary>
     public class ServerQueryProxy : QueryProxy

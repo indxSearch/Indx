@@ -108,7 +108,7 @@ namespace IndxServer.Controllers
         /// <para>A search may say for itself whether it counts in the statistics, and its source and
         /// session (<c>count</c>, <c>source</c>, <c>session</c> in its body), over the query string's:
         /// a page sends its visitor's search beside its helper searches and counts only the first
-        /// (12 Nov 2026, Gyldendal). <c>Server-Timing</c> gives the searches' time together.</para>
+        /// (12 Nov 2026). <c>Server-Timing</c> gives the searches' time together.</para>
         /// <para>The engine searches them in one call, at once on the search slots it has free and one
         /// after the other when none is (ISearchEngine.Search(Query[]), 12 Nov 2026); <c>Server-Timing</c>'s
         /// search is the time until the last is answered.</para>
@@ -152,10 +152,10 @@ namespace IndxServer.Controllers
         public const int MaxGroupsPerCall = MaxSearchesPerCall;
 
         /// <summary>
-        /// One text, answered in named sections: a search box's books, authors, articles and events
+        /// One text, answered in named sections: a search box's products, brands, articles and pages
         /// in one call, each section with its own filter (ANDed with the search's), rows and count
-        /// (12 Nov 2026, Gyldendal: one search per keystroke instead of eight). A section may count
-        /// by another filter than it lists (<c>countFilter</c>: list the upcoming events, count them
+        /// (12 Nov 2026: one search per keystroke instead of several). A section may count
+        /// by another filter than it lists (<c>countFilter</c>: list the ones in stock, count them
         /// all), and take its own candidates, ranking and match. The answer is
         /// <c>{ "groups": { name: result }, "queryId" }</c>, each result as a single search's, a
         /// section that fails an error in its place.
@@ -163,7 +163,7 @@ namespace IndxServer.Controllers
         /// whose <c>queryId</c> (also the <c>Indx-Query-Id</c> header) a click in any section
         /// references. Each section is its own search in the engine, all of them searched in one call,
         /// at once on the free search slots (ISearchEngine.Search(Query[]), 12 Nov 2026); were the
-        /// library to match once for them all (Notes/Jens/from-anders-one-search-per-keystroke-gyldendal-2026-11-12.md),
+        /// library to match once for them all,
         /// the request and answer would stay as they are.</para>
         /// </summary>
         [KeyAccess(ApiKeyLevel.Search)]

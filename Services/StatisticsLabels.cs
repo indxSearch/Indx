@@ -10,7 +10,7 @@ namespace IndxServer.Services
     /// (<see cref="StatisticsStore.LabelField"/>), else the title Search or ask is given, else the
     /// heaviest searchable field. Until Nov 2026 the fallback was the FIRST searchable field and
     /// the preview showed the first four: a dataset listing <c>authors</c> before <c>title</c>
-    /// named every record without an author by its id (gyldendal.no, the Salaby products).
+    /// named every record without an author by its id.
     /// <para>Read from the engine only when it is loaded: a statistics read never wakes a
     /// hibernated dataset (the console's rule, CLAUDE.md "The collector must never resolve an
     /// engine"). Asleep, every label is null and the key stands alone.</para>

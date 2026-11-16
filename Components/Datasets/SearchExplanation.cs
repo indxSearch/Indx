@@ -90,8 +90,7 @@ namespace IndxServer.Components.Datasets
             {
                 // Fuzzy only when a typo brought a record in: with every typo level (Rungs.All) the
                 // level counted is the farthest worked out, and its count holds the exact ones too
-                // (7 Nov 2026: "hansa mango ipa" on millum, 7 as typed and 7 within one typo, read
-                // as fuzzy).
+                // (7 Nov 2026: a search with 7 as typed and 7 within one typo read as fuzzy).
                 headline = result.ToleranceCounts is { } t && CountOn(t, result.CountedTolerance) > t.Exact ? "Fuzzy matches" : "Strong matches";
             }
             if (result.ToleranceCounts is { } c)

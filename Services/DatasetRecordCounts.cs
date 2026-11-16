@@ -11,8 +11,8 @@ namespace IndxServer.Services
     /// a woken one is read from its engine, so a sleeping dataset's count is kept until it wakes, is
     /// deleted, renamed or moved, and Refresh counts again.
     /// <para>Until 11 Nov 2026 a count was kept for ten minutes only. The team page, which lists every
-    /// dataset, then counted a sleeping one again every ten minutes: on alpha, millum's 646 276
-    /// records took 8 s over App Service's network storage once its pages had left the cache, and
+    /// dataset, then counted a sleeping one again every ten minutes: a dataset of several hundred
+    /// thousand records took 8 s over App Service's network storage once its pages had left the cache, and
     /// the cards after it waited. Nothing was gained by it: the count cannot change while asleep.</para>
     /// </summary>
     internal static class DatasetRecordCounts

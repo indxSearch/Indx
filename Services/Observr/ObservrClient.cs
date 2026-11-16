@@ -538,9 +538,8 @@ namespace IndxServer.Services.Observr
         private const int MaxWords = 8;
         /// <summary>The records a field review reads: enough for fill rates and value counts, few
         /// enough to read in a moment. Spread over the whole dataset, never the first few hundred:
-        /// gyldendal.no's file begins with its teaching materials, and a sample of those had
-        /// Observr set up Search or ask for a school catalogue on a dataset that is mostly fiction
-        /// (19 Oct 2026).</summary>
+        /// a file may begin with one kind of record, and a sample of those had Observr set up
+        /// Search or ask for that kind on a dataset that is mostly something else (19 Oct 2026).</summary>
         private const int ReviewSample = 300;
         /// <summary>The most records an empty search is asked to list for the spread.</summary>
         private const int SampleWalk = 2_000_000;

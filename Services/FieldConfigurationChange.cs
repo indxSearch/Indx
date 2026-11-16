@@ -11,7 +11,7 @@ namespace IndxServer.Services
     /// predicates of its own — one for a field getting its first role, whose documents hold no
     /// positions for it, and one for any Facetable change, because DocumentFields cached its
     /// facetable field list on first use and cleared it only in Dispose. Both were found on
-    /// Millum, where two fields were made Facetable after a wake and never produced a facet.
+    /// a large dataset, where two fields were made Facetable after a wake and never produced a facet.
     ///
     /// The library answers for both now, so both are gone:
     ///
@@ -33,7 +33,7 @@ namespace IndxServer.Services
     ///
     /// Dropping the Facetable rebuild is the one with a number on it: RunFieldConfigurationOnShadow
     /// is synchronous and all three callers block on it, so ticking one Facetable box on a dataset
-    /// the size of Millum was a ~16-second request, linear in document count, with a second full
+    /// of several hundred thousand records was a ~16-second request, linear in document count, with a second full
     /// copy of the store and index resident while it ran. It is a flag write now.
     /// </summary>
     public static class FieldConfigurationChange

@@ -141,8 +141,8 @@ namespace IndxServer.Services.SearchOrAsk
             }
 
             // Each step as a sentence (step) and as its parts (kind, and a search's or the picks'), so a
-            // page can say it in its own language and words (Gyldendal, 13 Nov 2026: they parsed the
-            // sentence to show it in Norwegian).
+            // page can say it in its own language and words (13 Nov 2026: a page had to parse the
+            // sentence to translate it).
             await send("status", new { step = "Reading the question", kind = "read" });
             for (var turn = 1; turn <= AgentMaxTurns; turn++)
             {
