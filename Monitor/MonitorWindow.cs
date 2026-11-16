@@ -65,7 +65,11 @@ namespace IndxServer.Monitor
 
         private IReadOnlyList<DatasetLine> _rows = [];
         private DateTimeOffset _renderedAt = DateTimeOffset.MinValue;
-        private int _renderedEventCount = -1;
+        // The events pane as drawn: its newest event and its width, either changing redraws it; and
+        // the event each row belongs to, a long one taking several rows.
+        private MonitorEvent? _renderedNewest;
+        private int _renderedEventsWidth = -1;
+        private IReadOnlyList<MonitorEvent> _eventRows = [];
         private string _renderedDatasets = "";
 
         internal MonitorWindow(IApplication app,
@@ -292,7 +296,10 @@ namespace IndxServer.Monitor
             }
 
             var events = _readEvents();
-            if (snapshot.TakenUtc == _renderedAt && events.Count == _renderedEventCount)
+            var newest = events.Count > 0 ? events[^1] : null;
+            int eventsWidth = _events.Viewport.Width;
+            bool eventsChanged = !ReferenceEquals(newest, _renderedNewest) || eventsWidth != _renderedEventsWidth;
+            if (snapshot.TakenUtc == _renderedAt && !eventsChanged)
                 return;
             _renderedAt = snapshot.TakenUtc;
 
@@ -318,16 +325,19 @@ namespace IndxServer.Monitor
 
             ShowMark(snapshot);
 
-            if (events.Count != _renderedEventCount)
+            // By the newest event rather than the count: at the buffer's cap the count stays at 500
+            // while events go on arriving, and until 16 Nov 2026 the pane stopped there.
+            if (eventsChanged)
             {
-                // Events render newest first, so N new ones push the selected line N rows down.
-                // Shifting by that keeps the eye on the line it was reading. The buffer drops
-                // its oldest when full, which is the bottom of this view and moves nothing above.
-                int row = ShiftEventSelection(_events.Value?.SelectedCell.Y ?? -1,
-                                              _renderedEventCount, events.Count);
-                _renderedEventCount = events.Count;
-                ShowEvents(events);
-                if (row >= 0) SelectRow(_events, row, events.Count);
+                // The selection stays on the event it was on, wherever new events and wrapping move
+                // its row: newest first, so new ones push it down, and a narrower pane wraps more.
+                int selected = _events.Value?.SelectedCell.Y ?? -1;
+                var selectedEvent = selected >= 0 && selected < _eventRows.Count ? _eventRows[selected] : null;
+                _renderedNewest = newest;
+                _renderedEventsWidth = eventsWidth;
+                ShowEvents(events, eventsWidth);
+                int row = RowOfEvent(_eventRows, selectedEvent);
+                if (row >= 0) SelectRow(_events, row, _eventRows.Count);
                 _events.SetNeedsDraw();
             }
 
@@ -470,35 +480,74 @@ namespace IndxServer.Monitor
             return (table, signature.ToString());
         }
 
-        private void ShowEvents(IReadOnlyList<MonitorEvent> events)
+        private void ShowEvents(IReadOnlyList<MonitorEvent> events, int paneWidth)
+        {
+            var (table, rows) = BuildEventTable(events, paneWidth);
+            _eventRows = rows;
+            _events.Table = new DataTableSource(table);
+        }
+
+        /// <summary>The time column's width, "HH:mm:ss", and what the table puts between columns.</summary>
+        private const int EventTimeWidth = 8, EventColumnGap = 1;
+
+        /// <summary>
+        /// The events as table rows, newest first (the pane is short and the interesting line is the
+        /// one that just landed), each message wrapped to the width its column has, its continuation
+        /// rows with the time and source left empty; and the event each row belongs to. A TableView
+        /// cannot wrap a cell, and clicking a message wider than the pane scrolled the table
+        /// sideways to show it (16 Nov 2026), with text the reader could not see.
+        /// </summary>
+        internal static (DataTable Table, IReadOnlyList<MonitorEvent> Rows) BuildEventTable(IReadOnlyList<MonitorEvent> events, int paneWidth)
         {
             var table = new DataTable();
             table.Columns.Add("time");
             table.Columns.Add("source");
             table.Columns.Add("what");
-
-            // Newest first: the pane is short and the interesting line is the one that just landed.
+            var rows = new List<MonitorEvent>();
+            int sourceWidth = events.Select(e => e.Source.Length).Append("source".Length).Max();
+            // A pane not yet laid out has no width: one row an event until it has.
+            int width = paneWidth <= 0 ? int.MaxValue : Math.Max(20, paneWidth - EventTimeWidth - sourceWidth - 2 * EventColumnGap - 2);
             for (int i = events.Count - 1; i >= 0; i--)
             {
                 var e = events[i];
-                table.Rows.Add(e.AtUtc.UtcDateTime.ToString("HH:mm:ss"), e.Source, e.Text);
+                bool first = true;
+                foreach (var line in Wrap(e.Text, width))
+                {
+                    table.Rows.Add(first ? e.AtUtc.UtcDateTime.ToString("HH:mm:ss") : "", first ? e.Source : "", line);
+                    rows.Add(e);
+                    first = false;
+                }
             }
-
-            _events.Table = new DataTableSource(table);
+            return (table, rows);
         }
 
-        /// <summary>
-        /// Where a selected event line moves to when new events arrive. They render newest first,
-        /// so N new ones push the selection N rows down and the eye stays on the line it was
-        /// reading. The buffer drops its oldest when full, which is the bottom of this view and
-        /// moves nothing above it. Returns -1 when there is nothing to move.
-        /// </summary>
-        internal static int ShiftEventSelection(int selectedRow, int previousCount, int newCount)
+        /// <summary>A message in lines of at most <paramref name="width"/>, broken at spaces, a word
+        /// longer than the line (a path, an id) cut where it must; its own line breaks kept.</summary>
+        internal static IEnumerable<string> Wrap(string text, int width)
         {
-            if (selectedRow < 0 || previousCount < 0) return -1;   // nothing selected, or first draw
-            int arrived = newCount - previousCount;
-            if (arrived <= 0) return -1;                            // only the cap dropping old ones
-            return Math.Clamp(selectedRow + arrived, 0, Math.Max(0, newCount - 1));
+            foreach (var paragraph in text.Replace("\r\n", "\n").Split('\n'))
+            {
+                var rest = paragraph.TrimEnd();
+                if (rest.Length == 0) { yield return ""; continue; }
+                while (rest.Length > width)
+                {
+                    int cut = rest.LastIndexOf(' ', width);
+                    if (cut <= 0) cut = width;
+                    yield return rest[..cut].TrimEnd();
+                    rest = rest[cut..].TrimStart();
+                }
+                yield return rest;
+            }
+        }
+
+        /// <summary>The first row of <paramref name="selected"/>, the same event as an object (two
+        /// alike are two events), or -1 when nothing was selected or it has left the buffer.</summary>
+        internal static int RowOfEvent(IReadOnlyList<MonitorEvent> rows, MonitorEvent? selected)
+        {
+            if (selected is null) return -1;
+            for (int i = 0; i < rows.Count; i++)
+                if (ReferenceEquals(rows[i], selected)) return i;
+            return -1;
         }
 
         private string? SelectedDatasetKey()
