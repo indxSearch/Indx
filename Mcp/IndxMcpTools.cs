@@ -45,6 +45,11 @@ namespace IndxServer.Mcp
         public async Task<McpDatasetSummary[]> ListDatasets()
         {
             var scope = Scope();
+            // Read, as the HTTP listings need: which datasets a team has is not for a Search key,
+            // the one that is put in public pages.
+            if (scope != null && !scope.AllowsLevel(ApiKeyLevel.Read))
+                throw new McpToolException($"This API key is limited to {ApiKeyScope.Describe(scope.Level)}; listing datasets needs at least " +
+                    $"{ApiKeyScope.Describe(ApiKeyLevel.Read)}. Search with the team and dataset names you were given, or ask whoever issued the key.");
             var result = new List<McpDatasetSummary>();
             foreach (var (team, role) in await CallerTeamsAsync(scope))
             {

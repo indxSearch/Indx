@@ -921,20 +921,36 @@ namespace IndxServer.Engine
             // A sleeping dataset has no instance for the dispose to forget it by.
             Services.DatasetRecordCounts.Forget(dataSetName, teamId);
             DeleteSavedEmbeddings(dataSetName, teamId);
-            _boostStore?.Delete(teamId, dataSetName);
-            _buryStore?.Delete(teamId, dataSetName);
-            _metadataStore?.Delete(teamId, dataSetName);
-            _queryParameterStore?.Delete(teamId, dataSetName);
-            _fieldProfileStore?.Delete(teamId, dataSetName);
-            _dataCheckStore?.Delete(teamId, dataSetName);
-            _coldStore?.DeleteDataset(teamId, dataSetName);
-            _searchOrAskStore?.Delete(teamId, dataSetName);
-            _observrStore?.Delete(teamId, dataSetName);
-            _observrConversations?.Delete(teamId, dataSetName);
-            _webhookStore?.DeleteDataset(teamId, dataSetName);
+            Carry(() => _boostStore?.Delete(teamId, dataSetName), dataSetName, teamId);
+            Carry(() => _buryStore?.Delete(teamId, dataSetName), dataSetName, teamId);
+            Carry(() => _metadataStore?.Delete(teamId, dataSetName), dataSetName, teamId);
+            Carry(() => _queryParameterStore?.Delete(teamId, dataSetName), dataSetName, teamId);
+            Carry(() => _fieldProfileStore?.Delete(teamId, dataSetName), dataSetName, teamId);
+            Carry(() => _dataCheckStore?.Delete(teamId, dataSetName), dataSetName, teamId);
+            Carry(() => _coldStore?.DeleteDataset(teamId, dataSetName), dataSetName, teamId);
+            Carry(() => _searchOrAskStore?.Delete(teamId, dataSetName), dataSetName, teamId);
+            Carry(() => _observrStore?.Delete(teamId, dataSetName), dataSetName, teamId);
+            Carry(() => _observrConversations?.Delete(teamId, dataSetName), dataSetName, teamId);
+            Carry(() => _webhookStore?.DeleteDataset(teamId, dataSetName), dataSetName, teamId);
             // Statistics survive a delete by design, so the history says where the gap came from.
             ReportChange(dataSetName, teamId, Services.DatasetChangeKind.Delete);
             return true;
+        }
+
+        /// <summary>
+        /// One store's part of a delete, rename or transfer, which the others do not wait on (16
+        /// Nov 2026). The stores are told one after the other, after the dataset's own rows have
+        /// gone or moved; one that threw (the database locked by another dataset's load) ended
+        /// the sequence there, and what the later stores held stayed under the old key, for the
+        /// next dataset of that name to find. Now it is logged and the rest go on.
+        /// </summary>
+        private void Carry(Action store, string dataSetName, string teamId)
+        {
+            try { store(); }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "{Prefix}a store could not follow the dataset; the others were carried on with", MakeLogPrefix(teamId, dataSetName));
+            }
         }
 
         internal EmbeddingResultEntry[] VectorSearch(VectorQueryProxy query, string dataSetName, string teamId)
@@ -1170,17 +1186,17 @@ namespace IndxServer.Engine
             ForgetOutcomes(dataSetName, teamId);
             Services.DatasetRecordCounts.Forget(dataSetName, teamId);
             Services.DatasetRecordCounts.Forget(newName, teamId);
-            _boostStore?.Rename(teamId, dataSetName, newName);
-            _buryStore?.Rename(teamId, dataSetName, newName);
-            _metadataStore?.Rename(teamId, dataSetName, newName);
-            _queryParameterStore?.Rename(teamId, dataSetName, newName);
-            _fieldProfileStore?.Rename(teamId, dataSetName, newName);
-            _dataCheckStore?.Rename(teamId, dataSetName, newName);
-            _coldStore?.Rename(teamId, dataSetName, newName);
-            _searchOrAskStore?.Rename(teamId, dataSetName, newName);
-            _observrStore?.Rename(teamId, dataSetName, newName);
-            _observrConversations?.Rename(teamId, dataSetName, newName);
-            _webhookStore?.Rename(teamId, dataSetName, newName);
+            Carry(() => _boostStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
+            Carry(() => _buryStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
+            Carry(() => _metadataStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
+            Carry(() => _queryParameterStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
+            Carry(() => _fieldProfileStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
+            Carry(() => _dataCheckStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
+            Carry(() => _coldStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
+            Carry(() => _searchOrAskStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
+            Carry(() => _observrStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
+            Carry(() => _observrConversations?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
+            Carry(() => _webhookStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
             MoveSavedEmbeddings(dataSetName, teamId, newName, teamId);
             _logger.LogInformation("{Prefix}renamed to '{NewName}'", MakeLogPrefix(teamId, dataSetName), newName);
 
@@ -1225,17 +1241,17 @@ namespace IndxServer.Engine
             ForgetOutcomes(dataSetName, currentTeamId);
             Services.DatasetRecordCounts.Forget(dataSetName, currentTeamId);
             Services.DatasetRecordCounts.Forget(dataSetName, newTeamId);
-            _boostStore?.Transfer(currentTeamId, newTeamId, dataSetName);
-            _buryStore?.Transfer(currentTeamId, newTeamId, dataSetName);
-            _metadataStore?.Transfer(currentTeamId, newTeamId, dataSetName);
-            _queryParameterStore?.Transfer(currentTeamId, newTeamId, dataSetName);
-            _fieldProfileStore?.Transfer(currentTeamId, newTeamId, dataSetName);
-            _dataCheckStore?.Transfer(currentTeamId, newTeamId, dataSetName);
-            _coldStore?.Transfer(currentTeamId, newTeamId, dataSetName);
-            _searchOrAskStore?.Transfer(currentTeamId, newTeamId, dataSetName);
-            _observrStore?.Transfer(currentTeamId, newTeamId, dataSetName);
-            _observrConversations?.Transfer(currentTeamId, newTeamId, dataSetName);
-            _webhookStore?.Transfer(currentTeamId, newTeamId, dataSetName);
+            Carry(() => _boostStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
+            Carry(() => _buryStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
+            Carry(() => _metadataStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
+            Carry(() => _queryParameterStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
+            Carry(() => _fieldProfileStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
+            Carry(() => _dataCheckStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
+            Carry(() => _coldStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
+            Carry(() => _searchOrAskStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
+            Carry(() => _observrStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
+            Carry(() => _observrConversations?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
+            Carry(() => _webhookStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
             MoveSavedEmbeddings(dataSetName, currentTeamId, dataSetName, newTeamId);
 
             // Warm up the engine for the new owning team, same as InitializeSystem does on startup.

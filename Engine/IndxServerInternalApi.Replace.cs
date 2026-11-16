@@ -62,17 +62,19 @@ namespace IndxServer.Engine
 
             SearchEngine? shadow = null;
             string? failure = null;
+            SearchEngineInstance? container = null;
+            bool storeReplaced = false;
             try
             {
                 // GetOrCreateInstance (NOT ResolveEngine) gives the container shell without
                 // auto-loading the old documents from the database — we're replacing them.
-                var container = GetOrCreateInstance(dataSetName, teamId);
+                container = GetOrCreateInstance(dataSetName, teamId);
                 if (container == null)
                     throw new DataSetNotFoundException(dataSetName);
 
                 ReplaceSchemaChange summary;
                 (shadow, summary) = BuildShadowFromJson(dataSetName, teamId, jsonStream, monitor,
-                    progress => _replaceProgress[key] = progress, startingRoles);
+                    progress => _replaceProgress[key] = progress, startingRoles, () => storeReplaced = true);
 
                 // Atomic install. In-flight searches on the old engine keep working via the
                 // SearchEngineInstance indirection; only the inner pointer flips.
@@ -111,6 +113,10 @@ namespace IndxServer.Engine
             {
                 failure = ex.Message;
                 _logger.LogError(ex, "{Prefix}RunReplaceFromJson failed", MakeLogPrefix(teamId, dataSetName));
+                // The new documents are in the store and the build did not finish: the engine
+                // that serves follows the store, so it does not go on serving the old ones.
+                if (storeReplaced && container != null)
+                    BringLiveInLineWithStore(container, key, dataSetName, teamId);
                 throw;
             }
             finally
@@ -150,7 +156,7 @@ namespace IndxServer.Engine
         /// </summary>
         private (SearchEngine shadow, ReplaceSchemaChange summary) BuildShadowFromJson(
             string dataSetName, string teamId, Stream jsonStream, ProcessMonitor monitor,
-            Action<ReplaceProgress>? report = null, Func<FieldProxy[], FieldProxy[]>? startingRoles = null)
+            Action<ReplaceProgress>? report = null, Func<FieldProxy[], FieldProxy[]>? startingRoles = null, Action? storeReplaced = null)
         {
             report ??= _ => { };
             ConfigurationParameters configuration;
@@ -205,6 +211,8 @@ namespace IndxServer.Engine
                 WaitReporting(loadMonitor, p => report(new ReplaceProgress(ReplaceStep.Loading, p)));
                 if (!loadMonitor.Succeeded)
                     throw new InvalidOperationException($"Replace load failed: {loadMonitor.ErrorMessage ?? "unknown error"}", loadMonitor.Exception);
+                // The load committed: the store holds the new documents from here.
+                storeReplaced?.Invoke();
 
                 report(new ReplaceProgress(ReplaceStep.Indexing, 0));
                 shadow.Index(monitor);

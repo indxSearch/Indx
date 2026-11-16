@@ -159,7 +159,8 @@
         }
         else if (result.IsLockedOut)
         {
-            RedirectManager.RedirectTo("account/lockout");
+            NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString("Sign-in for this account is paused for a few minutes after too many wrong passwords. Try again then.")}");
+            return;
         }
         else if (result.IsNotAllowed)
         {

@@ -302,6 +302,13 @@ internal static class StartupServices
             options.Password.RequireNonAlphanumeric = true;
             options.Password.RequiredLength = 8;
             options.User.RequireUniqueEmail = true;
+            // Five wrong passwords lock the account for five minutes (16 Nov 2026; until then only
+            // the per-address rate limit slowed a guesser, and guesses from many addresses were
+            // not slowed at all). Said out loud here though they are the framework's defaults,
+            // because both sign-in paths now count on them: Login.razor and POST /api/login.
+            options.Lockout.AllowedForNewUsers = true;
+            options.Lockout.MaxFailedAccessAttempts = 5;
+            options.Lockout.DefaultLockoutTimeSpan = TimeSpan.FromMinutes(5);
         })
         .AddEntityFrameworkStores<ApplicationDbContext>()
         .AddDefaultTokenProviders();

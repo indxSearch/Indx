@@ -174,7 +174,7 @@ else if (externalLogins.Count > 0)
             Input.Email,
             Input.Password,
             Input.RememberMe,
-            lockoutOnFailure: false);
+            lockoutOnFailure: true);
 
         if (result.Succeeded)
         {
@@ -196,7 +196,7 @@ else if (externalLogins.Count > 0)
         else if (result.IsLockedOut)
         {
             Logger.LogWarning("User {Email} account locked out", Input.Email);
-            NavigationManager.NavigateTo("/account/lockout");
+            errorMessage = "Too many wrong passwords. Sign-in for this account is paused for a few minutes; try again then, or reset your password.";
         }
         else
         {

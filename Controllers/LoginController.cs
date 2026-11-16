@@ -88,10 +88,23 @@ namespace IndxServer.Controllers
             if (user == null)
                 return ApiProblems.InvalidCredentials();
 
+            // Locked after too many wrong passwords, as the console's sign-in is: answered before
+            // the password is looked at, so a guesser learns nothing while the account is paused.
+            if (await _userManager.IsLockedOutAsync(user))
+            {
+                Response.Headers.RetryAfter = "300";
+                return ApiProblems.Problem(StatusCodes.Status429TooManyRequests, "accountLocked", "Sign-in is paused for this account",
+                    "Too many wrong passwords. Sign-in for this account is paused for a few minutes; try again then.");
+            }
+
             // Verify password without signing in (no cookie created)
             var isPasswordValid = await _userManager.CheckPasswordAsync(user, info.UserPassWord);
             if (!isPasswordValid)
+            {
+                await _userManager.AccessFailedAsync(user);
                 return ApiProblems.InvalidCredentials();
+            }
+            await _userManager.ResetAccessFailedCountAsync(user);
 
             // Same policy as the browser login (Login.razor): when the instance requires a
             // verified address — set by the admin at runtime or via Identity:RequireConfirmedEmail —

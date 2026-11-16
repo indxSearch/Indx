@@ -338,7 +338,8 @@ namespace IndxServer.Controllers
             }
             catch (Exception ex)
             {
-                // Build failed (bad JSON / index error) — old dataset is unchanged.
+                // Build failed (bad JSON / index error). The old dataset is unchanged unless the
+                // load had already committed, in which case the engine is reloaded from the store.
                 return ApiProblems.LoadFailed(ex.Message);
             }
         }

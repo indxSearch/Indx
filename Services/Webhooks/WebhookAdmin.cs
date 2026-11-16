@@ -95,8 +95,12 @@ namespace IndxServer.Services.Webhooks
         public async Task<HeldResult> ApplyHeldAsync(Webhook hook, string heldId)
         {
             if (store.Release(hook.Id, heldId) is not { } held) return HeldResult.NotFound;
+            // A held full set of a webhook that fetches its set is fetched again (16 Nov 2026): the
+            // one held is the source as it was then, perhaps days ago, and what the admin says
+            // yes to is the sync. One a sender pushed is all there is, and is applied as it came.
+            var fetchAgain = held.Kind == WebhookKinds.Sync && sources.For(hook).Pulls && SourceSettings.Parse(hook.SourceConfig) != null;
             var outcome = held.Kind == WebhookKinds.Sync
-                ? await applier.ApplySyncAsync(hook, held.Body, held.HeldUtc, pastBrake: true)
+                ? await applier.ApplySyncAsync(hook, fetchAgain ? "" : held.Body, held.HeldUtc, pastBrake: true)
                 : await applier.ApplyAsync(hook, held.Body, held.HeldUtc, pastBrake: true);
             if (outcome is WebhookOutcome.Applied or WebhookOutcome.Held) return HeldResult.Applied;
             // Not applied: held again, where it was. Until 16 Nov 2026 only a busy dataset did that,

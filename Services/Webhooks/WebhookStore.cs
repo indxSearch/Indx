@@ -162,6 +162,11 @@ CREATE TABLE IF NOT EXISTS WebhookHeld (
                     AddColumn(conn, "Webhooks", "LastSyncUtc", "TEXT");
                     AddColumn(conn, "WebhookInbox", "Kind", "TEXT NOT NULL DEFAULT 'events'");
                     AddColumn(conn, "WebhookHeld", "Kind", "TEXT NOT NULL DEFAULT 'events'");
+                    // What the brake counts on (16 Nov 2026): when a call was handled, and whether
+                    // an admin let it past the brake. Rows from before have neither, and count as
+                    // they did: by when they were received.
+                    AddColumn(conn, "WebhookDeliveries", "HandledUtc", "TEXT");
+                    AddColumn(conn, "WebhookDeliveries", "Approved", "INTEGER NOT NULL DEFAULT 0");
                     _ensured = true;
                 }
                 catch (Exception ex)
@@ -488,15 +493,19 @@ CREATE TABLE IF NOT EXISTS WebhookHeld (
 
         // ── The log ──────────────────────────────────────────────────────────────────────
 
-        public void Log(WebhookDelivery d)
+        /// <param name="approved">An admin applied it past the brake: it is not counted against
+        /// the brake again (<see cref="DestructiveSince"/>).</param>
+        public void Log(WebhookDelivery d, bool approved = false)
         {
             if (!Ensure()) return;
             using var conn = Open();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"INSERT INTO WebhookDeliveries (WebhookId, ReceivedUtc, Events, Inserted, Updated, Deleted, Ignored, Refused, Destructive, Outcome, Detail)
-                                VALUES ($w, $r, $e, $i, $u, $del, $ig, $rf, $ds, $o, $dt);
-                                DELETE FROM WebhookDeliveries WHERE WebhookId = $w AND ReceivedUtc < $hourAgo AND Id NOT IN
+            cmd.CommandText = @"INSERT INTO WebhookDeliveries (WebhookId, ReceivedUtc, Events, Inserted, Updated, Deleted, Ignored, Refused, Destructive, Outcome, Detail, HandledUtc, Approved)
+                                VALUES ($w, $r, $e, $i, $u, $del, $ig, $rf, $ds, $o, $dt, $now, $ap);
+                                DELETE FROM WebhookDeliveries WHERE WebhookId = $w AND COALESCE(HandledUtc, ReceivedUtc) < $hourAgo AND Id NOT IN
                                   (SELECT Id FROM WebhookDeliveries WHERE WebhookId = $w ORDER BY Id DESC LIMIT $keep);";
+            cmd.Parameters.AddWithValue("$now", DateTime.UtcNow.ToString("O"));
+            cmd.Parameters.AddWithValue("$ap", approved ? 1 : 0);
             cmd.Parameters.AddWithValue("$w", d.WebhookId);
             cmd.Parameters.AddWithValue("$r", d.ReceivedUtc.ToString("O"));
             cmd.Parameters.AddWithValue("$e", d.Events);
@@ -580,13 +589,19 @@ CREATE TABLE IF NOT EXISTS WebhookHeld (
 
         /// <summary>Deletes and destructive updates applied for the dataset since a time: what the
         /// brake counts against, across all its webhooks.</summary>
+        /// <remarks>By when a call was handled, and not those an admin approved (16 Nov 2026). It
+        /// was by when the call was received. A batch held and then approved came with its hold's
+        /// time and its full count, so for the rest of that hour every later delete was held
+        /// again; and a call that had waited over an hour in the queue came with a time already
+        /// out of the window, and was never counted at all.</remarks>
         public int DestructiveSince(string teamId, string datasetName, DateTime sinceUtc)
         {
             if (!Ensure()) return 0;
             using var conn = Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"SELECT COALESCE(SUM(d.Destructive), 0) FROM WebhookDeliveries d JOIN Webhooks w ON w.Id = d.WebhookId
-                                WHERE w.TeamId = $t AND w.DatasetName = $d AND d.ReceivedUtc >= $since AND d.Outcome = 'applied'";
+                                WHERE w.TeamId = $t AND w.DatasetName = $d AND COALESCE(d.HandledUtc, d.ReceivedUtc) >= $since
+                                  AND d.Outcome = 'applied' AND d.Approved = 0";
             cmd.Parameters.AddWithValue("$t", teamId);
             cmd.Parameters.AddWithValue("$d", datasetName);
             cmd.Parameters.AddWithValue("$since", sinceUtc.ToString("O"));
@@ -601,7 +616,7 @@ CREATE TABLE IF NOT EXISTS WebhookHeld (
             using var conn = Open();
             using var cmd = conn.CreateCommand();
             cmd.CommandText = @"SELECT COALESCE(SUM(d.Deleted), 0) - COALESCE(SUM(d.Inserted), 0) FROM WebhookDeliveries d JOIN Webhooks w ON w.Id = d.WebhookId
-                                WHERE w.TeamId = $t AND w.DatasetName = $d AND d.ReceivedUtc >= $since AND d.Outcome = 'applied'";
+                                WHERE w.TeamId = $t AND w.DatasetName = $d AND COALESCE(d.HandledUtc, d.ReceivedUtc) >= $since AND d.Outcome = 'applied'";
             cmd.Parameters.AddWithValue("$t", teamId);
             cmd.Parameters.AddWithValue("$d", datasetName);
             cmd.Parameters.AddWithValue("$since", sinceUtc.ToString("O"));

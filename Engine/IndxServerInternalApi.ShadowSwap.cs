@@ -166,9 +166,10 @@ namespace IndxServer.Engine
 
             SearchEngine? shadow = null;
             string? failure = null;
+            SearchEngineInstance? container = null;
+            bool storeTouched = false;
             try
             {
-                SearchEngineInstance container;
                 IServerSearchEngine original;
                 lock (_dictionaryLock)
                 {
@@ -182,7 +183,9 @@ namespace IndxServer.Engine
                 // internally), so the mutation can be applied directly.
                 shadow = BuildShadowFrom(original, dataSetName, teamId);
 
-                // Apply the caller's mutation on the now-Ready shadow.
+                // Apply the caller's mutation on the now-Ready shadow. It writes to the store
+                // through the shadow's own connection as it goes.
+                storeTouched = true;
                 TResult result = mutation(shadow);
 
                 // Re-index to capture any field-config changes the mutation may have made
@@ -209,6 +212,8 @@ namespace IndxServer.Engine
                 _logger.LogError(ex,
                     "{Prefix}RunMutationOnShadow failed",
                     MakeLogPrefix(teamId, dataSetName));
+                if (storeTouched && container != null && shadow != null)
+                    BringLiveInLineWithStore(container, key, dataSetName, teamId);
                 throw;
             }
             finally
@@ -425,6 +430,54 @@ namespace IndxServer.Engine
                 container.theInstance = shadow;
                 return swappedOut;
             }
+        }
+
+        /// <summary>
+        /// After a build that failed with its changes already in the store (16 Nov 2026): the
+        /// engine that serves is loaded from the store again and indexed, in the background, so
+        /// the index and the store say the same. A heavy write's mutation, and a replace's load,
+        /// go into the store through the shadow before the build is over; when the build then
+        /// failed, the shadow was discarded and the live engine went on serving the documents
+        /// from before, which the store no longer held, until the next wake. Only for an engine
+        /// that is serving: one that sleeps reads the store when it wakes.
+        /// </summary>
+        private void BringLiveInLineWithStore(SearchEngineInstance container, string key, string dataSetName, string teamId)
+        {
+            _ = Task.Run(() =>
+            {
+                try
+                {
+                    lock (_dictionaryLock)
+                    {
+                        if (!_instances.TryGetValue(key, out var current) || !ReferenceEquals(current, container)) return;
+                    }
+                    lock (container.DbLock)
+                    {
+                        var engine = container.theInstance;
+                        if (engine == null || engine.IsDisposed || engine.Status.SystemState != SystemState.Ready) return;
+                        _logger.LogWarning("{Prefix}a build failed after its changes reached the store; reloading the dataset from the store",
+                            MakeLogPrefix(teamId, dataSetName));
+                        var load = new ProcessMonitor { TimeoutSeconds = 600 };
+                        using (TrackMonitor(dataSetName, teamId, load))
+                        {
+                            engine.LoadFromDatabaseSync(load);
+                            if (!(load.WaitForCompletion() && load.Succeeded))
+                            {
+                                _logger.LogError(load.Exception, "{Prefix}the reload after a failed build did not complete: {Error}",
+                                    MakeLogPrefix(teamId, dataSetName), load.ErrorMessage);
+                                return;
+                            }
+                        }
+                        var index = new ProcessMonitor { TimeoutSeconds = 600 };
+                        engine.Index(monitor: index);
+                        index.WaitForCompletion();
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "{Prefix}the reload after a failed build threw", MakeLogPrefix(teamId, dataSetName));
+                }
+            });
         }
 
         /// <summary>What is kept per dataset about its last build and wake, forgotten when the

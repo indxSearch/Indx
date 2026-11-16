@@ -63,7 +63,10 @@ namespace IndxServer.Mcp
         internal static bool Reaches(ApiKeyLevel? level, string toolName) => level switch
         {
             null => true,
-            ApiKeyLevel.Search => toolName is "list_datasets" or "search" or "get_document",
+            // Not list_datasets: a Search key sits in a public page, and the names of a team's
+            // datasets (internal ones, tests) are not for whoever reads that page. It needs Read,
+            // as the HTTP listings do.
+            ApiKeyLevel.Search => toolName is "search" or "get_document",
             _ => true,
         };
 
@@ -90,19 +93,19 @@ namespace IndxServer.Mcp
             a person in the web console or over the HTTP API, never from this connection.
             """;
 
-        /// <summary>A Search key: list and search, and that is all it can reach.</summary>
+        /// <summary>A Search key: search, and read a document, and that is all it can reach.</summary>
         private static readonly string SearchOnly = $"""
             Indx is a search engine over the datasets this server holds. Datasets belong to teams,
-            so every call takes a team name and a dataset name; list_datasets gives you the pairs
-            you can reach.
+            so every call takes a team name and a dataset name.
 
-            Normal order: list_datasets to find a dataset, then search it.
+            This connection uses a Search key, which searches the datasets it was issued for and
+            does not list them: the team and dataset names come from whoever set this connection
+            up. If you have not been given them, ask for them rather than guessing.
 
-            This connection uses a Search key, so the tools that describe a dataset's fields are
-            not available to you. That means you cannot see which fields are filterable or what
-            values they hold, so do not attempt filters: search on text alone, and say so if asked
-            to filter. A key with Read access would let you inspect fields; ask whoever issued
-            this one.
+            The tools that describe a dataset's fields are not available to you either. You cannot
+            see which fields are filterable or what values they hold, so do not attempt filters:
+            search on text alone, and say so if asked to filter. A key with Read access would let
+            you list datasets and inspect fields; ask whoever issued this one.
 
             {Shared}
             """;

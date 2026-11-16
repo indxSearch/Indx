@@ -167,7 +167,7 @@ namespace IndxServer.Services.Webhooks
             store.SaveKeys(hook.TeamId, hook.DatasetName, plan.NewKeys);
             statistics.RecordDocuments(hook.TeamId, hook.DatasetName, "webhook", plan.Inserts.Count, plan.Updates.Count,
                 plan.Deletes.Count, engine.Status.DocumentCount);
-            Log(hook, receivedUtc, plan, "applied", Detail(plan));
+            Log(hook, receivedUtc, plan, "applied", Detail(plan), approved: pastBrake);
             if (plan.Refusals.Count > 0)
                 await NotifyAsync(hook, "refused", $"{plan.Refusals.Count} of {plan.Events} events refused, the first: {plan.Refusals[0]}");
             return WebhookOutcome.Applied;
@@ -276,6 +276,13 @@ namespace IndxServer.Services.Webhooks
             store.SaveKeys(hook.TeamId, hook.DatasetName, plan.NewKeys);
             store.MarkSynced(hook.Id, DateTime.UtcNow);
             var lines = new List<string> { $"{before:N0} documents before, {plan.Count:N0} now." };
+            // Changes held from before the sync are older than the set just taken (16 Nov 2026):
+            // applied after it they put back documents the source has dropped, or older versions
+            // over newer. They go, and the sync's delivery says so.
+            var overtaken = store.Held(hook.Id).Where(h => h.Kind == WebhookKinds.Events).ToList();
+            foreach (var old in overtaken) store.Release(hook.Id, old.Id);
+            if (overtaken.Count > 0)
+                lines.Add($"{overtaken.Count} held {(overtaken.Count == 1 ? "batch" : "batches")} of changes discarded: the full set is newer than what {(overtaken.Count == 1 ? "it" : "they")} held.");
             if (summary.LostRoles.Count > 0) lines.Add("Fields gone or retyped that had a role: " + string.Join(", ", summary.LostRoles));
             if (summary.Added.Count > 0) lines.Add("New fields: " + string.Join(", ", summary.Added.Take(20)));
             if (plan.Skipped > 0) lines.Add($"{plan.Skipped} unpublished documents left out.");
@@ -372,11 +379,11 @@ namespace IndxServer.Services.Webhooks
             return null;
         }
 
-        private void Log(Webhook hook, DateTime receivedUtc, WebhookPlan? plan, string outcome, string? detail) =>
+        private void Log(Webhook hook, DateTime receivedUtc, WebhookPlan? plan, string outcome, string? detail, bool approved = false) =>
             store.Log(new WebhookDelivery(0, hook.Id, receivedUtc, plan?.Events ?? 0,
                 outcome == "applied" ? plan!.Inserts.Count : 0, outcome == "applied" ? plan!.Updates.Count : 0,
                 outcome == "applied" ? plan!.Deletes.Count : 0, plan?.Ignored ?? 0, plan?.Refusals.Count ?? 0,
-                outcome == "applied" ? plan!.Destructive : 0, outcome, detail is { Length: > 2000 } ? detail[..2000] + "…" : detail));
+                outcome == "applied" ? plan!.Destructive : 0, outcome, detail is { Length: > 2000 } ? detail[..2000] + "…" : detail), approved);
 
         private static string? Detail(WebhookPlan plan)
         {

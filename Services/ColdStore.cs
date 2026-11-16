@@ -355,12 +355,25 @@ namespace IndxServer.Services
         /// </summary>
         public WriteOutcome Put(ColdItem item, long? ifVersion, out ColdItem? stored, out string? objection)
         {
-            stored = null;
             new Indx.Storage.SqLiteManager(DbPath, createOrOpenDatabase: true); // the base schema
             EnsureTable();
             using var conn = Connection();
             conn.Open();
             using var tx = conn.BeginTransaction();
+            var outcome = PutIn(conn, tx, item, ifVersion, out stored, out objection);
+            if (outcome is WriteOutcome.Created or WriteOutcome.Updated)
+            {
+                tx.Commit();
+                Changed(item.TeamId, item.DataSetName);
+            }
+            return outcome;
+        }
+
+        /// <summary><see cref="Put"/> on a connection and in a transaction the caller commits: a
+        /// refusal has written nothing.</summary>
+        private static WriteOutcome PutIn(SqliteConnection conn, SqliteTransaction tx, ColdItem item, long? ifVersion, out ColdItem? stored, out string? objection)
+        {
+            stored = null;
             var scope = new ColdScope(item.TeamId, item.DataSetName, item.RecordKey);
             var old = Get(conn, scope, item.Name, item.Language, tx);
             if (ifVersion is long expected && (old?.Version ?? 0) != expected)
@@ -413,9 +426,7 @@ namespace IndxServer.Services
                 cmd.Parameters.AddWithValue("$now", now.ToString("o"));
                 cmd.ExecuteNonQuery();
             }
-            tx.Commit();
-            Changed(item.TeamId, item.DataSetName);
-            stored = Get(conn, scope, item.Name, item.Language);
+            stored = Get(conn, scope, item.Name, item.Language, tx);
             return old == null ? WriteOutcome.Created : WriteOutcome.Updated;
         }
 
@@ -437,20 +448,28 @@ namespace IndxServer.Services
         public List<(ColdItem Item, WriteOutcome Outcome, string? Objection)> PutBatch(string teamId, string dataSetName, string writtenVia,
             IReadOnlyList<ColdItem> items, bool prune)
         {
+            // The writes and the prune are one transaction (16 Nov 2026): the batch is in the store
+            // whole, pruned, or not at all. Each item used to commit by itself and the prune ran
+            // after, row by row, with its failures swallowed: a failure midway left the source's
+            // share half pruned behind an answer that said nothing of it.
             var outcomes = new List<(ColdItem, WriteOutcome, string?)>(items.Count);
+            new Indx.Storage.SqLiteManager(DbPath, createOrOpenDatabase: true); // the base schema
+            EnsureTable();
+            using var conn = Connection();
+            conn.Open();
+            using var tx = conn.BeginTransaction();
             foreach (var item in items)
             {
-                var outcome = Put(item, null, out _, out var objection);
+                var outcome = PutIn(conn, tx, item, null, out _, out var objection);
                 outcomes.Add((item, outcome, objection));
             }
-            if (prune && DbExists())
+            if (prune)
             {
                 var kept = new HashSet<(long, string, string)>(items.Select(n => (n.RecordKey, n.Name, n.Language)));
-                using var conn = Connection();
-                conn.Open();
-                var stale = new List<(long, string, string)>();
+                var stale = new List<(long Record, string Name, string Language)>();
                 using (var cmd = conn.CreateCommand())
                 {
+                    cmd.Transaction = tx;
                     cmd.CommandText = $"SELECT RecordKey, Name, Language FROM {Table} WHERE TeamId = $t AND DataSetName = $d AND WrittenVia = $via";
                     cmd.Parameters.AddWithValue("$t", teamId);
                     cmd.Parameters.AddWithValue("$d", dataSetName);
@@ -462,9 +481,22 @@ namespace IndxServer.Services
                         if (!kept.Contains(row)) stale.Add(row);
                     }
                 }
-                foreach (var (record, name, language) in stale)
-                    Delete(new ColdScope(teamId, dataSetName, record), name, language);
+                using var delete = conn.CreateCommand();
+                delete.Transaction = tx;
+                delete.CommandText = $"DELETE FROM {Table} WHERE TeamId = $t AND DataSetName = $d AND RecordKey = $r AND Name = $n AND Language = $l";
+                delete.Parameters.AddWithValue("$t", teamId);
+                delete.Parameters.AddWithValue("$d", dataSetName);
+                var record = delete.Parameters.Add("$r", SqliteType.Integer);
+                var name = delete.Parameters.Add("$n", SqliteType.Text);
+                var language = delete.Parameters.Add("$l", SqliteType.Text);
+                foreach (var row in stale)
+                {
+                    (record.Value, name.Value, language.Value) = (row.Record, row.Name, row.Language);
+                    delete.ExecuteNonQuery();
+                }
             }
+            tx.Commit();
+            Changed(teamId, dataSetName);
             return outcomes;
         }
 
