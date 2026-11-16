@@ -219,11 +219,12 @@ namespace IndxServer.Components.Datasets
 
         private static string Seconds(long? ms) => ms is long m ? (m / 1000.0).ToString("0.0 s") : "–";
 
-        /// <summary>The budget tile's line: the days it ran out on, or the busiest day against its budget.</summary>
-        private string BudgetLine =>
-            _askBudget.DaysRunOut > 0 ? $"ran out on {_askBudget.DaysRunOut} {(_askBudget.DaysRunOut == 1 ? "day" : "days")}, {N(_askBudget.Refused)} turned away"
-            : _askBudget.PeakBudget > 0 ? $"busiest day {N(_askBudget.PeakCalls)} of {N(_askBudget.PeakBudget)}"
-            : "";
+        /// <summary>The Calls tile's foot, only when the budget ran out in the period: on how many days,
+        /// and the calls turned away. The busiest day against its budget was beside the number until
+        /// 16 Nov 2026; it squeezed the number in two in a tile of seven, and the offers-and-asks chart
+        /// draws it against the budget line already.</summary>
+        private string? BudgetRanOut =>
+            _askBudget.DaysRunOut > 0 ? $"Ran out on {_askBudget.DaysRunOut} {(_askBudget.DaysRunOut == 1 ? "day" : "days")}, {N(_askBudget.Refused)} turned away" : null;
 
         private const string AnswerableColumnHelp = "Whether the sources the answer was written from could answer it, as the judge read them; below 0.50 the question counts as not answered.";
         private const string FoundColumnHelp = "Whether what was asked about was in the list it was asked from, answer or not. Beside Answerable it says what to fix: found high and answerable low, the right record was there without the fact (add the field the answer reads, or Knowledge); both low, the search missed it or the content is not there. Marked below the dataset's line.";
