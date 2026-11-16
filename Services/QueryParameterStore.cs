@@ -91,6 +91,7 @@ namespace IndxServer.Services
             {
                 // A row that cannot be read is treated as none set: searches fall back to the engine
                 // defaults rather than failing.
+                StoreRead.Failed(ex);
                 logger.LogError(ex, "Failed to read query parameters for {Team}/{Dataset}", teamId, dataSetName);
                 return null;
             }

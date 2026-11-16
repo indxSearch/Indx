@@ -209,6 +209,10 @@ namespace IndxServer.Services.Webhooks
             {
                 LogSync(hook, receivedUtc, plan.Count, plan.Refusals.Count, "refused", plan.Error);
                 await NotifyAsync(hook, "refused", plan.Error);
+                // Tried: the schedule counts from here, as after a fetch that failed. A sync that
+                // ended any other way than applied left the webhook due, and it was fetched,
+                // refused and reported again every half minute (16 Nov 2026).
+                store.MarkSynced(hook.Id, DateTime.UtcNow);
                 return WebhookOutcome.Refused;
             }
 
@@ -221,6 +225,7 @@ namespace IndxServer.Services.Webhooks
                 var held = store.Hold(hook.Id, reason, plan.Count, body, WebhookKinds.Sync);
                 LogSync(hook, receivedUtc, plan.Count, plan.Refusals.Count, "held", $"{reason} Held as {held.Id}: apply or discard it.");
                 await NotifyAsync(hook, "held", reason, always: true);
+                store.MarkSynced(hook.Id, DateTime.UtcNow); // tried; and none is scheduled while this one is held
                 return WebhookOutcome.Held;
             }
 
@@ -240,6 +245,7 @@ namespace IndxServer.Services.Webhooks
                 logger.LogWarning(ex, "Webhook {Hook} could not sync {Team}/{Dataset}", hook.Id, hook.TeamId, hook.DatasetName);
                 LogSync(hook, receivedUtc, plan.Count, plan.Refusals.Count, "failed", ex.Message);
                 await NotifyAsync(hook, "failed", ex.Message);
+                store.MarkSynced(hook.Id, DateTime.UtcNow); // tried
                 return WebhookOutcome.Refused;
             }
 
@@ -450,6 +456,9 @@ namespace IndxServer.Services.Webhooks
                 if (!sources.For(hook).Pulls || SourceSettings.Parse(hook.SourceConfig) is not { } config) continue;
                 var due = hook.LastSyncUtc is not { } last || SourceSettings.Hours(config) is { } hours && nowUtc - last >= TimeSpan.FromHours(hours);
                 if (!due || store.SyncWaiting(hook.Id)) continue;
+                // A full set that waits for an admin: another fetched beside it would be held too,
+                // one more copy and one more notice each round.
+                if (store.Held(hook.Id).Any(h => h.Kind == WebhookKinds.Sync)) continue;
                 store.Enqueue(hook.Id, "", WebhookKinds.Sync);
                 queued++;
             }

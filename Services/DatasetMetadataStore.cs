@@ -106,6 +106,7 @@ namespace IndxServer.Services
             }
             catch (Exception ex)
             {
+                StoreRead.Failed(ex);
                 logger.LogError(ex, "Failed to read metadata for {Team}/{Dataset}", teamId, dataSetName);
                 return "";
             }
@@ -157,6 +158,7 @@ namespace IndxServer.Services
             }
             catch (Exception ex)
             {
+                StoreRead.Failed(ex);
                 logger.LogError(ex, "Failed to read key field for {Team}/{Dataset}", teamId, dataSetName);
                 return "";
             }
@@ -210,6 +212,7 @@ namespace IndxServer.Services
             }
             catch (Exception ex)
             {
+                StoreRead.Failed(ex);
                 logger.LogError(ex, "Failed to read category setting for {Team}/{Dataset}", teamId, dataSetName);
                 return CategorySetting.None;
             }

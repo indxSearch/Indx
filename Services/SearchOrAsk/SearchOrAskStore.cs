@@ -89,6 +89,7 @@ namespace IndxServer.Services.SearchOrAsk
             {
                 // A row that cannot be read is treated as none saved: the feature is off, which is
                 // the safe reading of a setting that sends visitors' text to a third party.
+                StoreRead.Failed(ex);
                 logger.LogError(ex, "Failed to read Search or ask settings for {Team}/{Dataset}", teamId, dataSetName);
                 return null;
             }

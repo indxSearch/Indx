@@ -256,7 +256,9 @@ namespace IndxServer.Controllers
             if (IndxServerInternalApi.Manager.ResolveEngine(dataSetName, ctx.OwnerKey) == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
             var pm = new ProcessMonitor();
-            var success = IndxServerInternalApi.Manager.LoadFromDatabase(dataSetName, ctx.OwnerKey, pm);
+            bool success;
+            try { success = IndxServerInternalApi.Manager.LoadFromDatabase(dataSetName, ctx.OwnerKey, pm); }
+            catch (ShadowBusyException ex) { return ApiProblems.ShadowBusy(ex.Message); }
             if (!success)
                 return ApiProblems.LoadFailed("LoadFromDatabase failed.");
             await pm.WaitForCompletionAsync();
@@ -287,7 +289,10 @@ namespace IndxServer.Controllers
             // failed load is non-destructive on disk (the lib's clear+append is atomic) and leaves the
             // dataset recoverable (Error → WakeUp/reload). For zero-downtime updates, use replace.
             var pm = new ProcessMonitor();
-            if (IndxServerInternalApi.Manager.Load(dataSetName, ctx.OwnerKey, bodyStream, pm))
+            bool started;
+            try { started = IndxServerInternalApi.Manager.Load(dataSetName, ctx.OwnerKey, bodyStream, pm); }
+            catch (ShadowBusyException ex) { return ApiProblems.ShadowBusy(ex.Message); }
+            if (started)
                 pm.WaitForCompletion();
             else
                 return ApiProblems.LoadFailed("LoadStream failed.");
@@ -358,7 +363,10 @@ namespace IndxServer.Controllers
             }
             memoryStream.Position = 0;
             var pm = new ProcessMonitor();
-            if (IndxServerInternalApi.Manager.Load(dataSetName, ctx.OwnerKey, memoryStream, pm))
+            bool started;
+            try { started = IndxServerInternalApi.Manager.Load(dataSetName, ctx.OwnerKey, memoryStream, pm); }
+            catch (ShadowBusyException ex) { return ApiProblems.ShadowBusy(ex.Message); }
+            if (started)
                 pm.WaitForCompletion();
             else
                 return ApiProblems.LoadFailed("LoadString failed.");

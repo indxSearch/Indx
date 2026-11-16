@@ -91,6 +91,7 @@ namespace IndxServer.Services
             {
                 // A row that cannot be read is treated as none: every field shows as Custom, and the
                 // fields' own values, which are what searches use, are untouched.
+                StoreRead.Failed(ex);
                 logger.LogError(ex, "Failed to read field profiles for {Team}/{Dataset}", teamId, dataSetName);
                 return null;
             }

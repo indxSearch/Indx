@@ -119,6 +119,7 @@ namespace IndxServer.Services
             }
             catch (Exception ex)
             {
+                StoreRead.Failed(ex);
                 logger.LogError(ex, "Failed to read {Word} rules for {Team}/{Dataset}", word, teamId, dataSetName);
                 return [];
             }

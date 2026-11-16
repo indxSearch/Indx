@@ -378,8 +378,22 @@ namespace IndxServer.Engine
             return null;
         }
 
+        /// <summary>
+        /// A load is refused with <see cref="ShadowBusyException"/> while the dataset's index is
+        /// being rebuilt beside it (16 Nov 2026). The engine takes a load when it is Ready, so the
+        /// load went through, into the store and the live engine, and the rebuild then swapped in
+        /// its clone of the documents from before: the store held the new ones and the index
+        /// served the old until the next wake.
+        /// </summary>
+        private void RefuseLoadWhileRebuilding(string dataSetName, string teamId)
+        {
+            if (_shadowBuildsInProgress.ContainsKey(MakeKey(dataSetName, teamId)))
+                throw new ShadowBusyException(dataSetName);
+        }
+
         internal bool Load(string dataSetName, string teamId, Stream jsonData, ProcessMonitor pm)
         {
+            RefuseLoadWhileRebuilding(dataSetName, teamId);
             var instance = FindInstance(dataSetName, teamId);
             if (instance == null)
                 return false;
@@ -401,6 +415,7 @@ namespace IndxServer.Engine
 
         internal bool LoadFromDatabase(string dataSetName, string teamId, ProcessMonitor monitor)
         {
+            RefuseLoadWhileRebuilding(dataSetName, teamId);
             var instance = FindInstance(dataSetName, teamId);
             if (instance == null)
             {
@@ -428,6 +443,7 @@ namespace IndxServer.Engine
 
         internal async Task<(bool success, string errorMessage)> LoadJsonStreamAsync(string dataSetName, string teamId, Stream jsonData)
         {
+            RefuseLoadWhileRebuilding(dataSetName, teamId);
             var instance = FindInstance(dataSetName, teamId);
             if (instance == null)
                 return (false, $"{nameof(LoadJsonStreamAsync)} SearchEngine not found");
@@ -444,6 +460,7 @@ namespace IndxServer.Engine
         /// </summary>
         internal (Task loadTask, ProcessMonitor monitor)? StartLoadAsync(string dataSetName, string teamId, Stream jsonData)
         {
+            RefuseLoadWhileRebuilding(dataSetName, teamId);
             var instance = FindInstance(dataSetName, teamId);
             if (instance == null)
                 return null;

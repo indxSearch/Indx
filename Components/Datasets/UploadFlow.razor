@@ -534,7 +534,13 @@ else if (Ctx.IsLoadIndexing)
             // serve yet); a bad custom key is already flagged at selection time, and otherwise the load
             // fails cleanly below (the lib's clear+append is atomic, so the db is left recoverable).
             ms.Position = 0;
-            var loadResult = Ctx.Engines.StartLoadAsync(Ctx.Name, Ctx.TeamId, ms);
+            (Task loadTask, ProcessMonitor monitor)? loadResult;
+            try { loadResult = Ctx.Engines.StartLoadAsync(Ctx.Name, Ctx.TeamId, ms); }
+            catch (IndxServer.Models.ShadowBusyException)
+            {
+                Ctx.OperationError = "Load failed: the index is being rebuilt. Try again when it is done.";
+                return;
+            }
             if (loadResult == null)
             {
                 Ctx.OperationError = "Load failed: dataset not found";
