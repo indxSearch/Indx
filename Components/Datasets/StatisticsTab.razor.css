@@ -312,3 +312,6 @@
     .stats-journeys { grid-template-columns: minmax(0, 1fr); }
     .stats-journey-list { max-height: 240px; }
 }
+
+/* A change new to the viewer when they opened Changes. */
+.stats-change-new { margin-left: 8px; vertical-align: middle; }

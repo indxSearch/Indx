@@ -285,6 +285,14 @@ CREATE TABLE IF NOT EXISTS RollupState (
     LastRolledDay INTEGER NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS ChangesSeen (
+    TeamId      TEXT    NOT NULL,
+    DataSet     TEXT    NOT NULL,
+    UserId      TEXT    NOT NULL,           -- a console user: the Changes tab's badge counts what came after
+    SeenAt      INTEGER NOT NULL,           -- Unix ms the user last opened Changes
+    PRIMARY KEY (TeamId, DataSet, UserId)
+);
+
 CREATE TABLE IF NOT EXISTS SubjectDocumentStats (
     TeamId      TEXT    NOT NULL,
     DataSet     TEXT    NOT NULL,
@@ -1593,6 +1601,34 @@ SELECT c.Source, SUM(CASE WHEN trim(c.QueryText) <> '' THEN 1 ELSE 0 END) AS N F
             return result;
         }
 
+        /// <summary>When a console user last opened the dataset's Changes (Unix ms), or null when
+        /// they never have: the Changes tab's badge counts the changes after it, so it reads as what
+        /// is new to them rather than a total (16 Nov 2026).</summary>
+        public long? ChangesSeenAt(string teamId, string dataSet, string userId)
+        {
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT SeenAt FROM ChangesSeen WHERE TeamId = $t AND DataSet = $d AND UserId = $u";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSet);
+            cmd.Parameters.AddWithValue("$u", userId);
+            return cmd.ExecuteScalar() is long ms ? ms : null;
+        }
+
+        /// <summary>Records that a console user has seen the dataset's changes up to <paramref name="at"/>.</summary>
+        public void SeeChanges(string teamId, string dataSet, string userId, long at)
+        {
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = @"INSERT INTO ChangesSeen (TeamId, DataSet, UserId, SeenAt) VALUES ($t, $d, $u, $at)
+                ON CONFLICT (TeamId, DataSet, UserId) DO UPDATE SET SeenAt = MAX(SeenAt, $at)";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSet);
+            cmd.Parameters.AddWithValue("$u", userId);
+            cmd.Parameters.AddWithValue("$at", at);
+            cmd.ExecuteNonQuery();
+        }
+
         /// <summary>Deletes every statistics row of one dataset - the explicit purge. Dataset
         /// delete does NOT call this: statistics survive delete/recreate by design.</summary>
         public int PurgeDataset(string teamId, string dataSet) =>
@@ -1791,7 +1827,9 @@ SELECT c.Source, SUM(CASE WHEN trim(c.QueryText) <> '' THEN 1 ELSE 0 END) AS N F
              // Deleting the statistics deletes their explanation too: starting the numbers over
              // starts the history of what moved them over (decided 1 Oct 2026).
              "DatasetChanges", "DailyDocumentChanges",
-             "AskIntentEvents", "AskEvents", "DailyAskStats", "AskBudgetDays", "AskNeedLinks", "AskNeedTexts", "AskNeedDenied"];
+             "AskIntentEvents", "AskEvents", "DailyAskStats", "AskBudgetDays", "AskNeedLinks", "AskNeedTexts", "AskNeedDenied",
+             // Who has seen which changes goes with the changes.
+             "ChangesSeen"];
 
         private int ExecutePerTable(string where, string a, string? b)
         {

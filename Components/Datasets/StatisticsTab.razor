@@ -944,7 +944,11 @@ else
                         {
                             <tr>
                                 <td><TimeAgo Value="DateTimeOffset.FromUnixTimeMilliseconds(c.Timestamp).UtcDateTime" TooltipPosition="left" /></td>
-                                <td data-wrap>@ChangeDescriptions.Describe(c.Kind, c.Summary)</td>
+                                <td data-wrap>
+                                    @ChangeDescriptions.Describe(c.Kind, c.Summary)
+                                    @* New to this viewer when they opened Changes: the badge is gone, the rows still say which. *@
+                                    @if (_changesNewAfter is { } after && c.Timestamp > after) { <span class="stats-change-new"><Chip Size="micro" Color="var(--CLightBlue)" TextColor="#080809">New</Chip></span> }
+                                </td>
                                 @if (askChange)
                                 {
                                     <td class="stats-action">
@@ -1075,9 +1079,10 @@ else
         if (!string.IsNullOrEmpty(InitialBrowsingView)) _browsingView = InitialBrowsingView;
     }
 
-    /// <summary>The detail sections, in the order they matter. Changes carries how many fell in
-    /// the window, in the info blue of the chart's change markers: a change is information, not a
-    /// warning, and the badge and the marks are the same thing. Over 99 it says 99+.</summary>
+    /// <summary>The detail sections, in the order they matter. Changes carries how many are new to
+    /// the viewer, made since they last opened it (16 Nov 2026: the window's total, 52, read as 52
+    /// unread notifications that never went away), in the info blue of the chart's change markers.
+    /// Opening Changes clears it. Over 99 it says 99+.</summary>
     private List<Tabs.TabItem> SectionItems =>
     [
         new("Overview", "overview", DatasetIcons.Statistics),
@@ -1088,8 +1093,8 @@ else
         new("Browsing", "browsing", DatasetIcons.Browsing),
         new("Journeys", "journeys", DatasetIcons.Journeys),
         new("Changes", "changes", DatasetIcons.Changes,
-            Badge: _changes.Count switch { 0 => null, > 99 => "99+", var n => n.ToString() },
-            BadgeTitle: $"{_changes.Count} changes in the last {_days} days", BadgeTone: "info"),
+            Badge: NewChanges switch { 0 => null, > 99 => "99+", var n => n.ToString() },
+            BadgeTitle: $"{NewChanges} {(NewChanges == 1 ? "change" : "changes")} since you last looked", BadgeTone: "info"),
     ];
     private List<DocumentStat> _topDocuments = [];
     private List<FilterStat> _topFilters = [];
@@ -1207,6 +1212,31 @@ else
     {
         _section = value ?? "overview";
         if (_section == "journeys") await LoadJourneysAsync();
+        if (_section == "changes") await SeeChangesAsync();
+    }
+
+    // ── What is new in Changes, to this viewer ─────────────────────────────────────────────────
+    [CascadingParameter] private Task<Microsoft.AspNetCore.Components.Authorization.AuthenticationState>? AuthState { get; set; }
+    private string? _viewer;
+    // When the viewer last opened Changes; null without a signed-in viewer, and then no badge.
+    private long? _changesSeen;
+    private int NewChanges => _changesSeen is { } seen ? _changes.Count(c => c.Timestamp > seen) : 0;
+    // What was new when the viewer opened Changes, kept while the tab is open so the rows can say.
+    private long? _changesNewAfter;
+
+    private async Task<string?> ViewerAsync() =>
+        _viewer ??= AuthState == null ? null
+            : (await AuthState).User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+    /// <summary>The viewer has seen the changes: the badge goes, until a new one is made.</summary>
+    private async Task SeeChangesAsync()
+    {
+        if (Stats.Store is not { } store || await ViewerAsync() is not { } viewer) return;
+        var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+        var (team, ds) = (Ctx.TeamId, Ctx.Name);
+        await Task.Run(() => store.SeeChanges(team, ds, viewer, now));
+        if (NewChanges > 0) _changesNewAfter = _changesSeen;
+        _changesSeen = now;
     }
 
     /// <summary>Top queries' Journey: the query's journey, read first when it is not yet.</summary>
@@ -1495,8 +1525,15 @@ else
         if (store == null) return;
         _loaded = false;
         var (team, ds, days, source) = (Ctx.TeamId, Ctx.Name, _days, _source);
+        var viewer = await ViewerAsync();
         await Task.Run(() =>
         {
+            // A viewer's first look starts the count: what was there before is not news to them.
+            if (viewer != null)
+            {
+                _changesSeen = store.ChangesSeenAt(team, ds, viewer);
+                if (_changesSeen == null) store.SeeChanges(team, ds, viewer, (_changesSeen = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()).Value);
+            }
             // Days in the dataset's statistics time zone (Options tab), as the API counts them.
             _zone = store.ZoneOf(team, ds);
             long toDay = StatisticsDays.Today(_zone);
@@ -1572,6 +1609,7 @@ else
         _loaded = true;
         await Render();
         if (_section == "journeys") await LoadJourneysAsync();
+        if (_section == "changes") await SeeChangesAsync();
     }
 
     /// <summary>The lists whose rows depend on a section's view settings.</summary>
