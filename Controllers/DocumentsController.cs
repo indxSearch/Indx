@@ -50,7 +50,7 @@ namespace IndxServer.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
             if (RequireState(matcher, "DeleteJsonRecord", SystemState.Ready) is { } stateError)
                 return stateError;
-            var result = WriteUnlessRebuilding(dataSetName, ctx.OwnerKey, () => matcher.DeleteJsonRecord(documentKey), out var rebuilding);
+            var result = WriteUnlessRebuilding(dataSetName, ctx.OwnerKey, live => (matcher = live).DeleteJsonRecord(documentKey), out var rebuilding);
             if (rebuilding != null)
                 return rebuilding;
             if (!result)
@@ -170,7 +170,7 @@ namespace IndxServer.Controllers
                 return ApiProblems.InvalidArgument(
                     $"The route addresses document {documentKey} but the body's key field says {bodyKey}. Nothing was inserted.");
             string error2 = "";
-            var result = WriteUnlessRebuilding(dataSetName, ctx.OwnerKey, () => matcher.InsertJsonRecord(jsonData, out error2), out var rebuilding);
+            var result = WriteUnlessRebuilding(dataSetName, ctx.OwnerKey, live => (matcher = live).InsertJsonRecord(jsonData, out error2), out var rebuilding);
             if (rebuilding != null)
                 return rebuilding;
             if (!result)
@@ -259,7 +259,7 @@ namespace IndxServer.Controllers
                 return ApiProblems.InvalidArgument(
                     $"The route addresses document {documentKey} but the body's key field says {bodyKey}. Nothing was updated.");
             string error2 = "";
-            var result = WriteUnlessRebuilding(dataSetName, ctx.OwnerKey, () => matcher.UpdateJsonRecord(jsonData, out error2), out var rebuilding);
+            var result = WriteUnlessRebuilding(dataSetName, ctx.OwnerKey, live => (matcher = live).UpdateJsonRecord(jsonData, out error2), out var rebuilding);
             if (rebuilding != null)
                 return rebuilding;
             if (!result)
@@ -292,7 +292,7 @@ namespace IndxServer.Controllers
                 return stateError;
             string error2 = "";
             var result = WriteUnlessRebuilding(dataSetName, ctx.OwnerKey,
-                () => matcher.UpdateField(documentKey, update.FieldName, UnwrapJsonElement(update.Value)!, out error2), out var rebuilding);
+                live => (matcher = live).UpdateField(documentKey, update.FieldName, UnwrapJsonElement(update.Value)!, out error2), out var rebuilding);
             if (rebuilding != null)
                 return rebuilding;
             if (!result)

@@ -73,15 +73,22 @@ namespace IndxServer.Engine
         /// it, and is in the clone, or it sees the build and is refused. Until 12 Nov 2026 the check
         /// came before the write with nothing held, and a write that passed it just before a build
         /// claimed the dataset could land after the clone.
+        /// <para>The write is handed the engine that is live inside the gate (16 Nov 2026). Until
+        /// then the caller wrote to the engine it had resolved before the gate: a build that swapped
+        /// and released between the two left the busy check passing and the write going to the
+        /// retired engine, acknowledged and not in the live index. Throws
+        /// <see cref="KeyNotFoundException"/> when the dataset is gone.</para>
         /// </summary>
-        internal T RunSmallWrite<T>(string dataSetName, string teamId, Func<T> write)
+        internal T RunSmallWrite<T>(string dataSetName, string teamId, Func<IServerSearchEngine, T> write)
         {
             var key = MakeKey(dataSetName, teamId);
             lock (WriteGate(key))
             {
                 if (_shadowBuildsInProgress.ContainsKey(key))
                     throw new ShadowBusyException(dataSetName);
-                return write();
+                var live = FindInstance(dataSetName, teamId)
+                    ?? throw new KeyNotFoundException($"non existing dataset name: {dataSetName}");
+                return write(live);
             }
         }
 

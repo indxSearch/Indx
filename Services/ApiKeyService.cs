@@ -103,6 +103,15 @@ namespace IndxServer.Services
             var names = ValidDatasets(teamId, datasets);
             var jti = Guid.NewGuid().ToString();
             var now = DateTime.UtcNow;   // one reading: CreatedAt and ExpiresAt must be exactly the lifetime apart
+            // A team key's name is what it is known by where it writes: cold storage keeps "team key
+            // {name}" as the source of an item, and a sync prunes the items of its own source. Two
+            // working keys of one name were one source, and each pruned the other's items (16 Nov
+            // 2026). Among the keys that still work only: a revoked or expired key frees its name, so
+            // the key that replaces it takes the name and with it what the old one wrote.
+            var lowered = name.ToLower();
+            if (await db.ApiKeys.AnyAsync(k => k.TeamId == teamId && k.UserId == null && !k.IsRevoked
+                    && (k.ExpiresAt == null || k.ExpiresAt > now) && k.Name.ToLower() == lowered))
+                throw new ArgumentException($"The team already has a key named \"{name}\". Give this one another name, or revoke that one first.");
             var token = Mint(
                 [
                     new(ClaimTypes.Name, name),

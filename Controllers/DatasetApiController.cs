@@ -110,8 +110,10 @@ namespace IndxServer.Controllers
         /// it (12 Nov 2026; <see cref="IndxServerInternalApi.RunSmallWrite{T}"/>). A rebuild clones the
         /// engine and swaps the clone in; a write on the old engine after the clone was taken would be
         /// gone at the swap. Heavy writes go through the shadow path, which refuses them the same way.
+        /// The write is given the engine to write to, the one live once the gate is held: never
+        /// write to an engine resolved before the call, which a rebuild may have retired since.
         /// </summary>
-        protected static bool WriteUnlessRebuilding(string dataSetName, string teamId, Func<bool> write, out ActionResult? refused)
+        protected static bool WriteUnlessRebuilding(string dataSetName, string teamId, Func<IServerSearchEngine, bool> write, out ActionResult? refused)
         {
             refused = null;
             try
@@ -121,6 +123,11 @@ namespace IndxServer.Controllers
             catch (ShadowBusyException ex)
             {
                 refused = ApiProblems.ShadowBusy(ex.Message);
+                return false;
+            }
+            catch (KeyNotFoundException)
+            {
+                refused = ApiProblems.DatasetNotFound(dataSetName);
                 return false;
             }
         }

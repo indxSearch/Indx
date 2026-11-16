@@ -200,6 +200,11 @@ namespace IndxServer.Services
                 statistics.Store!.PurgeTeam(owner);
 
             db.Invites.RemoveRange(db.Invites.Where(i => i.TeamId == team.Id));
+            // The keys that reach this team, its own and its members' personal ones: a key is bound to
+            // the team's id, which is gone with it, so they reach nothing, not even a new team of the
+            // same name. Left behind (until 16 Nov 2026) they stayed in their owners' lists and were
+            // warned about as they expired.
+            db.ApiKeys.RemoveRange(db.ApiKeys.Where(k => k.TeamId == team.Id));
             db.Teams.Remove(team);
             await db.SaveChangesAsync();
             return deleted;

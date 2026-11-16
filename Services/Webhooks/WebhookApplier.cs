@@ -124,7 +124,7 @@ namespace IndxServer.Services.Webhooks
                     // A small call writes in place, and a rebuild running beside the engine would swap
                     // its clone in over the write: refused while one runs, and retried, as a large call
                     // waits for the shadow (12 Nov 2026).
-                    : IndxServerInternalApi.Manager.RunSmallWrite(hook.DatasetName, hook.TeamId, () => Write(engine, plan));
+                    : IndxServerInternalApi.Manager.RunSmallWrite(hook.DatasetName, hook.TeamId, live => Write(live, plan));
             }
             catch (ShadowBusyException) { return WebhookOutcome.Retry; }
             catch (Exception ex)
