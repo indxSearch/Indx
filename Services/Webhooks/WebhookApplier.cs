@@ -29,6 +29,11 @@ namespace IndxServer.Services.Webhooks
 
         private readonly Dictionary<string, DateTime> _notified = [];
 
+        /// <summary>Why a call for a hibernated dataset is refused (16 Nov 2026): the server does not
+        /// wake a dataset whose keep-alive is Off, and a webhook does not either, for now.</summary>
+        private const string AsleepRefusal =
+            "The dataset is hibernated, so nothing was applied. Wake it and send the changes again, or run a full sync.";
+
         public async Task<WebhookOutcome> ApplyAsync(Webhook hook, string body, DateTime receivedUtc, bool pastBrake = false)
         {
             if (IndxServerInternalApi.Manager.ResolveEngine(hook.DatasetName, hook.TeamId) is not { } engine)
@@ -39,9 +44,14 @@ namespace IndxServer.Services.Webhooks
             var state = engine.Status.SystemState;
             if (state is SystemState.Loading or SystemState.Indexing) return WebhookOutcome.Retry;
             // Asleep with its records in the store (hibernated with keep-alive Off, which the server
-            // does not wake): the call waits for the wake. Planned now, every document would look
+            // does not wake): the call is refused, and said. Planned now, every document would look
             // new, and the insert would be taken as a load that replaces the stored records.
-            if (IndxServerInternalApi.IsAsleepWithRecords(engine)) return WebhookOutcome.Retry;
+            if (IndxServerInternalApi.IsAsleepWithRecords(engine))
+            {
+                Log(hook, receivedUtc, null, "refused", AsleepRefusal);
+                await NotifyAsync(hook, "refused", AsleepRefusal);
+                return WebhookOutcome.Refused;
+            }
 
             // The source's view of the call: Sanity's documents as they are now, and those that refer
             // to them. A held batch was resolved when it was held, and is applied as it stands.
@@ -131,7 +141,12 @@ namespace IndxServer.Services.Webhooks
                     : IndxServerInternalApi.Manager.RunSmallDocumentWrite(hook.DatasetName, hook.TeamId, live => Write(live, plan, hook.DatasetName));
             }
             catch (ShadowBusyException) { return WebhookOutcome.Retry; }
-            catch (DatasetAsleepException) { return WebhookOutcome.Retry; }
+            catch (DatasetAsleepException)
+            {
+                Log(hook, receivedUtc, plan, "refused", AsleepRefusal);
+                await NotifyAsync(hook, "refused", AsleepRefusal);
+                return WebhookOutcome.Refused;
+            }
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "Webhook {Hook} could not write to {Team}/{Dataset}", hook.Id, hook.TeamId, hook.DatasetName);
@@ -143,6 +158,10 @@ namespace IndxServer.Services.Webhooks
                 await NotifyAsync(hook, "failed", failure);
                 return WebhookOutcome.Refused;
             }
+
+            // A deleted document's cold storage goes with it, as on the DELETE routes.
+            foreach (var key in plan.Deletes)
+                IndxServerInternalApi.Manager.Cold?.DeleteRecord(hook.TeamId, hook.DatasetName, key);
 
             // Kept once written: a key the registry holds is a document that exists or did.
             store.SaveKeys(hook.TeamId, hook.DatasetName, plan.NewKeys);
@@ -178,9 +197,15 @@ namespace IndxServer.Services.Webhooks
                 return WebhookOutcome.Refused;
             }
             if (engine.Status.SystemState is SystemState.Loading or SystemState.Indexing) return WebhookOutcome.Retry;
-            // Asleep with its records in the store: the sync waits for the wake, as a call does. It
-            // would measure itself against an empty dataset, which no brake can hold.
-            if (IndxServerInternalApi.IsAsleepWithRecords(engine)) return WebhookOutcome.Retry;
+            // Asleep with its records in the store: refused, as a call is. The sync would measure
+            // itself against an empty dataset, which no brake can hold.
+            if (IndxServerInternalApi.IsAsleepWithRecords(engine))
+            {
+                LogSync(hook, receivedUtc, 0, 0, "refused", AsleepRefusal);
+                await NotifyAsync(hook, "refused", AsleepRefusal);
+                store.MarkSynced(hook.Id, DateTime.UtcNow); // tried
+                return WebhookOutcome.Refused;
+            }
 
             var source = sources.For(hook);
             if (string.IsNullOrEmpty(body))
@@ -239,7 +264,6 @@ namespace IndxServer.Services.Webhooks
                         (JsonNode.Parse(plan.Json) as JsonArray)?.OfType<JsonObject>().ToList())));
             }
             catch (ShadowBusyException) { return WebhookOutcome.Retry; }
-            catch (DatasetAsleepException) { return WebhookOutcome.Retry; }
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "Webhook {Hook} could not sync {Team}/{Dataset}", hook.Id, hook.TeamId, hook.DatasetName);

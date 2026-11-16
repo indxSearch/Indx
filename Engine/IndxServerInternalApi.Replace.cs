@@ -94,6 +94,7 @@ namespace IndxServer.Engine
                 container.Touch(TimeProvider.GetUtcNow());
                 // Graphs saved at an earlier sleep are of the documents that were just replaced.
                 DeleteSavedEmbeddings(dataSetName, teamId);
+                ColdStorageFollowsTheReplace(swappedOut, live, dataSetName, teamId);
 
                 ReportChange(dataSetName, teamId, Services.DatasetChangeKind.Replace, new
                 {
@@ -333,6 +334,36 @@ namespace IndxServer.Engine
                 .ToList();
 
             return (carry.ToArray(), new ReplaceSchemaChange(added, removed, typeChanged, lostRoles, null));
+        }
+
+        /// <summary>
+        /// A record's cold storage goes with the record (16 Nov 2026), on a replace too. With a key
+        /// field a key is the same document before and after, so the items go for the documents
+        /// the replace left out: those the old engine held and the new one does not. Without one
+        /// the new documents are numbered from the start again, and every item would sit on
+        /// whatever document now has its number: all of them go. Items written for a record that
+        /// is not there yet (a sync writes them before the catalogue) are left, as are all items
+        /// when the old documents were not in memory to be asked.
+        /// </summary>
+        private void ColdStorageFollowsTheReplace(IServerSearchEngine? before, IServerSearchEngine after, string dataSetName, string teamId)
+        {
+            if (_coldStore == null) return;
+            try
+            {
+                if (string.IsNullOrEmpty(after.DocumentFields?.NameOfDocumentKeyField))
+                {
+                    _coldStore.DeleteDataset(teamId, dataSetName);
+                    return;
+                }
+                if (before == null || before.Status.SystemState != SystemState.Ready) return;
+                foreach (var key in _coldStore.RecordKeys(teamId, dataSetName))
+                    if (!string.IsNullOrEmpty(before.GetJsonDataOfKey(key)) && string.IsNullOrEmpty(after.GetJsonDataOfKey(key)))
+                        _coldStore.DeleteRecord(teamId, dataSetName, key);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "{Prefix}The cold storage of the replaced documents could not be removed", MakeLogPrefix(teamId, dataSetName));
+            }
         }
     }
 }

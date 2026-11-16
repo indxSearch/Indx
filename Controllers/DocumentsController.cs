@@ -319,7 +319,14 @@ namespace IndxServer.Controllers
                 engine.LoadFilters(new[] { filter });
                 // The engine does not say how many it deleted; the count before and after does.
                 long before = engine.Status.DocumentCount;
+                // The records with cold storage, to see which of them the filter takes: their
+                // items go with them, as on the DELETE routes.
+                var cold = IndxServerInternalApi.Manager.Cold;
+                var withItems = cold?.RecordKeys(ctx.OwnerKey, dataSetName)
+                    .Where(key => !string.IsNullOrEmpty(engine.GetJsonDataOfKey(key))).ToList() ?? [];
                 engine.DeleteRecordsInFilter(filter);
+                foreach (var key in withItems.Where(key => string.IsNullOrEmpty(engine.GetJsonDataOfKey(key))))
+                    cold!.DeleteRecord(ctx.OwnerKey, dataSetName, key);
                 Count(dataSetName, ctx.OwnerKey, engine, "deleteByFilter",
                     deleted: Math.Max(0, before - engine.Status.DocumentCount), byFilter: true);
                 return NoContent();

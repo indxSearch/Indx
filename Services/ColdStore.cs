@@ -474,6 +474,23 @@ namespace IndxServer.Services
             Execute($"DELETE FROM {Table} WHERE TeamId = $t AND DataSetName = $d", new ColdScope(teamId, dataSetName, 0));
         }
 
+        /// <summary>The keys of the records that hold items in the dataset.</summary>
+        public List<long> RecordKeys(string teamId, string dataSetName)
+        {
+            var keys = new List<long>();
+            if (!DbExists()) return keys;
+            EnsureTable();
+            using var conn = Connection();
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"SELECT DISTINCT RecordKey FROM {Table} WHERE TeamId = $t AND DataSetName = $d";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSetName);
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read()) keys.Add(reader.GetInt64(0));
+            return keys;
+        }
+
         /// <summary>A record's items, on the record's delete.</summary>
         public void DeleteRecord(string teamId, string dataSetName, long recordKey)
         {

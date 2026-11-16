@@ -213,8 +213,9 @@ namespace IndxServer.Controllers
             FileNameValidity.IsValid(dataSetName)
             && new Persistence(IndxServerInternalApi.SearchDbConnectionString, dataSetName, ctx.OwnerKey).DataSetExists();
 
-        /// <summary>An item whose record is not in the dataset (deleted by a route that did not reach the
-        /// cold storage, a webhook's delete) is not shown.</summary>
+        /// <summary>An item whose record is not in the dataset is not shown: one written before its
+        /// record (a sync may write the items before the catalogue). A record's items are deleted
+        /// with it, on every route that deletes records.</summary>
         private static bool RecordGone(TeamContext ctx, ColdScope scope) =>
             IndxServerInternalApi.Manager.ResolveEngine(scope.DataSetName, ctx.OwnerKey) is { } engine
             && string.IsNullOrEmpty(engine.GetJsonDataOfKey(scope.RecordKey));
