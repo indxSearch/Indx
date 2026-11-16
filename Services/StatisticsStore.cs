@@ -1810,7 +1810,11 @@ SELECT c.Source, SUM(CASE WHEN trim(c.QueryText) <> '' THEN 1 ELSE 0 END) AS N F
             // not quietly switch a privacy setting back on.
             foreach (var table in AllTables.Append("DatasetSettings"))
             {
-                cmd.CommandText = $"UPDATE {table} SET DataSet = $new WHERE TeamId = $t AND DataSet = $old";
+                // OR REPLACE, as TransferDataset: statistics outlive a deleted dataset, so the new
+                // name may hold a deleted dataset's rows, and where a key collides the renamed
+                // dataset's row takes the leftover's place. A plain UPDATE threw there (16 Nov
+                // 2026): the rename was done, reported as failed, and the history left behind.
+                cmd.CommandText = $"UPDATE OR REPLACE {table} SET DataSet = $new WHERE TeamId = $t AND DataSet = $old";
                 n += cmd.ExecuteNonQuery();
             }
             tx.Commit();

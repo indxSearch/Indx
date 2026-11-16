@@ -34,7 +34,9 @@ namespace IndxServer.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true);
             if (ctx == null) return error!;
             HttpContext.Request.EnableBuffering();
-            IServerSearchEngine? matcher = IndxServerInternalApi.Manager.FindSearchEngineForInit(dataSetName, ctx.OwnerKey);
+            IServerSearchEngine? matcher;
+            try { matcher = IndxServerInternalApi.Manager.FindSearchEngineForInit(dataSetName, ctx.OwnerKey); }
+            catch (ShadowBusyException ex) { return ApiProblems.ShadowBusy(ex.Message); }
             if (matcher == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
             var state = matcher.Status;
@@ -68,7 +70,9 @@ namespace IndxServer.Controllers
             var state = IndxServerInternalApi.Manager.GetState(dataSetName, ctx.OwnerKey);
             if (state == null || state.InvalidDataSetName)
                 return ApiProblems.InvalidDatasetName(dataSetName);
-            IServerSearchEngine? matcher = IndxServerInternalApi.Manager.FindSearchEngineForInit(dataSetName, ctx.OwnerKey);
+            IServerSearchEngine? matcher;
+            try { matcher = IndxServerInternalApi.Manager.FindSearchEngineForInit(dataSetName, ctx.OwnerKey); }
+            catch (ShadowBusyException ex) { return ApiProblems.ShadowBusy(ex.Message); }
             if (matcher == null)
                 return ApiProblems.DatasetNotFound(dataSetName);
             var df = DocumentFields.Analyze(jsonData, out string error2);

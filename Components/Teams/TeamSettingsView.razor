@@ -400,7 +400,11 @@
     {
         if (string.IsNullOrEmpty(role)) return;
         _error = null;
-        try { await TeamService.ChangeRoleAsync(Team.Id, userId, role); }
+        try
+        {
+            await TeamService.RequireAdminAsync(Team.Id, UserId);
+            await TeamService.ChangeRoleAsync(Team.Id, userId, role);
+        }
         catch (TeamService.TeamException ex) { _error = ex.Message; }
         await LoadAsync();
     }
@@ -408,7 +412,11 @@
     private Task OnRemove(string userId) => RunBusy("remove:" + userId, async () =>
     {
         _error = null;
-        try { await TeamService.RemoveMemberAsync(Team.Id, userId); }
+        try
+        {
+            await TeamService.RequireAdminAsync(Team.Id, UserId);
+            await TeamService.RemoveMemberAsync(Team.Id, userId);
+        }
         catch (TeamService.TeamException ex) { _error = ex.Message; }
         await LoadAsync();
     });
@@ -443,7 +451,11 @@
     /// <summary>Null on success, else the reason, shown in the modal.</summary>
     private async Task<string?> OnRename()
     {
-        try { await TeamService.RenameTeamAsync(Team.Id, _renameInput); }
+        try
+        {
+            await TeamService.RequireAdminAsync(Team.Id, UserId);
+            await TeamService.RenameTeamAsync(Team.Id, _renameInput);
+        }
         catch (TeamService.TeamException ex) { return ex.Message; }
         await ActiveTeam.ReloadAsync();
         return null;
@@ -472,7 +484,11 @@
         if (ActiveTeam.Teams.Count <= 1) return "You can't delete your only team.";
         // Deleting a team disposes every engine it owns — seconds, on the circuit's thread if we
         // let it, which would also freeze the spinner. Run it off the circuit.
-        try { await Task.Run(() => TeamService.DeleteTeamAsync(Team.Id)); }
+        try
+        {
+            await TeamService.RequireAdminAsync(Team.Id, UserId);
+            await Task.Run(() => TeamService.DeleteTeamAsync(Team.Id));
+        }
         catch (TeamService.TeamException ex) { return ex.Message; }
         await ActiveTeam.ReloadAsync();
         return null;

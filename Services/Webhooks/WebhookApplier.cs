@@ -124,11 +124,11 @@ namespace IndxServer.Services.Webhooks
             try
             {
                 failure = changes > ShadowAbove && state == SystemState.Ready
-                    ? IndxServerInternalApi.Manager.RunHeavyOnShadowIfReady(hook.DatasetName, hook.TeamId, e => Write(e, plan))
+                    ? IndxServerInternalApi.Manager.RunHeavyOnShadowIfReady(hook.DatasetName, hook.TeamId, e => Write(e, plan, hook.DatasetName))
                     // A small call writes in place, and a rebuild running beside the engine would swap
                     // its clone in over the write: refused while one runs, and retried, as a large call
                     // waits for the shadow (12 Nov 2026).
-                    : IndxServerInternalApi.Manager.RunSmallDocumentWrite(hook.DatasetName, hook.TeamId, live => Write(live, plan));
+                    : IndxServerInternalApi.Manager.RunSmallDocumentWrite(hook.DatasetName, hook.TeamId, live => Write(live, plan, hook.DatasetName));
             }
             catch (ShadowBusyException) { return WebhookOutcome.Retry; }
             catch (DatasetAsleepException) { return WebhookOutcome.Retry; }
@@ -323,13 +323,22 @@ namespace IndxServer.Services.Webhooks
 
         /// <summary>Writes a plan; null when it all went in, else the engine's reason. Inserts on a
         /// dataset with nothing indexed yet load and index it, as the insert route does.</summary>
-        private static string? Write(IServerSearchEngine engine, WebhookPlan plan)
+        private static string? Write(IServerSearchEngine engine, WebhookPlan plan, string dataSetName)
         {
             if (plan.Inserts.Count > 0 && !engine.InsertJsonRecords(plan.Inserts.Select(i => i.Json), null, out var insertError))
                 return insertError;
             if (plan.Updates.Count > 0 && !engine.UpdateJsonRecords(plan.Updates.Select(u => u.Json), null, out var updateError))
                 return updateError;
-            foreach (var key in plan.Deletes) engine.DeleteJsonRecord(key);
+            foreach (var key in plan.Deletes)
+            {
+                // A delete the engine refuses because it is busy is not a delete done: the call is
+                // tried again, where it was logged as applied (16 Nov 2026). One it refuses because
+                // the document is already gone is what was asked for.
+                if (engine.DeleteJsonRecord(key, out var deleteError)) continue;
+                var state = engine.Status.SystemState;
+                if (state != SystemState.Ready) throw new ShadowBusyException(dataSetName, state);
+                if (deleteError?.Contains("index build", StringComparison.OrdinalIgnoreCase) == true) throw new ShadowBusyException(dataSetName);
+            }
             return null;
         }
 

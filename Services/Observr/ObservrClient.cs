@@ -1243,7 +1243,9 @@ namespace IndxServer.Services.Observr
             var gone = list.Entries.RemoveAll(e => SameTerms(e, terms) && e.Terms.Length == terms.Select(t => t.Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count());
             if (gone == 0) return;
             list.Invalidate();
-            engines.SetSynonyms(dataSetName, teamId, list);
+            // Not during a rebuild: the entry stays, and the undo can be asked for again.
+            try { engines.SetSynonyms(dataSetName, teamId, list); }
+            catch (ShadowBusyException) { }
         }
 
         public bool ApplySynonym(string teamId, string dataSetName, string[] terms)
@@ -1255,7 +1257,8 @@ namespace IndxServer.Services.Observr
                 return true;
             list.Entries.Add(new SynonymEntry { Direction = SynonymDirection.Multidirectional, Terms = clean });
             list.Invalidate();
-            return engines.SetSynonyms(dataSetName, teamId, list);
+            try { return engines.SetSynonyms(dataSetName, teamId, list); }
+            catch (ShadowBusyException) { return false; }
         }
 
         /// <summary>Carries out Search or ask settings as the tab's Save does: the stored settings with

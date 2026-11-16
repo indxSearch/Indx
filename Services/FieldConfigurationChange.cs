@@ -162,8 +162,20 @@ namespace IndxServer.Services
         /// <summary>Applies a change that needs no rebuild to the live engine, and saves it: the
         /// library persists by itself only when told of a change. Returns the name of
         /// a field that does not exist, or null.</summary>
+        /// <remarks>Inside the dataset's write gate, on the engine live there
+        /// (<c>RunSmallWrite</c>, 16 Nov 2026): while a rebuild runs it throws
+        /// <see cref="Models.ShadowBusyException"/>, and <paramref name="engine"/>, resolved by the
+        /// caller before the gate, is written to only where there is no registry (a test's engine).
+        /// A change applied to the engine a rebuild was about to retire was gone at the swap, and
+        /// the rebuild's own save then put the old configuration back in the store.</remarks>
         public static string? ApplyInPlace(IServerSearchEngine engine, FieldProxy[] proposed,
-                                           string dataSetName, string teamId)
+                                           string dataSetName, string teamId) =>
+            Engine.IndxServerInternalApi.ManagerOrNull is { } manager
+                ? manager.RunSmallWrite(dataSetName, teamId, live => ApplyTo(live, proposed, dataSetName, teamId))
+                : ApplyTo(engine, proposed, dataSetName, teamId);
+
+        private static string? ApplyTo(IServerSearchEngine engine, FieldProxy[] proposed,
+                                       string dataSetName, string teamId)
         {
             // Before applying: afterwards there is nothing left to diff against. Only a Ready
             // dataset's change is recorded; configuring one before its first index is setup.

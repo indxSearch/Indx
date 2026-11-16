@@ -111,8 +111,13 @@ namespace IndxServer.Services
         public string? RenameDataSet(string d, string t, string newName)
         {
             var error = M.RenameDataSet(d, t, newName);
-            if (error == null && statistics.Enabled)
-                statistics.Store!.RenameDataset(t, d, newName);
+            if (error == null && statistics.Enabled && statistics.Store != null)
+            {
+                // Flushed first, as on a transfer: an event queued under the old name would be
+                // written after the move and left behind.
+                statistics.Writer?.Flush();
+                statistics.Store.RenameDataset(t, d, newName);
+            }
             return error;
         }
 

@@ -268,6 +268,24 @@ namespace IndxServer.Services
 
         // ---- Helpers -----------------------------------------------------------------------
 
+        /// <summary>
+        /// Throws <see cref="TeamException"/> unless <paramref name="actingUserId"/> is an Admin of
+        /// the team now, as the database has it. The console keeps the role it read when its page
+        /// opened, and its own context may hold the membership as it was then, so what a page shows
+        /// is not what is asked here: the row is read fresh and untracked. Called before every
+        /// change a team's settings page makes to the team or to another member.
+        /// </summary>
+        public async Task RequireAdminAsync(Guid teamId, string actingUserId)
+        {
+            var role = await db.TeamMembers.AsNoTracking()
+                .Where(m => m.TeamId == teamId && m.UserId == actingUserId)
+                .Select(m => m.Role).FirstOrDefaultAsync();
+            if (!TeamRoles.CanAdmin(role))
+                throw new TeamException(role == null
+                    ? "You are no longer a member of this team. Reload the page."
+                    : "Only an Admin of the team can do this, and your role has changed. Reload the page.");
+        }
+
         /// <summary>True if <paramref name="userId"/> is the only Admin left on the team.</summary>
         public async Task<bool> IsLastAdminAsync(Guid teamId, string userId)
         {

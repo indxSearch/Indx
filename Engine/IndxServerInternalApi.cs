@@ -17,6 +17,15 @@ namespace IndxServer.Engine
     internal sealed partial class IndxServerInternalApi
     {
         #region Public Methods
+        /// <summary>
+        /// The engine to analyse into: the dataset's own when it is unloaded, else a new one in its
+        /// place, the old disposed. The replacement is taken out and built as every instance is
+        /// (<see cref="DisposeDataSetInstance"/>, <see cref="GetOrCreateInstance"/>), under the
+        /// registry's lock and with the dataset's name, team, keep-alive and synonym list. Until 16
+        /// Nov 2026 this changed the registry with no lock held and built a bare instance, which
+        /// read as pinned and had no synonyms. Throws <see cref="ShadowBusyException"/> while a
+        /// rebuild runs: its engine would be swapped into an instance no longer in the registry.
+        /// </summary>
         public IServerSearchEngine? FindSearchEngineForInit(string dataSetName, string teamId)
         {
             var matcher = FindInstance(dataSetName, teamId);
@@ -24,23 +33,10 @@ namespace IndxServer.Engine
                 return null;
             if (matcher.Status.SystemState == SystemState.Created)
                 return matcher;
-            matcher.Dispose();
-            _instances.Remove(MakeKey(dataSetName, teamId));
-            var persistence = new Persistence(IndxServerInternalApi.SearchDbConnectionString, dataSetName, teamId);
-            // invariant; DataSetExists() == true
-            int? configuration = persistence.ReadDataSetConfiguration();
-            if (configuration == null)
-                return null;
-            persistence.CreateOrOpenDataSet((int)configuration);
-
-            var licensePath = GetLicensePath();
-            var newMatcher = new SearchEngine(MakeLogPrefix(teamId, dataSetName), _loggerFactory,
-               ResolveConfiguration(configuration, dataSetName), licensePath)
-            {
-                Persistence = persistence
-            };
-            _instances.Add(MakeKey(dataSetName, teamId), new SearchEngineInstance() { theInstance = newMatcher });
-            return newMatcher;
+            if (_shadowBuildsInProgress.ContainsKey(MakeKey(dataSetName, teamId)))
+                throw new ShadowBusyException(dataSetName);
+            DisposeDataSetInstance(dataSetName, teamId);
+            return FindInstance(dataSetName, teamId);
         }
         public IServerSearchEngine? FindSearchEngine(string dataSetName, string teamId)
         {
@@ -364,7 +360,9 @@ namespace IndxServer.Engine
         /// </remarks>
         internal async Task<string?> InitFromStreamAsync(string dataSetName, string teamId, Stream jsonStream)
         {
-            var engine = FindSearchEngineForInit(dataSetName, teamId);
+            IServerSearchEngine? engine;
+            try { engine = FindSearchEngineForInit(dataSetName, teamId); }
+            catch (ShadowBusyException ex) { return ex.Message; }
             if (engine == null)
                 return "Dataset not found";
             using var monitor = new ProcessMonitor();
@@ -411,10 +409,15 @@ namespace IndxServer.Engine
             }
             else
             {
-                if (instance.DocumentFields == null)
+                // A shell built after a restart has no field configuration yet; without one there
+                // is nothing to load into. LoadDocumentFieldsFromDb answers whether it read one:
+                // until 16 Nov 2026 the answer was taken the other way round, so the first load
+                // from the database of a client-managed dataset after a restart failed, and the
+                // second, the configuration now read, went through.
+                if (instance.DocumentFields == null && !instance.LoadDocumentFieldsFromDb())
                 {
-                    if (instance.LoadDocumentFieldsFromDb())
-                        return false;
+                    monitor.MarkFinished();
+                    return false;
                 }
 
                 UseSavedEmbeddings(instance, dataSetName, teamId);
@@ -1018,11 +1021,21 @@ namespace IndxServer.Engine
         /// <paramref name="list"/> is null. Takes effect on the next search — synonyms are applied to
         /// the query text, so nothing has to be re-indexed. Returns false when the dataset does not
         /// exist in storage.
+        /// <para>Inside the dataset's write gate, on the engine live there (<see cref="RunSmallWrite{T}"/>,
+        /// 16 Nov 2026), whoever calls: while a rebuild runs it throws
+        /// <see cref="ShadowBusyException"/>, since the rebuilt engine takes the list it was cloned
+        /// with and a list set meanwhile would be gone at the swap. Until then only the HTTP route
+        /// took the gate, and a list saved in the console or by Observr during a rebuild was lost.</para>
         /// </summary>
         internal bool SetSynonyms(string dataSetName, string teamId, SynonymList? list)
         {
-            var engine = FindInstance(dataSetName, teamId);
-            if (engine?.Persistence == null)
+            try { return RunSmallWrite(dataSetName, teamId, engine => SetSynonymsOn(engine, dataSetName, teamId, list)); }
+            catch (KeyNotFoundException) { return false; }
+        }
+
+        private bool SetSynonymsOn(IServerSearchEngine engine, string dataSetName, string teamId, SynonymList? list)
+        {
+            if (engine.Persistence == null)
                 return false;
             // Every path to a synonym change lands here (HTTP, console, copy from another
             // dataset). A replace restores the stored list directly and is not a change.
@@ -1129,9 +1142,13 @@ namespace IndxServer.Engine
             if (_shadowBuildsInProgress.ContainsKey(MakeKey(dataSetName, teamId))) return "A field-configuration or replace build is in progress; try again when it has finished.";
 
             var wasReady = FindInstance(dataSetName, teamId)?.Status.SystemState == SystemState.Ready;
-            DisposeDataSetInstance(dataSetName, teamId);
+            // Rows first, instance second, as DeleteDataSet does and for its reason: with the
+            // instance gone and the row still under the old name, a request for that name built
+            // a new engine and loaded it, and that engine answered for the old name until a
+            // restart (16 Nov 2026).
             var db = new SqLiteManager(SearchDbConnectionString);
             db.RenameDataSet(dataSetName, teamId, newName);
+            DisposeDataSetInstance(dataSetName, teamId);
             Services.DatasetRecordCounts.Forget(dataSetName, teamId);
             Services.DatasetRecordCounts.Forget(newName, teamId);
             _boostStore?.Rename(teamId, dataSetName, newName);
@@ -1154,7 +1171,7 @@ namespace IndxServer.Engine
             if (wasReady && instance?.Persistence != null && instance.Persistence.NumberOfJsonRecords() > 0)
             {
                 var loadMonitor = new ProcessMonitor();
-                using (TrackMonitor(dataSetName, teamId, loadMonitor))
+                using (TrackMonitor(newName, teamId, loadMonitor))
                 {
                     UseSavedEmbeddings(instance, newName, teamId);
                     instance.LoadFromDatabaseSync(loadMonitor);
@@ -1182,9 +1199,10 @@ namespace IndxServer.Engine
 
         internal void TransferOwnership(string dataSetName, string currentTeamId, string newTeamId)
         {
-            DisposeDataSetInstance(dataSetName, currentTeamId);
+            // Rows first, instance second: see RenameDataSet.
             var db = new SqLiteManager(SearchDbConnectionString);
             db.TransferOwnership(dataSetName, currentTeamId, newTeamId);
+            DisposeDataSetInstance(dataSetName, currentTeamId);
             Services.DatasetRecordCounts.Forget(dataSetName, currentTeamId);
             Services.DatasetRecordCounts.Forget(dataSetName, newTeamId);
             _boostStore?.Transfer(currentTeamId, newTeamId, dataSetName);

@@ -346,7 +346,9 @@
     {
         InvalidateFilterEngine();
         var copy = _list == null ? null : SynonymList.Deserialize(_list.GetSerialized());
-        return await Task.Run(() => Ctx.Engines.SetSynonyms(Ctx.Name, Ctx.TeamId, copy));
+        try { return await Task.Run(() => Ctx.Engines.SetSynonyms(Ctx.Name, Ctx.TeamId, copy)); }
+        // The index is being rebuilt: the rebuilt one takes the list as it was, so nothing is saved now.
+        catch (IndxServer.Models.ShadowBusyException) { return false; }
     }
 
     private async Task ImportAsync(InputFileChangeEventArgs e)

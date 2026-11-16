@@ -204,6 +204,14 @@ namespace IndxServer.Controllers
                 if (failed != null)
                     return ApiProblems.InvalidArgument($"Field '{failed}' does not exist in this dataset.");
             }
+            catch (ShadowBusyException ex)
+            {
+                return ApiProblems.ShadowBusy(ex.Message);
+            }
+            catch (KeyNotFoundException)
+            {
+                return ApiProblems.DatasetNotFound(dataSetName);
+            }
             catch (ArgumentException ex)
             {
                 return ApiProblems.InvalidArgument(ex.Message);
