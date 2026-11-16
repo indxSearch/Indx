@@ -92,6 +92,38 @@ namespace IndxServer.Engine
             }
         }
 
+        /// <summary>
+        /// <see cref="RunSmallWrite{T}"/> for a write of documents, refused with
+        /// <see cref="DatasetAsleepException"/> while the dataset sleeps with records in the store
+        /// (<see cref="RefuseDocumentsWhileAsleep"/>).
+        /// </summary>
+        internal T RunSmallDocumentWrite<T>(string dataSetName, string teamId, Func<IServerSearchEngine, T> write) =>
+            RunSmallWrite(dataSetName, teamId, live =>
+            {
+                RefuseDocumentsWhileAsleep(live, dataSetName);
+                return write(live);
+            });
+
+        /// <summary>True for an engine that is unloaded while its dataset has records in the store:
+        /// hibernated and not woken by the server (keep-alive Off), or a wake that failed.</summary>
+        internal static bool IsAsleepWithRecords(IServerSearchEngine engine) =>
+            engine.Status.SystemState == SystemState.Created && (engine.Persistence?.NumberOfJsonRecords() ?? 0) > 0;
+
+        /// <summary>
+        /// Every write of documents passes here before it reaches the engine (16 Nov 2026). An
+        /// unloaded engine that still holds its field configuration, which is what hibernating
+        /// leaves, takes an insert as a load (<c>SearchEngine.InsertJsonRecords</c>), and a load
+        /// clears the dataset's stored records first. Until then one record inserted into a
+        /// hibernated keep-alive Off dataset, over HTTP or by a webhook, left that record as the
+        /// whole dataset and was answered as a success. The load-on-insert is for a dataset with
+        /// nothing stored.
+        /// </summary>
+        private static void RefuseDocumentsWhileAsleep(IServerSearchEngine engine, string dataSetName)
+        {
+            if (IsAsleepWithRecords(engine))
+                throw new DatasetAsleepException(dataSetName, engine.Persistence!.NumberOfJsonRecords());
+        }
+
         /// <summary>Records how the build ended and gives the dataset up for the next one. In
         /// that order: a caller polling status must never see "no build running" before the
         /// outcome of the one that just ran is there to read.</summary>
@@ -242,7 +274,10 @@ namespace IndxServer.Engine
             // Created/Loaded still run directly: there is no live index to protect, and the engine
             // has its own handling for them. Only Ready earns a shadow.
             if (state != SystemState.Ready)
+            {
+                RefuseDocumentsWhileAsleep(matcher, dataSetName);
                 return mutation(matcher);
+            }
 
             return RunMutationOnShadow(dataSetName, teamId, mutation);
         }
@@ -329,17 +364,18 @@ namespace IndxServer.Engine
                         $"Shadow indexing failed: {monitor.ErrorMessage ?? "unknown error"}", monitor.Exception);
 
                 IServerSearchEngine? swappedOut;
+                var live = shadow;
                 lock (_dictionaryLock)
                 {
                     swappedOut = container.theInstance;
                     container.theInstance = shadow;
                 }
-
-                var df = shadow.DocumentFields;
-                if (df != null)
-                    shadow.Persistence?.SaveDocumentFields(df.GetSerialized());
-
+                // The container owns it from here. Given up before anything that can throw: until
+                // 16 Nov 2026 the save below came first, and when it threw (the database locked by
+                // another dataset's load, a full disk) the finally disposed the engine that had
+                // just been made live, and every request for the dataset failed until a restart.
                 shadow = null;
+                SaveFieldsOfTheSwappedIn(live, dataSetName, teamId);
 
                 // Every change to a loaded dataset's field configuration ends here (seven fields/*
                 // routes and the console); with no fields it is a plain rebuild, POST index on a
@@ -375,6 +411,27 @@ namespace IndxServer.Engine
                     }
                 }
                 ReleaseShadowBuild(key, failure);
+            }
+        }
+
+        /// <summary>
+        /// Stores the field configuration of the engine a swap has just made live, so a later wake
+        /// restores it. A failure is logged and the swap stands: the engine serves with the new
+        /// configuration, and the store keeps the old one until the next save.
+        /// </summary>
+        private void SaveFieldsOfTheSwappedIn(IServerSearchEngine live, string dataSetName, string teamId)
+        {
+            try
+            {
+                var df = live.DocumentFields;
+                if (df != null)
+                    live.Persistence?.SaveDocumentFields(df.GetSerialized());
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex,
+                    "{Prefix}The rebuilt index is live, but its field configuration could not be stored; a wake or restart would bring the stored one back",
+                    MakeLogPrefix(teamId, dataSetName));
             }
         }
 

@@ -131,7 +131,9 @@ internal static class StartupPipeline
             {
                 var path = context.Request.Path;
                 var allowed =
-                    path.StartsWithSegments("/api/changePassword", StringComparison.OrdinalIgnoreCase)
+                    // The documented route, and the older spelling it replaced.
+                    path.StartsWithSegments("/api/change-password", StringComparison.OrdinalIgnoreCase)
+                    || path.StartsWithSegments("/api/changePassword", StringComparison.OrdinalIgnoreCase)
                     || path.StartsWithSegments("/account/change-password", StringComparison.OrdinalIgnoreCase);
 
                 if (!allowed)
@@ -143,7 +145,7 @@ internal static class StartupPipeline
                         {
                             Status = StatusCodes.Status403Forbidden,
                             Title = "Password change required",
-                            Detail = "Password change required. Call POST /api/changePassword first.",
+                            Detail = "Password change required. Call POST /api/change-password first.",
                             Extensions = { ["code"] = "passwordChangeRequired" }
                         };
                         await context.Response.WriteAsJsonAsync(problem,
@@ -152,7 +154,7 @@ internal static class StartupPipeline
                     else
                     {
                         await context.Response.WriteAsync(
-                            "Password change required. Call POST /api/changePassword first.");
+                            "Password change required. Call POST /api/change-password first.");
                     }
                     return;
                 }

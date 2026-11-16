@@ -179,6 +179,14 @@ else if (externalLogins.Count > 0)
         if (result.Succeeded)
         {
             Logger.LogInformation("User {Email} logged in successfully", Input.Email);
+            // An account on a password it was given (the seeded admin's, printed in the startup log)
+            // is asked for its own first, as that log promises.
+            var signedIn = await UserManager.FindByEmailAsync(Input.Email);
+            if (signedIn?.MustChangePassword == true)
+            {
+                NavigationManager.NavigateTo("/account/change-password", forceLoad: true);
+                return;
+            }
             NavigationManager.NavigateTo(ReturnUrl ?? "/", forceLoad: true);
         }
         else if (result.RequiresTwoFactor)

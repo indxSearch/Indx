@@ -624,6 +624,8 @@
             var result = await Admin.ApplyHeldAsync(hook, heldId);
             if (result == WebhookAdmin.HeldResult.Busy)
                 Toasts.Error("The dataset is loading or being rebuilt, so the batch is held again. Try in a moment.");
+            else if (result == WebhookAdmin.HeldResult.Failed)
+                Toasts.Error("The batch could not be applied and is held again. Its delivery below says why.");
             else if (result == WebhookAdmin.HeldResult.Applied)
                 Toasts.Show("Applied the held batch.", DatasetIcons.Yes);
         }
@@ -684,8 +686,9 @@
         _busy = AllHeld;
         try
         {
-            var (applied, busy) = await Admin.ApplyAllHeldAsync(hook);
-            if (busy) Toasts.Error($"Applied {applied}; the dataset is loading or being rebuilt, so the rest stay held. Try in a moment.");
+            var (applied, busy, failed) = await Admin.ApplyAllHeldAsync(hook);
+            if (failed) Toasts.Error($"Applied {applied}; a batch could not be applied, so it and the rest stay held. Its delivery below says why.");
+            else if (busy) Toasts.Error($"Applied {applied}; the dataset is loading or being rebuilt, so the rest stay held. Try in a moment.");
             else Toasts.Show("Applied what was waiting.", DatasetIcons.Yes);
         }
         finally

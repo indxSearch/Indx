@@ -37,7 +37,11 @@ namespace IndxServer.Services
             // Invited to a team: that team, in the invited role, and no team of their own beside
             // it (Nov 2026; before, everyone got one, and an invited colleague landed in an empty
             // team named after their email). They can still make one with New team.
-            var joined = await invites.AcceptAsync(user, email);
+            // Only for an address the registrant has shown to be theirs: registered through the
+            // invite's link, or signed in with a provider that vouches for it (both arrive
+            // confirmed). Unconfirmed, the invite waits for AddressConfirmedAsync and the account
+            // gets a team of its own.
+            var joined = user.EmailConfirmed ? await invites.AcceptAsync(user, email) : null;
             if (joined != null)
             {
                 await teamService.SetLastTeamAsync(user.Id, joined.Id);
@@ -62,6 +66,19 @@ namespace IndxServer.Services
 
             logger.LogInformation(
                 "Provisioned new user {Email} (firstUser={IsFirst}, team={Team})", email, isFirstUser, joined?.Name ?? "personal");
+        }
+
+        /// <summary>
+        /// The account's address has just been confirmed (the link in the confirmation email): the
+        /// invites that waited for that are accepted now, and the user lands on the team joined.
+        /// </summary>
+        public async Task AddressConfirmedAsync(ApplicationUser user)
+        {
+            if (string.IsNullOrEmpty(user.Email)) return;
+            var joined = await invites.AcceptAsync(user, user.Email);
+            if (joined == null) return;
+            await teamService.SetLastTeamAsync(user.Id, joined.Id);
+            logger.LogInformation("{Email} confirmed their address and joined {Team} by its invite", user.Email, joined.Name);
         }
     }
 }

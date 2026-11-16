@@ -542,6 +542,9 @@ internal static class StartupServices
                 options.ClientId = googleClientId;
                 options.ClientSecret = googleClientSecret;
                 options.CallbackPath = "/signin-google";
+                // Whether Google vouches for the address: an account is found by it only then
+                // (ExternalEmail). The handler does not map it by itself.
+                options.ClaimActions.MapJsonKey(IndxServer.Services.ExternalEmail.VerifiedClaim, "email_verified", "boolean");
 
                 // Optional: Request additional scopes
                 options.Scope.Add("profile");

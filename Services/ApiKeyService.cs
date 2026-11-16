@@ -41,6 +41,7 @@ namespace IndxServer.Services
             if (expirationDays is < 1 or > 366) throw new ArgumentException("Expiration must be between 1 and 366 days.");
             if (!Enum.IsDefined(level)) throw new ArgumentException("Unknown access level.");
 
+            MustHaveItsOwnPassword(user);
             var role = teams.GetRole(teamId, user.Id)
                 ?? throw new ArgumentException("You are not a member of that team.");
 
@@ -97,6 +98,7 @@ namespace IndxServer.Services
             if (expirationDays == null && level != ApiKeyLevel.Search)
                 throw new ArgumentException("Only a Search key can be set to never expire. Keys that read or change data need an expiry.");
             if (expirationDays is < 1 or > 366) throw new ArgumentException("Expiration must be between 1 and 366 days.");
+            MustHaveItsOwnPassword(creator);
             RequireTeamAdmin(teamId, creator.Id);
             privateCold = PrivateCold(level, privateCold);
 
@@ -141,6 +143,15 @@ namespace IndxServer.Services
             logger.LogInformation("Team key \"{Name}\" created in {Team} by {User}: {Level}, expires {Expires}",
                 record.Name, await TeamNameAsync(teamId), creator.Email, record.Level, record.ExpiresAt?.ToString("yyyy-MM-dd") ?? "never");
             return new Created(token, record);
+        }
+
+        /// <summary>An account still on a password it was given (the seeded admin's, printed in the
+        /// startup log) makes no key: a key outlives the password change that retires the account's
+        /// tokens, so one minted on the first password would be a way around it.</summary>
+        private static void MustHaveItsOwnPassword(ApplicationUser user)
+        {
+            if (user.MustChangePassword)
+                throw new ArgumentException("Change your password first: this account is still on the password it was given.");
         }
 
         public Task<List<ApiKey>> ListAsync(string userId) =>

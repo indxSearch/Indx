@@ -89,7 +89,7 @@ namespace IndxServer.Services.Webhooks
             return true;
         }
 
-        public enum HeldResult { Applied, NotFound, Busy }
+        public enum HeldResult { Applied, NotFound, Busy, Failed }
 
         /// <summary>Applies a held batch as it came, past the brake. A busy dataset holds it again.</summary>
         public async Task<HeldResult> ApplyHeldAsync(Webhook hook, string heldId)
@@ -98,23 +98,28 @@ namespace IndxServer.Services.Webhooks
             var outcome = held.Kind == WebhookKinds.Sync
                 ? await applier.ApplySyncAsync(hook, held.Body, held.HeldUtc, pastBrake: true)
                 : await applier.ApplyAsync(hook, held.Body, held.HeldUtc, pastBrake: true);
-            if (outcome != WebhookOutcome.Retry) return HeldResult.Applied;
+            if (outcome is WebhookOutcome.Applied or WebhookOutcome.Held) return HeldResult.Applied;
+            // Not applied: held again, where it was. Until 16 Nov 2026 only a busy dataset did that,
+            // and a batch whose write failed or was refused was gone, and reported as applied. The
+            // webhook's deliveries say why; an admin applies it again or discards it.
             store.Hold(hook.Id, held.Reason, held.Events, held.Body, held.Kind, held.HeldUtc);
-            return HeldResult.Busy;
+            return outcome == WebhookOutcome.Retry ? HeldResult.Busy : HeldResult.Failed;
         }
 
-        /// <summary>Applies every held batch, in the order they were held. Stops at a busy dataset,
-        /// leaving the rest held in their places. Returns how many were applied.</summary>
-        public async Task<(int Applied, bool Busy)> ApplyAllHeldAsync(Webhook hook)
+        /// <summary>Applies every held batch, in the order they were held. Stops at a busy dataset
+        /// and at a batch that could not be applied, leaving it and the rest held in their places:
+        /// nothing overtakes what waits. Returns how many were applied, and why it stopped.</summary>
+        public async Task<(int Applied, bool Busy, bool Failed)> ApplyAllHeldAsync(Webhook hook)
         {
             var applied = 0;
             foreach (var held in store.Held(hook.Id))
             {
                 var result = await ApplyHeldAsync(hook, held.Id);
-                if (result == HeldResult.Busy) return (applied, true);
+                if (result == HeldResult.Busy) return (applied, true, false);
+                if (result == HeldResult.Failed) return (applied, false, true);
                 if (result == HeldResult.Applied) applied++;
             }
-            return (applied, false);
+            return (applied, false, false);
         }
 
         /// <summary>Discards every held batch: nothing in them is applied. Returns how many.</summary>

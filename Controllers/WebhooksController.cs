@@ -159,6 +159,9 @@ namespace IndxServer.Controllers
             if (result == WebhookAdmin.HeldResult.Busy)
                 return ApiProblems.Problem(StatusCodes.Status409Conflict, "datasetBusy", "The dataset is busy",
                     "The dataset is loading or being rebuilt; the batch is held again. Try in a moment.");
+            if (result == WebhookAdmin.HeldResult.Failed)
+                return ApiProblems.Problem(StatusCodes.Status409Conflict, "heldBatchFailed", "The batch could not be applied",
+                    "The batch was refused or its write failed, and it is held again. The webhook's deliveries say why; apply it again or discard it.");
             return NoContent();
         }
 
@@ -185,7 +188,10 @@ namespace IndxServer.Controllers
             var ctx = ResolveTeam(teamName, out var error, write: true, admin: true);
             if (ctx == null) return error!;
             if (Owned(ctx, dataSetName, webhookId) is not { } hook) return WebhookNotFound(webhookId);
-            var (_, busy) = await admin.ApplyAllHeldAsync(hook);
+            var (_, busy, failed) = await admin.ApplyAllHeldAsync(hook);
+            if (failed)
+                return ApiProblems.Problem(StatusCodes.Status409Conflict, "heldBatchFailed", "A batch could not be applied",
+                    "A batch was refused or its write failed; it and those after it stay held. The webhook's deliveries say why; apply again or discard.");
             return busy
                 ? ApiProblems.Problem(StatusCodes.Status409Conflict, "datasetBusy", "The dataset is busy",
                     "The dataset is loading or being rebuilt; the batches not yet applied stay held. Try in a moment.")

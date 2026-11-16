@@ -78,19 +78,20 @@ namespace IndxServer.Engine
                 // SearchEngineInstance indirection; only the inner pointer flips.
                 _replaceProgress[key] = new ReplaceProgress(ReplaceStep.Swapping, -1);
                 IServerSearchEngine? swappedOut;
+                var live = shadow;
                 lock (_dictionaryLock)
                 {
                     swappedOut = container.theInstance;
                     container.theInstance = shadow;
                 }
+                // Ownership transferred, before anything that can throw: a throw with the shadow
+                // still held made the finally dispose the engine just made live (16 Nov 2026).
+                shadow = null;
 
                 // Persist the reconciled field config so a future wake restores it.
-                var df = shadow.DocumentFields;
-                if (df != null)
-                    shadow.Persistence?.SaveDocumentFields(df.GetSerialized());
+                SaveFieldsOfTheSwappedIn(live, dataSetName, teamId);
 
                 container.Touch(TimeProvider.GetUtcNow());
-                shadow = null; // ownership transferred
                 // Graphs saved at an earlier sleep are of the documents that were just replaced.
                 DeleteSavedEmbeddings(dataSetName, teamId);
 

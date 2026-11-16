@@ -113,12 +113,23 @@ namespace IndxServer.Controllers
         /// The write is given the engine to write to, the one live once the gate is held: never
         /// write to an engine resolved before the call, which a rebuild may have retired since.
         /// </summary>
-        protected static bool WriteUnlessRebuilding(string dataSetName, string teamId, Func<IServerSearchEngine, bool> write, out ActionResult? refused)
+        /// <paramref name="documents"/> is true for a write of documents, which is also refused (409
+        /// invalidState) while the dataset sleeps with records in the store
+        /// (<see cref="DatasetAsleepException"/>); the synonym list is set in any state.
+        protected static bool WriteUnlessRebuilding(string dataSetName, string teamId, Func<IServerSearchEngine, bool> write, out ActionResult? refused,
+            bool documents = true)
         {
             refused = null;
             try
             {
-                return IndxServerInternalApi.Manager.RunSmallWrite(dataSetName, teamId, write);
+                return documents
+                    ? IndxServerInternalApi.Manager.RunSmallDocumentWrite(dataSetName, teamId, write)
+                    : IndxServerInternalApi.Manager.RunSmallWrite(dataSetName, teamId, write);
+            }
+            catch (DatasetAsleepException ex)
+            {
+                refused = Asleep(ex);
+                return false;
             }
             catch (ShadowBusyException ex)
             {
@@ -161,7 +172,15 @@ namespace IndxServer.Controllers
             {
                 return ApiProblems.ShadowBusy(ex.Message);
             }
+            catch (DatasetAsleepException ex)
+            {
+                return Asleep(ex);
+            }
         }
+
+        /// <summary>409 invalidState for a write of documents to a sleeping dataset.</summary>
+        private static ActionResult Asleep(DatasetAsleepException ex) =>
+            ApiProblems.Problem(StatusCodes.Status409Conflict, "invalidState", "Dataset not in a valid state for this operation", ex.Message);
 
         /// <summary>
         /// Lifecycle-state guard. Returns <c>null</c> when <paramref name="engine"/> is in one of the

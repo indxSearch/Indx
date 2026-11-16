@@ -1,6 +1,9 @@
 ﻿@page "/account/external-login"
 
 @using System.Security.Claims
+@using System.Text
+@using Microsoft.AspNetCore.WebUtilities
+@using Microsoft.AspNetCore.Identity.UI.Services
 @using Microsoft.AspNetCore.Identity
 @using IndxServer.Data
 @using IndxServer.Services
@@ -14,6 +17,8 @@
 @inject RegistrationValidator RegistrationValidator
 @inject UserProvisioningService UserProvisioning
 @inject EntraSignIn Entra
+@inject IEmailSender EmailSender
+@inject InstanceSettingsService InstanceSettingsService
 
 <PageTitle>Processing login</PageTitle>
 
@@ -109,6 +114,12 @@
         {
             RedirectManager.RedirectTo("account/lockout");
         }
+        else if (result.IsNotAllowed)
+        {
+            // The login is linked, to an account whose address is not confirmed yet.
+            NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString("Confirm your email address first: use the link we sent you.")}");
+            return;
+        }
 
         // If the user does not have an account, automatically create one using the OAuth email
         var email = externalLoginInfo.Principal.FindFirstValue(ClaimTypes.Email);
@@ -119,19 +130,21 @@
             return;
         }
 
-        // Guard: if the provider sends email_verified, it must be true before we do anything with the email.
-        var emailVerifiedClaim = externalLoginInfo.Principal.FindFirstValue("email_verified");
-        if (emailVerifiedClaim != null && emailVerifiedClaim != "true")
-        {
-            Logger.LogWarning("OAuth email not verified by provider {Provider} for {Email}", externalLoginInfo.LoginProvider, email);
-            NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString("Your email address has not been verified by the sign-in provider. Please verify it and try again.")}");
-            return;
-        }
+        // Only an address the provider vouches for finds an account or proves itself (ExternalEmail).
+        var emailVerified = ExternalEmail.IsVerified(externalLoginInfo.Principal);
 
         // Check if an account with this email already exists.
         var existingUser = await UserManager.FindByEmailAsync(email);
         if (existingUser != null)
         {
+            if (!emailVerified)
+            {
+                // The address is only claimed: it does not sign anyone in as the account that has it.
+                Logger.LogWarning("{Provider} sign-in for {Email} refused: the address has an account and the provider does not vouch for it",
+                    externalLoginInfo.LoginProvider, email);
+                NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString("An account with this email address already exists. Sign in with its password.")}");
+                return;
+            }
             if (!existingUser.EmailConfirmed)
             {
                 // The existing account was registered without verifying ownership of the address.
@@ -188,7 +201,12 @@
 
         await UserStore.SetUserNameAsync(user, email, CancellationToken.None);
         await emailStore.SetEmailAsync(user, email, CancellationToken.None);
-        user.EmailConfirmed = true; // Auto-confirm for OAuth
+        // Confirmed when the provider vouches for the address. A claimed one makes an account like a
+        // registration's: unconfirmed, so no invite to the address is accepted for it
+        // (UserProvisioningService) until its owner follows the link sent to it.
+        // The instance's first account is its owner setting it up, as Setup's own form confirms it:
+        // there is no account or invite yet for the address to reach.
+        user.EmailConfirmed = emailVerified || !UserManager.Users.Any();
 
         var createResult = await UserManager.CreateAsync(user);
         if (createResult.Succeeded)
@@ -201,6 +219,21 @@
             var addLoginResult = await UserManager.AddLoginAsync(user, externalLoginInfo);
             if (addLoginResult.Succeeded)
             {
+                if (!user.EmailConfirmed)
+                {
+                    var code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(await UserManager.GenerateEmailConfirmationTokenAsync(user)));
+                    var callbackUrl = NavigationManager.GetUriWithQueryParameters(
+                        NavigationManager.ToAbsoluteUri("account/confirm-email").AbsoluteUri,
+                        new Dictionary<string, object?> { ["userId"] = user.Id, ["code"] = code, ["returnUrl"] = ReturnUrl });
+                    var instanceName = InstanceSettingsService.Load().InstanceName;
+                    await EmailSender.SendEmailAsync(email, EmailTemplates.Subject(instanceName, "Please verify your email"),
+                        EmailTemplates.VerifyEmail(instanceName, callbackUrl));
+                    if (InstanceSettingsService.Load().RequireEmailVerification)
+                    {
+                        RedirectManager.RedirectTo("account/register-confirmation", new() { ["email"] = email, ["returnUrl"] = ReturnUrl });
+                        return;
+                    }
+                }
                 Logger.LogInformation("User created an account using {Name} provider.", externalLoginInfo.LoginProvider);
                 await SignInManager.SignInAsync(user, isPersistent: false, externalLoginInfo.LoginProvider);
                 RedirectManager.RedirectTo(ReturnUrl ?? "/account/api-key");

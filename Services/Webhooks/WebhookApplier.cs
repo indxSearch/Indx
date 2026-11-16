@@ -38,6 +38,10 @@ namespace IndxServer.Services.Webhooks
             }
             var state = engine.Status.SystemState;
             if (state is SystemState.Loading or SystemState.Indexing) return WebhookOutcome.Retry;
+            // Asleep with its records in the store (hibernated with keep-alive Off, which the server
+            // does not wake): the call waits for the wake. Planned now, every document would look
+            // new, and the insert would be taken as a load that replaces the stored records.
+            if (IndxServerInternalApi.IsAsleepWithRecords(engine)) return WebhookOutcome.Retry;
 
             // The source's view of the call: Sanity's documents as they are now, and those that refer
             // to them. A held batch was resolved when it was held, and is applied as it stands.
@@ -124,9 +128,10 @@ namespace IndxServer.Services.Webhooks
                     // A small call writes in place, and a rebuild running beside the engine would swap
                     // its clone in over the write: refused while one runs, and retried, as a large call
                     // waits for the shadow (12 Nov 2026).
-                    : IndxServerInternalApi.Manager.RunSmallWrite(hook.DatasetName, hook.TeamId, live => Write(live, plan));
+                    : IndxServerInternalApi.Manager.RunSmallDocumentWrite(hook.DatasetName, hook.TeamId, live => Write(live, plan));
             }
             catch (ShadowBusyException) { return WebhookOutcome.Retry; }
+            catch (DatasetAsleepException) { return WebhookOutcome.Retry; }
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "Webhook {Hook} could not write to {Team}/{Dataset}", hook.Id, hook.TeamId, hook.DatasetName);
@@ -173,6 +178,9 @@ namespace IndxServer.Services.Webhooks
                 return WebhookOutcome.Refused;
             }
             if (engine.Status.SystemState is SystemState.Loading or SystemState.Indexing) return WebhookOutcome.Retry;
+            // Asleep with its records in the store: the sync waits for the wake, as a call does. It
+            // would measure itself against an empty dataset, which no brake can hold.
+            if (IndxServerInternalApi.IsAsleepWithRecords(engine)) return WebhookOutcome.Retry;
 
             var source = sources.For(hook);
             if (string.IsNullOrEmpty(body))
@@ -226,6 +234,7 @@ namespace IndxServer.Services.Webhooks
                         (JsonNode.Parse(plan.Json) as JsonArray)?.OfType<JsonObject>().ToList())));
             }
             catch (ShadowBusyException) { return WebhookOutcome.Retry; }
+            catch (DatasetAsleepException) { return WebhookOutcome.Retry; }
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "Webhook {Hook} could not sync {Team}/{Dataset}", hook.Id, hook.TeamId, hook.DatasetName);

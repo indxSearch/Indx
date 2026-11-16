@@ -666,16 +666,22 @@ CREATE TABLE IF NOT EXISTS WebhookHeld (
 
         /// <summary>Takes a held batch out of the hold: to apply it (it goes to the front of the
         /// queue, past the brake) or to discard it. Null when there is no such batch.</summary>
+        /// <remarks>One statement (16 Nov 2026): the batch is read as it is deleted. It was read, then
+        /// deleted on another connection, so a call that joined the batch between the two was
+        /// dropped with it, and two admins applying at once both got the batch.</remarks>
         public WebhookHeldBatch? Release(string webhookId, string heldId)
         {
-            var held = Held(webhookId).FirstOrDefault(h => h.Id == heldId);
-            if (held == null) return null;
+            if (!Ensure()) return null;
             using var conn = Open();
             using var cmd = conn.CreateCommand();
-            cmd.CommandText = "DELETE FROM WebhookHeld WHERE Id = $id";
+            cmd.CommandText = "DELETE FROM WebhookHeld WHERE Id = $id AND WebhookId = $w RETURNING Id, WebhookId, HeldUtc, Reason, Events, Body, Kind";
             cmd.Parameters.AddWithValue("$id", heldId);
-            cmd.ExecuteNonQuery();
-            return held;
+            cmd.Parameters.AddWithValue("$w", webhookId);
+            using var r = cmd.ExecuteReader();
+            return r.Read()
+                ? new(r.GetString(0), r.GetString(1), DateTime.Parse(r.GetString(2), null, System.Globalization.DateTimeStyles.RoundtripKind),
+                    r.GetString(3), r.GetInt32(4), r.GetString(5), r.GetString(6))
+                : null;
         }
     }
 }

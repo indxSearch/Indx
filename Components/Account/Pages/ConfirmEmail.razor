@@ -7,6 +7,7 @@
 @inject UserManager<ApplicationUser> UserManager
 @inject NavigationManager NavigationManager
 @inject IndxServer.Services.NotificationService NotificationService
+@inject IndxServer.Services.UserProvisioningService UserProvisioning
 
 <PageTitle>Confirm email</PageTitle>
 
@@ -75,6 +76,8 @@ else
             if (result.Succeeded)
             {
                 success = true;
+                // Invites to this address waited for it to be shown to be theirs.
+                await UserProvisioning.AddressConfirmedAsync(user);
                 await NotificationService.CreateForAdminsAsync(
                     IndxServer.Data.NotificationType.UserConfirmedEmail,
                     $"{user.Email} confirmed their email",

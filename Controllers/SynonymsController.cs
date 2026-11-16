@@ -71,7 +71,7 @@ namespace IndxServer.Controllers
                 return ApiProblems.DatasetNotFound(dataSetName);
             // The rebuilt engine takes the list it was cloned with: a list set now would be gone at the swap.
             var stored = WriteUnlessRebuilding(dataSetName, ctx.OwnerKey,
-                _ => IndxServerInternalApi.Manager.SetSynonyms(dataSetName, ctx.OwnerKey, list), out var rebuilding);
+                _ => IndxServerInternalApi.Manager.SetSynonyms(dataSetName, ctx.OwnerKey, list), out var rebuilding, documents: false);
             if (rebuilding != null)
                 return rebuilding;
 
