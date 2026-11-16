@@ -61,6 +61,8 @@ namespace IndxServer.Services
         public const int JourneyListedStarts = 200;
         /// <summary>The most sessions read; past it a sample of about this many.</summary>
         public const int JourneyMaxSessions = 50_000;
+        /// <summary>The ways on from a step that are never folded, the most taken: what the canvas shows.</summary>
+        public const int JourneyKeptWays = 5;
         private const double JourneyThinShare = 0.01;
         private const int JourneyThinVisits = 3;
         private const int JourneyTexts = 10;
@@ -76,8 +78,10 @@ namespace IndxServer.Services
         /// are one step, in one order; a visit past <see cref="JourneyDepth"/> steps ends in "More
         /// steps" and its outcome; with more starts than <see cref="JourneyListedStarts"/>, those with
         /// <see cref="JourneyTailVisits"/> visits or fewer are one start (on a small dataset every
-        /// start has a visit or two, and every one is listed); below the starts, ways on under 1 % of their step's visits, or under 3, are
-        /// folded into one. Past <see cref="JourneyMaxSessions"/> sessions a sample is read, every
+        /// start has a visit or two, and every one is listed); below the starts, ways on past the
+        /// <see cref="JourneyKeptWays"/> most taken and under 1 % of their step's visits, or under 3,
+        /// are folded into one (on a small dataset every way on is thin, and folding them all left a
+        /// tree of one step). Past <see cref="JourneyMaxSessions"/> sessions a sample is read, every
         /// n-th session by its id, so the whole window is in it rather than its newest days.</para>
         ///
         /// <para>From the raw rows, so it reaches back as far as they are kept.</para>
@@ -291,7 +295,8 @@ SELECT s.Session, s.QueryText, s.FilterKey, s.PickField, s.PickValue, s.PickText
                 if (depth >= 1)
                 {
                     var floor = Math.Max(JourneyThinVisits, b.Visits * JourneyThinShare);
-                    var thin = kids.Where(c => c.Visits < floor).ToList();
+                    var thin = kids.OrderByDescending(c => c.Visits).ThenBy(c => c.Id, StringComparer.Ordinal)
+                        .Skip(JourneyKeptWays).Where(c => c.Visits < floor).ToList();
                     if (thin.Count > 1)
                     {
                         var rest = new JourneyBuild($"{b.Id}/Rest", new JourneyStep(JourneyStepKind.Rest, $"{thin.Count} other steps"));
