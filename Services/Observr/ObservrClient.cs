@@ -79,12 +79,15 @@ namespace IndxServer.Services.Observr
             }
         }
 
-        /// <summary>The settings as words: "weight 2", "rerank weight 0.5", "exact words only".</summary>
+        /// <summary>The settings as words: "the title profile", "weight 2", "rerank weight 0.5",
+        /// "exact words only". The profile first, as Observr's own page words it: a change that
+        /// only gives a profile reads "Give bookTitle the title profile".</summary>
         [JsonIgnore]
         public IEnumerable<string> SettingChanges
         {
             get
             {
+                if (Profile != null) yield return $"the {Profile} profile";
                 if (Weight != null) yield return $"weight {Weight.Value.ToString("0.##", CultureInfo.InvariantCulture)}";
                 if (RerankWeight != null) yield return $"rerank weight {RerankWeight.Value.ToString("0.##", CultureInfo.InvariantCulture)}";
                 if (Tolerance != null) yield return ObservrText.ToleranceText(Tolerance);
