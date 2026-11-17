@@ -244,9 +244,10 @@ namespace IndxServer.Services
             var folded = shipped.CharReplacer?.ToBeReplaced ?? [];
             var foldedTo = shipped.CharReplacer?.ReplaceBy ?? [];
             var own = rules.Folds.ToDictionary(f => f.From[0], f => f.To[0]);
-            // A letter switched off in either case is switched off in both (17 Nov 2026): text is
-            // lower-cased before it is folded, so a capital's fold alone never applies, and "Å"
-            // switched off in place of "å" left å read as a.
+            // A letter switched off in either case is switched off in both (17 Nov 2026). In a
+            // case-insensitive field, every field unless set otherwise, text is lower-cased before
+            // it is folded, so a capital's fold alone does nothing: "Å" switched off in place of "å"
+            // left å read as a. In a case-sensitive field both folds apply, and both go.
             var removed = new HashSet<char>();
             foreach (var letter in rules.RemovedFolds.Where(l => l.Length == 1).Select(l => l[0]))
             {

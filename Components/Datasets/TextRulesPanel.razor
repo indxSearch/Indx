@@ -179,9 +179,10 @@
     }
 
     /// <summary>A letter of Indx's own fold table as one chip: its small form shown, its capital
-    /// with it (17 Nov 2026). Text is lower-cased before it is folded, so the capital's fold
-    /// never applies on its own; as two chips, "Å" came first and was switched off in place of
-    /// "å", and å went on being read as a.</summary>
+    /// with it (17 Nov 2026). In a case-insensitive field, the default, text is lower-cased before
+    /// it is folded, so the capital's fold does nothing on its own; as two chips, "Å" came first
+    /// and was switched off in place of "å", and å went on being read as a. In a case-sensitive
+    /// field both folds apply, and the chip switches both.</summary>
     internal sealed record FoldLetter(string Shown, string[] Patterns, string Title);
 
     /// <summary>Indx's own folds, a chip per letter, grouped by the letter they are read as.</summary>
