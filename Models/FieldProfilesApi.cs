@@ -6,11 +6,11 @@ namespace IndxServer.Models
     /// five built-ins, and whether this dataset changed that built-in.</summary>
     public sealed record FieldProfileView(string Id, string Name, string About, bool BuiltIn, bool Edited, Indx.Api.Tolerance Tolerance,
         float RerankWeight, int[] IndexSizes, int NumberOfStartCharacters, int NumberOfStopCharacters, IReadOnlyList<string> Fields,
-        int? TypingPrefixFrom = null)
+        int? TypingPrefixFrom = null, Indx.Api.TextRule[]? TextRules = null)
     {
         public static FieldProfileView Of(FieldProfile p, DatasetFieldProfiles own, IReadOnlyList<string> fields) =>
             new(p.Id, p.Name, p.About, FieldProfiles.IsBuiltInId(p.Id), FieldProfiles.IsEditedBuiltIn(p.Id, own), p.Tolerance,
-                p.RerankWeight, p.IndexSizes, p.NumberOfStartCharacters, p.NumberOfStopCharacters, fields, p.TypingPrefixFrom);
+                p.RerankWeight, p.IndexSizes, p.NumberOfStartCharacters, p.NumberOfStopCharacters, fields, p.TypingPrefixFrom, p.TextRules);
     }
 
     /// <summary>GET fields/profiles: every profile, which field has which, the searched fields with

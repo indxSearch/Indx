@@ -137,6 +137,27 @@ namespace IndxServer.Engine
             return ConfigurationParameters.Default;
         }
 
+        /// <summary>
+        /// The configuration a dataset's engine is built with: <see cref="ResolveConfiguration"/>,
+        /// with the dataset's own text rules as the engine's normalizer when it has any (17 Nov
+        /// 2026, <see cref="Services.DatasetTextRuleStore"/>). Rules that cannot be built are
+        /// logged and left out: a dataset must open.
+        /// </summary>
+        internal static ConfigurationParameters ConfigurationFor(int? persisted, string dataSetName, string teamId)
+        {
+            var configuration = ResolveConfiguration(persisted, dataSetName);
+            try
+            {
+                var text = _manager?._textRuleStore?.Load(teamId, dataSetName);
+                return text == null ? configuration : configuration.With(textNormalizer: Services.DatasetTextRuleStore.Build(text));
+            }
+            catch (Exception ex)
+            {
+                _manager?._logger.LogError(ex, "Dataset '{DataSet}': its text rules could not be built; opening with Indx's own.", dataSetName);
+                return configuration;
+            }
+        }
+
         internal static string GetLicensePath()
         {
             // If explicitly configured, use that
@@ -485,12 +506,21 @@ namespace IndxServer.Engine
         internal Result Search(Indx.Http.QueryProxy queryProxy, string dataSetName, string teamId) =>
             Search(queryProxy, dataSetName, teamId, out _);
 
+        /// <summary>Performs a search, and gives the filter it ran with.</summary>
+        /// <param name="queryProxy">The search as the request sent it.</param>
+        /// <param name="dataSetName">The dataset searched.</param>
+        /// <param name="teamId">The team that owns it.</param>
         /// <param name="filterKey">The key of the filter the search ran with: its token and its
         /// filter expression ANDed, resolved. Null when it had none. What statistics record, so a
         /// filter given as an expression is counted as one given as a token is.</param>
         internal Result Search(Indx.Http.QueryProxy queryProxy, string dataSetName, string teamId, out string? filterKey) =>
             Search(queryProxy, dataSetName, teamId, out filterKey, refocus: false);
 
+        /// <summary>Performs a search, gives the filter it ran with, and refocuses when asked.</summary>
+        /// <param name="queryProxy">The search as the request sent it.</param>
+        /// <param name="dataSetName">The dataset searched.</param>
+        /// <param name="teamId">The team that owns it.</param>
+        /// <param name="filterKey">The key of the filter the search ran with, as above.</param>
         /// <param name="refocus">Order a search no record holds every word of by BM25F
         /// (Services.Refocusing): the caller's own ask, <c>?refocus=true</c>.</param>
         internal Result Search(Indx.Http.QueryProxy queryProxy, string dataSetName, string teamId, out string? filterKey, bool refocus)
@@ -925,6 +955,7 @@ namespace IndxServer.Engine
             Carry(() => _buryStore?.Delete(teamId, dataSetName), dataSetName, teamId);
             Carry(() => _metadataStore?.Delete(teamId, dataSetName), dataSetName, teamId);
             Carry(() => _queryParameterStore?.Delete(teamId, dataSetName), dataSetName, teamId);
+            Carry(() => _textRuleStore?.Delete(teamId, dataSetName), dataSetName, teamId);
             Carry(() => _fieldProfileStore?.Delete(teamId, dataSetName), dataSetName, teamId);
             Carry(() => _dataCheckStore?.Delete(teamId, dataSetName), dataSetName, teamId);
             Carry(() => _coldStore?.DeleteDataset(teamId, dataSetName), dataSetName, teamId);
@@ -1190,6 +1221,7 @@ namespace IndxServer.Engine
             Carry(() => _buryStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
             Carry(() => _metadataStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
             Carry(() => _queryParameterStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
+            Carry(() => _textRuleStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
             Carry(() => _fieldProfileStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
             Carry(() => _dataCheckStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
             Carry(() => _coldStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
@@ -1245,6 +1277,7 @@ namespace IndxServer.Engine
             Carry(() => _buryStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
             Carry(() => _metadataStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
             Carry(() => _queryParameterStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
+            Carry(() => _textRuleStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
             Carry(() => _fieldProfileStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
             Carry(() => _dataCheckStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
             Carry(() => _coldStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
@@ -1636,6 +1669,15 @@ namespace IndxServer.Engine
         /// <summary>Attaches the query-parameter store to the search path (startup-only).</summary>
         internal void AttachQueryParameterStore(Services.QueryParameterStore store) => _queryParameterStore = store;
 
+        // Per-dataset text rules: the engine's normalizer, read where an engine is built.
+        private Services.DatasetTextRuleStore? _textRuleStore;
+
+        /// <summary>Attaches the text-rule store (startup-only).</summary>
+        internal void AttachTextRuleStore(Services.DatasetTextRuleStore store) => _textRuleStore = store;
+
+        /// <summary>The dataset's own text rules, null for none.</summary>
+        internal Services.DatasetTextRules? GetTextRules(string dataSetName, string teamId) => _textRuleStore?.Load(teamId, dataSetName);
+
         private Services.FieldProfileStore? _fieldProfileStore;
 
         /// <summary>Attaches the field profile store, so a dataset's profiles follow it on delete,
@@ -1753,7 +1795,7 @@ namespace IndxServer.Engine
 
             ConfigurationParameters configuration;
             using (var cfg = new Persistence(SearchDbConnectionString, dataSetName, teamId))
-                configuration = ResolveConfiguration(cfg.ReadDataSetConfiguration(), dataSetName);
+                configuration = ConfigurationFor(cfg.ReadDataSetConfiguration(), dataSetName, teamId);
 
             // Persistence stays null → nothing this engine does can touch or lock the database.
             using var validate = new SearchEngine(
@@ -2166,7 +2208,7 @@ namespace IndxServer.Engine
                 var matcher = new SearchEngine(
                     MakeLogPrefix(teamId, dataSetName),
                     _loggerFactory,
-                    ResolveConfiguration(configuration, dataSetName),
+                    ConfigurationFor(configuration, dataSetName, teamId),
                     licensePath)
                 {
                     Persistence = persistence

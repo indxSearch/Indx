@@ -161,8 +161,8 @@ namespace IndxServer.Engine
             report ??= _ => { };
             ConfigurationParameters configuration;
             using (var cfgRead = new Persistence(SearchDbConnectionString, dataSetName, teamId))
-                configuration = ResolveConfiguration(cfgRead.ReadDataSetConfiguration()
-                    ?? throw new InvalidOperationException($"Dataset '{dataSetName}' has no configuration"), dataSetName);
+                configuration = ConfigurationFor(cfgRead.ReadDataSetConfiguration()
+                    ?? throw new InvalidOperationException($"Dataset '{dataSetName}' has no configuration"), dataSetName, teamId);
 
             var shadow = NewReplaceEngine(configuration, dataSetName, teamId);
             try

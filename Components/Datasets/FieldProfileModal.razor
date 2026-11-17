@@ -2,8 +2,9 @@
    values are its own (Custom). Edits a copy; Save hands it back, and the field tab writes it onto
    the fields that have the profile, in the working copy Save sends to the engine. Every label that
    needs explaining carries its examples in a tooltip on the label itself, as the console's hinted
-   labels do. CaseSensitive and a field's own normalizer are not offered: the library takes both
-   only before the documents are loaded. *@
+   labels do. The fields' own text rules (17 Nov 2026, FieldProxy.TextRules) are rows of From, an
+   arrow and To under Advanced: built into the index, so a change rebuilds it. CaseSensitive is
+   not offered yet. *@
 @using System.Globalization
 @using Indx.Api
 
@@ -82,7 +83,35 @@
                             ? $"Read by the fields with PatternMatching on: {string.Join(", ", UsedByPattern)}."
                             : "None of its fields has PatternMatching on, so this does nothing yet.")</p>
                     </div>
-                    <p class="fp-hint">CaseSensitive and the field's normalizer are set when the data is loaded and cannot change on a live dataset, so they are not part of a profile.</p>
+                    <div class="fp-group">
+                        <span class="fp-legend">@Hinted("TextRules", TextRulesHelp)</span>
+                        @if (_rules.Count > 0)
+                        {
+                            <div class="fp-rule fp-rule-head">
+                                <span>From</span><span></span><span>To</span><span>@Hinted("Keep original", KeepOriginalHelp)</span><span></span>
+                            </div>
+                        }
+                        @foreach (var row in _rules)
+                        {
+                            <div class="fp-rule" @key="row">
+                                <InputField @bind-Value="row.From" Immediate aria-label="From" placeholder="é" class="fp-rule-text" disabled="@(!Editable)" />
+                                <span class="fp-rule-sign"><Indx.Systm.Blazor.Icons.ArrowRight Size="14" Color="currentColor" /></span>
+                                <InputField @bind-Value="row.To" Immediate aria-label="To" placeholder="e" class="fp-rule-text" disabled="@(!Editable)" />
+                                <ToggleSwitch AriaLabel="Keep original" Checked="@row.KeepOriginal" CheckedChanged="@(v => row.KeepOriginal = v)" Disabled="@(!Editable)" />
+                                @if (Editable)
+                                {
+                                    <Tooltip Content="Delete the rule"><Button Variant="ghost" IconLeft="DatasetIcons.Erase" aria-label="Delete the rule" @onclick="@(() => _rules.Remove(row))" /></Tooltip>
+                                }
+                            </div>
+                        }
+                        @if (Editable && _rules.Count < FieldProfiles.MaxTextRules)
+                        {
+                            <div><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.ShowMore" @onclick="@(() => _rules.Add(new RuleRow()))">Add replacement</Button></div>
+                        }
+                        <p class="fp-hint">@(_rules.Count == 0
+                            ? "None: these fields are read with the dataset's rules alone."
+                            : "Read in this order, before the dataset's own. Write them in small letters: the text is lower-cased first. An empty To removes the text: \"-\" to nothing reads 978-82-05 as 9788205.")</p>
+                    </div>
                 </div>
             </ChildContent>
         </Disclosure>
@@ -144,10 +173,25 @@
             _draft = Profile;
             _name = Profile.Name;
             _about = Profile.About;
+            _rules = Profile.TextRules.Select(r => new RuleRow { From = r.From, To = r.To, KeepOriginal = r.KeepOriginal }).ToList();
         }
     }
 
     private void Set(FieldProfile next) => _draft = next;
+
+    /// <summary>A text rule while it is edited. A row with no From is not a rule yet and is left
+    /// out when saving.</summary>
+    private sealed class RuleRow
+    {
+        public string? From { get; set; }
+        public string? To { get; set; }
+        public bool KeepOriginal { get; set; }
+    }
+
+    private List<RuleRow> _rules = [];
+
+    private TextRule[] Rules => _rules.Where(r => !string.IsNullOrEmpty(r.From))
+        .Select(r => new TextRule(r.From!, r.To ?? "", r.KeepOriginal)).ToArray();
 
     private string Title => CustomField != null ? $"{CustomField}: its own settings"
         : string.IsNullOrEmpty(Profile.Id) ? "New profile" : $"Edit {Profile.Name}";
@@ -162,10 +206,10 @@
 
     private bool AdvancedDiffers =>
         !Profile.IndexSizes.AsSpan().SequenceEqual([3]) || Profile.NumberOfStartCharacters != 2
-        || Profile.NumberOfStopCharacters != 0;
+        || Profile.NumberOfStopCharacters != 0 || Profile.TextRules.Length > 0;
 
-    /// <summary>What saving costs, from the profile as saved: the pattern setup is built into the
-    /// index, the tolerance and the rerank weight read at every search.</summary>
+    /// <summary>What saving costs, from the profile as saved: the text rules and the pattern setup
+    /// are built into the index, the tolerance and the rerank weight read at every search.</summary>
     private string CostLine
     {
         get
@@ -173,14 +217,15 @@
             if (Before is not { } before) return "A change applies to all of them.";
             bool rebuild = (UsedByPattern.Count > 0 && (!before.IndexSizes.AsSpan().SequenceEqual(_draft.IndexSizes)
                     || before.NumberOfStartCharacters != _draft.NumberOfStartCharacters
-                    || before.NumberOfStopCharacters != _draft.NumberOfStopCharacters));
+                    || before.NumberOfStopCharacters != _draft.NumberOfStopCharacters))
+                || (UsedBy.Count > 0 && !before.TextRules.AsSpan().SequenceEqual(Rules));
             if (rebuild) return "Saving rebuilds the index in the background.";
             if (before.Tolerance != _draft.Tolerance || before.RerankWeight != _draft.RerankWeight || before.TypingPrefixFrom != _draft.TypingPrefixFrom) return "Takes effect at the next search.";
             return "A change applies to all of them.";
         }
     }
 
-    private Task SaveAsync() => OnSave.InvokeAsync(_draft with { Name = _name.Trim(), About = _about.Trim() });
+    private Task SaveAsync() => OnSave.InvokeAsync(_draft with { Name = _name.Trim(), About = _about.Trim(), TextRules = Rules });
 
     private static readonly Tolerance[] Tolerances = Enum.GetValues<Tolerance>();
     private static readonly IReadOnlyList<ScrubSlider.ScrubMark> ZeroMark = [new(0, "warning", "these fields confirm no words")];
@@ -250,6 +295,8 @@
     private const string PatternHelp = "How PatternMatching cuts the text into pieces. A field with PatternMatching on is scored by pieces of its words as well as whole words. That score orders the records inside each typo level, blended with the reranker's score, and brings records in for the fallback, Rest and Bm25f mode. In the default mode it does not decide on its own which records match.";
     private const string IndexSizesHelp = "The piece lengths. 3: \"potter\" gives pot, ott, tte, ter. 2 and 3 adds po, ot, tt, te, er, so short and partial values score better, at about twice the memory.";
     private const string StartHelp = "Anchor pieces at the start of the text, so text that begins with what was typed counts more: a name starting with \"oslo\" above one with \"oslo\" inside it. 2 is the default; 0 turns it off.";
+    private const string TextRulesHelp = "FieldProxy.TextRules: text replaced in these fields before they are indexed and before a search is read against them. \"-\" to nothing makes 978-82-05 and 9788205 the same. An empty To removes the text. For codes and numbers written in more than one way; most fields need none.";
+    private const string KeepOriginalHelp = "The text is indexed both with the rule and without it, so either way of writing finds the record: 978-82-05-53315-8, 9788205533158, and a part such as 53315.";
     private const string StopHelp = "The same at the end of the text. With both, a whole value outranks a longer one containing it: \"1234\" ranks 1234 above 91234 and 12345. For codes; 0 is the default.";
 
     /// <summary>A label that explains itself: dotted underline, the help cursor, its examples in a

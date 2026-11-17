@@ -55,6 +55,10 @@
                         </td>
                         <td>
                             <span class="fpm-pattern @(IsDefaultPattern(p) ? "fpm-plain" : "fpm-marked")">@PatternLabel(p)</span>
+                            @if (p.TextRules.Length > 0)
+                            {
+                                <span class="fpm-about">@(p.TextRules.Length == 1 ? "1 text rule" : $"{p.TextRules.Length} text rules")</span>
+                            }
                         </td>
                         <td>
                             @if (having.Count == 0) { <span class="fpm-plain">Not used</span> }

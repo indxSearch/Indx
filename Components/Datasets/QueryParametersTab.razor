@@ -64,8 +64,10 @@
     </div>
     @if (ShowAdvanced)
     {
-        <ReadOnlyArea Editable="@Ctx.IsEditor">
+        @* Each table its own read-only area, so Text, which has its own, is a group of the same
+           grid and flows with the others; for a viewer its list of Indx's own rules still opens. *@
         <div class="qp-groups">
+            <ReadOnlyArea Editable="@Ctx.IsEditor">
             <Table AriaLabel="Fetching" Class="qp-table">
                 @Head("Fetching")
                 <tbody>
@@ -74,7 +76,9 @@
                     @foreach (var p in FetchingParams) { @IntRow(p) }
                 </tbody>
             </Table>
+            </ReadOnlyArea>
 
+            <ReadOnlyArea Editable="@Ctx.IsEditor">
             <Table AriaLabel="Ranking weights" Class="qp-table">
                 @Head("Ranking weights")
                 <tbody>
@@ -82,8 +86,13 @@
                     @foreach (var p in RankingBoolParams) { @BoolRow(p) }
                 </tbody>
             </Table>
+            </ReadOnlyArea>
+
+            @* Not a query parameter: the dataset's text rules are built into the index and saved
+               by themselves (17 Nov 2026). They are under Advanced with the rest that is right as
+               it is for nearly every dataset. *@
+            <TextRulesPanel TeamId="@Ctx.TeamId" DataSetName="@Ctx.Name" Editable="@Ctx.IsEditor" Ready="@(Ctx.EngineState == SystemState.Ready)" />
         </div>
-        </ReadOnlyArea>
     }
 
     @if (!string.IsNullOrEmpty(_error))
@@ -293,7 +302,17 @@
 
     private bool IsDirty => _loaded && (Json(_edit) != _savedJson || _textErrors.Count > 0);
     private bool AnySet => QueryParameterResolution.SetNames(_edit).Count > 0;
-    private bool AdvancedSet => ModeParam.Get(_edit) != null || RerankParam.Get(_edit) != null
+    /// <summary>Whether the dataset has text rules of its own, which are under Advanced too.</summary>
+    private bool HasTextRules
+    {
+        get
+        {
+            try { return IndxServer.Engine.IndxServerInternalApi.Manager.GetTextRules(Ctx.Name, Ctx.TeamId) != null; }
+            catch (InvalidOperationException) { return false; }
+        }
+    }
+
+    private bool AdvancedSet => HasTextRules || ModeParam.Get(_edit) != null || RerankParam.Get(_edit) != null
         || FetchingParams.Concat(RankingParams).Any(p => p.Get(_edit) != null) || RankingBoolParams.Any(p => p.Get(_edit) != null);
 
     /// <summary>The mode or the reranking as this dataset sets them, for the line beside a closed

@@ -1,0 +1,34 @@
+/* The dataset's text rules as a group of the query parameters: the same one-column table, a
+   setting in each row with its name, its help and its control under them (the tab's .qp-table,
+   .qp-cell, .qp-label, .qp-help and .qp-control, which are scoped to the tab). */
+/* A cell of the tab's grid of groups (.qp-groups), sized as its tables are: the table as wide as
+   .qp-table, what is said under it and the Save row beneath, within the same cell. */
+.tr-panel { min-width: 0; margin-bottom: 24px; }
+::deep .tr-table { max-width: 640px; margin-bottom: 12px; }
+::deep .tr-cell { padding: 12px 15px; }
+.tr-label { display: block; font: var(--text-sm); color: var(--lv7); }
+/* A value this dataset sets, as opposed to one left as Indx has it. */
+::deep .tr-row--set .tr-label { color: var(--lv8); font-weight: var(--med); }
+.tr-help { display: block; font: var(--text-xs); color: var(--lv5); margin-top: 2px; }
+.tr-control { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; min-width: 0; }
+.tr-hint { margin: 0 0 8px; font: var(--text-xs); color: var(--lv5); }
+/* A rule is one line: From, the sign, To, delete. */
+.tr-row { display: grid; grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+/* A fold is one letter each side. */
+.tr-row--fold { grid-template-columns: 64px 20px 64px auto; justify-content: start; }
+.tr-sign { display: inline-flex; align-items: center; justify-content: center; color: var(--lv6); }
+.tr-row ::deep .tr-text { font-family: var(--font-mono); }
+.tr-status { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; font: var(--text-sm); color: var(--lv7); }
+.tr-error { color: var(--CSignal); font: var(--text-sm); margin: 0 0 8px; }
+.tr-actions { justify-content: flex-start; }
+/* Indx's own tables: the folds a line for each letter they are read as, the letters as chips
+   that are on until clicked off. */
+.tr-sublegend { font: var(--text-xs); color: var(--lv6); margin-top: 6px; }
+.tr-own { display: flex; flex-direction: column; gap: 6px; }
+.tr-own-row { display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: start; gap: 8px; }
+.tr-own-to { font: var(--text-sm); font-family: var(--font-mono); color: var(--lv8); padding-top: 3px; }
+.tr-chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.tr-chips ::deep .tr-chip { font-family: var(--font-mono); }
+/* The delete icon at its drawn size, 14 by 10: in a narrow grid cell the button squeezed it. */
+.tr-row ::deep .indx-btn svg { flex: none; width: 14px; height: 10px; }
+.tr-chips ::deep .tr-chip--group { font-family: inherit; }

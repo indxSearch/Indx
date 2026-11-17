@@ -106,3 +106,34 @@
 .fp-delete {
     margin-left: auto;
 }
+
+/* A text rule is one line: From, the arrow, To, whether the original is kept, delete. */
+.fp-rule {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr) 96px auto;
+    align-items: center;
+    gap: 8px;
+}
+
+.fp-rule-head {
+    font: var(--text-xs);
+    color: var(--lv5);
+}
+
+.fp-rule-sign {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--lv6);
+}
+
+.fp-rule ::deep .fp-rule-text {
+    font-family: var(--font-mono);
+}
+
+/* The delete icon at its drawn size, 14 by 10: in a narrow grid cell the button squeezed it. */
+.fp-rule ::deep .indx-btn svg {
+    flex: none;
+    width: 14px;
+    height: 10px;
+}

@@ -201,6 +201,7 @@ namespace IndxServer.Components.Datasets
                     if (o.RerankWeight != e.RerankWeight) return true;
                     if (FieldProfiles.StartsOf(o) != FieldProfiles.StartsOf(e)) return true;
                     if ((o.CaseSensitive ?? false) != (e.CaseSensitive ?? false)) return true;
+                    if (!(o.TextRules ?? []).AsSpan().SequenceEqual(e.TextRules ?? [])) return true;
                 }
                 return false;
             }
@@ -239,6 +240,7 @@ namespace IndxServer.Components.Datasets
             RerankWeight = f.RerankWeight,
             TypingPrefixFrom = f.TypingPrefixFrom,
             CaseSensitive = f.CaseSensitive,
+            TextRules = f.TextRules is { } rules ? [.. rules] : null,
         };
 
         // ── Upload hand-off ───────────────────────────────────────────────────

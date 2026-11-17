@@ -8,10 +8,10 @@ namespace IndxServer.Services
     /// and the <see cref="PatternMatchingSetup"/> it takes when <see cref="Field.PatternMatching"/>
     /// is on. A console convenience over the engine's own values: choosing a profile for a field
     /// writes them onto it, editing a profile writes them onto every field that has it, and the
-    /// engine stays where the values live. <see cref="Field.CaseSensitive"/> and a field's own
-    /// normalizer are not here: the library takes both only before the documents are loaded (the
-    /// store holds the values as the field reads them and does not re-encode them), so neither can
-    /// change on a live dataset, not even through the shadow build.
+    /// engine stays where the values live. A profile also has the fields' own text rules
+    /// (<see cref="FieldProxy.TextRules"/>, 17 Nov 2026): strings replaced before the dataset's,
+    /// built into the index, so a change rebuilds it. <see cref="Field.CaseSensitive"/> is not
+    /// here yet.
     /// </summary>
     public sealed record FieldProfile
     {
@@ -29,16 +29,22 @@ namespace IndxServer.Services
         /// (the larger of the two wins), 0 never. Null, the default on every profile, follows the
         /// search.</summary>
         public int? TypingPrefixFrom { get; init; }
+        /// <summary>The fields' own string rules, in their order, each run before the engine's of
+        /// its kind (<see cref="FieldProxy.TextRules"/>): From becomes To, an empty To removes it,
+        /// and a rule with KeepOriginal indexes the text both ways. Empty, the default: the
+        /// engine's rules alone.</summary>
+        public TextRule[] TextRules { get; init; } = [];
 
-        /// <summary>Equal by value, the index sizes element by element (a record compares an
-        /// array by reference).</summary>
+        /// <summary>Equal by value, the index sizes and the text rules element by element (a
+        /// record compares an array by reference).</summary>
         public bool Equals(FieldProfile? other) =>
             other is not null && Id == other.Id && Name == other.Name && About == other.About && BuiltIn == other.BuiltIn
             && Tolerance == other.Tolerance && RerankWeight == other.RerankWeight
             && IndexSizes.AsSpan().SequenceEqual(other.IndexSizes)
             && NumberOfStartCharacters == other.NumberOfStartCharacters
             && NumberOfStopCharacters == other.NumberOfStopCharacters
-            && TypingPrefixFrom == other.TypingPrefixFrom;
+            && TypingPrefixFrom == other.TypingPrefixFrom
+            && TextRules.AsSpan().SequenceEqual(other.TextRules);
 
         public override int GetHashCode() => HashCode.Combine(Id, Name, Tolerance, RerankWeight);
     }
@@ -147,6 +153,7 @@ namespace IndxServer.Services
             if ((f.Tolerance ?? Tolerance.OneEdit) != p.Tolerance) return false;
             if (Math.Abs((f.RerankWeight ?? 1f) - p.RerankWeight) > 0.0001f) return false;
             if (StartsOf(f) != p.TypingPrefixFrom) return false;
+            if (!(f.TextRules ?? []).AsSpan().SequenceEqual(p.TextRules)) return false;
             if (f.PatternMatching == true)
             {
                 if (!(f.IndexSizes ?? [3]).AsSpan().SequenceEqual(p.IndexSizes)) return false;
@@ -176,6 +183,8 @@ namespace IndxServer.Services
             f.RerankWeight = p.RerankWeight;
             // Null follows the search; FieldProxy takes a negative number for that (null leaves it).
             f.TypingPrefixFrom = p.TypingPrefixFrom ?? -1;
+            // An empty list is the engine's rules again; a proxy's null would leave the field's.
+            f.TextRules = [.. p.TextRules];
             if (f.PatternMatching == true)
             {
                 f.IndexSizes = (int[])p.IndexSizes.Clone();
@@ -193,6 +202,7 @@ namespace IndxServer.Services
             Tolerance = f.Tolerance ?? Tolerance.OneEdit,
             RerankWeight = f.RerankWeight ?? 1f,
             TypingPrefixFrom = StartsOf(f),
+            TextRules = f.TextRules is { } rules ? [.. rules] : [],
             IndexSizes = f.IndexSizes is { Length: > 0 } sizes ? (int[])sizes.Clone() : [3],
             NumberOfStartCharacters = f.NumberOfStartCharacters ?? 2,
             NumberOfStopCharacters = f.NumberOfStopCharacters ?? 0,
@@ -328,11 +338,12 @@ namespace IndxServer.Services
                         return (null, $"Profile '{p.Id}': typingPrefixFrom is from 0 (never) to 64, or null to follow the search.");
                     if (p.NumberOfStartCharacters is < 0 or > 8 || p.NumberOfStopCharacters is < 0 or > 8)
                         return (null, $"Profile '{p.Id}': numberOfStartCharacters and numberOfStopCharacters are from 0 to 8.");
+                    if (TextRulesObjection(p.TextRules) is { } objection) return (null, $"Profile '{p.Id}': {objection}");
                 }
                 // The fields of a profile that goes keep their values, as their own.
                 foreach (var gone in merged.Assignments.Where(a => !IsBuiltInId(a.Value) && !ids.Contains(a.Value)).Select(a => a.Key).ToList())
                     merged.Assignments.Remove(gone);
-                merged.Profiles = profiles.Select(p => p with { BuiltIn = false, Name = p.Name.Trim(), About = p.About?.Trim() ?? "" }).ToList();
+                merged.Profiles = profiles.Select(p => p with { BuiltIn = false, Name = p.Name.Trim(), About = p.About?.Trim() ?? "", TextRules = p.TextRules ?? [] }).ToList();
             }
             if (assignments != null)
                 foreach (var (field, id) in assignments)
@@ -354,6 +365,25 @@ namespace IndxServer.Services
             return (merged, null);
         }
 
+        /// <summary>The most text rules a profile holds, and the longest a rule's From or To.</summary>
+        public const int MaxTextRules = 50, MaxTextRuleLength = 64;
+
+        /// <summary>Why a profile's text rules cannot be taken, null when they can: each needs a
+        /// From, a To that may be empty, both within <see cref="MaxTextRuleLength"/>.</summary>
+        public static string? TextRulesObjection(TextRule[]? rules)
+        {
+            if (rules == null) return null;
+            if (rules.Length > MaxTextRules) return $"at most {MaxTextRules} textRules.";
+            foreach (var r in rules)
+            {
+                if (r == null || string.IsNullOrEmpty(r.From)) return "a text rule needs a from.";
+                if (r.To == null) return $"the text rule for '{r.From}' needs a to; an empty one removes the text.";
+                if (r.From.Length > MaxTextRuleLength || r.To.Length > MaxTextRuleLength)
+                    return $"a text rule's from and to are at most {MaxTextRuleLength} characters.";
+            }
+            return null;
+        }
+
         /// <summary>An id for a new profile from its name, unique among the profiles.</summary>
         public static string NewId(string name, IEnumerable<FieldProfile> existing)
         {
@@ -368,8 +398,9 @@ namespace IndxServer.Services
         }
 
         /// <summary>
-        /// Whether a profile change rebuilds the index for the fields it is on: the pattern setup,
-        /// for a field with PatternMatching. Tolerance and the rerank weight are read at every search.
+        /// Whether a profile change rebuilds the index for the fields it is on: the text rules, and
+        /// the pattern setup for a field with PatternMatching. Tolerance and the rerank weight are
+        /// read at every search.
         /// </summary>
         public static bool Rebuilds(FieldProfile before, FieldProfile after, IEnumerable<FieldProxy> fields)
         {
@@ -378,7 +409,8 @@ namespace IndxServer.Services
             bool pattern = !before.IndexSizes.AsSpan().SequenceEqual(after.IndexSizes)
                            || before.NumberOfStartCharacters != after.NumberOfStartCharacters
                            || before.NumberOfStopCharacters != after.NumberOfStopCharacters;
-            return pattern && list.Any(f => f.PatternMatching == true);
+            return !before.TextRules.AsSpan().SequenceEqual(after.TextRules)
+                   || pattern && list.Any(f => f.PatternMatching == true);
         }
     }
 }

@@ -354,6 +354,7 @@ internal static class StartupPipeline
             IndxServerInternalApi.Manager.AttachBuryStore(buryStore, buryCeiling);
             IndxServerInternalApi.Manager.AttachMetadataStore(metadataStore);
             IndxServerInternalApi.Manager.AttachQueryParameterStore(queryParameterStore);
+            IndxServerInternalApi.Manager.AttachTextRuleStore(app.Services.GetRequiredService<IndxServer.Services.DatasetTextRuleStore>());
             var fieldProfileStore = app.Services.GetRequiredService<IndxServer.Services.FieldProfileStore>();
             fieldProfileStore.EnsureTable();
             IndxServerInternalApi.Manager.AttachFieldProfileStore(fieldProfileStore);

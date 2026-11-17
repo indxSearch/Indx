@@ -122,6 +122,7 @@ internal static class StartupServices
         builder.Services.AddSingleton<IndxServer.Services.DatasetMetadataStore>();
         builder.Services.AddSingleton<IndxServer.Services.DemoDatasets>();
         builder.Services.AddSingleton<IndxServer.Services.QueryParameterStore>();
+        builder.Services.AddSingleton<IndxServer.Services.DatasetTextRuleStore>();
         builder.Services.AddSingleton<IndxServer.Services.FieldProfileStore>();
         builder.Services.AddSingleton<IndxServer.Services.DataCheckStore>();
         builder.Services.AddSingleton<IndxServer.Services.ColdStore>();

@@ -412,6 +412,154 @@ namespace IndxServer.Engine
         }
 
         /// <summary>
+        /// Gives the dataset new text rules (17 Nov 2026): saved, and the dataset rebuilt from its
+        /// store in the background with them as the engine's normalizer, then swapped in. A clone
+        /// cannot do it: it is built with the configuration of the engine it copies. Returns why
+        /// not, or null once the rebuild is claimed and started; it is then reported through status
+        /// like a field configuration's, and a failed one puts the rules back as they were. Only on
+        /// a dataset that is Ready: the fields' own rules are built over the engine's normalizer
+        /// and saved with it, so they are made again in the rebuild, which needs the dataset up.
+        /// </summary>
+        internal string? SetTextRules(string dataSetName, string teamId, Services.DatasetTextRules rules)
+        {
+            if (_textRuleStore == null) return "Text rules are not available on this server.";
+            if (Services.DatasetTextRuleStore.Objection(rules) is { } objection) return objection;
+            try { _ = Services.DatasetTextRuleStore.Build(rules); }
+            catch (Exception ex) { return $"The rules cannot be used: {ex.Message}"; }
+
+            var key = MakeKey(dataSetName, teamId);
+            lock (_dictionaryLock)
+            {
+                if (!_instances.TryGetValue(key, out var found) || found?.theInstance is not { IsDisposed: false } engine
+                    || engine.Status.SystemState != SystemState.Ready)
+                    return "The dataset must be loaded and ready: text rules are built into the index. Wake it up, then save again.";
+            }
+
+            var before = _textRuleStore.Load(teamId, dataSetName);
+            if ((before ?? new Services.DatasetTextRules()).SameAs(rules)) return null;
+
+            try { ClaimShadowBuild(key, dataSetName); }
+            catch (ShadowBusyException) { return "The dataset is being rebuilt. Save again when it has finished."; }
+            try
+            {
+                _textRuleStore.Save(teamId, dataSetName, rules);
+            }
+            catch (Exception ex)
+            {
+                ReleaseShadowBuild(key, null);
+                _logger.LogError(ex, "{Prefix}text rules could not be saved", MakeLogPrefix(teamId, dataSetName));
+                return $"Could not save: {ex.Message}";
+            }
+            _ = Task.Run(() =>
+            {
+                // Logged and recorded as the outcome inside; nobody waits on this task.
+                try { BuildFromStoreOnShadow(dataSetName, teamId, key, before); }
+                catch { }
+            });
+            return null;
+        }
+
+        /// <summary>
+        /// A rebuild from the store with the configuration the dataset has now, for a dataset the
+        /// caller has claimed; releases the claim. The engine is new, with its own connection: the
+        /// field configuration, the synonyms and the documents are read from the store, the index
+        /// built, and the engine swapped in. A field's own text rules are made again over the new
+        /// normalizer first and saved, since a load reads the field configuration from the store;
+        /// when the build fails the stored configuration and the rules are put back.
+        /// </summary>
+        private void BuildFromStoreOnShadow(string dataSetName, string teamId, string key, Services.DatasetTextRules? rulesBefore)
+        {
+            var monitor = new ProcessMonitor();
+            _shadowMonitors[key] = monitor;
+
+            SearchEngine? shadow = null;
+            string? failure = null;
+            string? fieldsBefore = null;
+            try
+            {
+                ShadowBuildStarting?.Invoke(dataSetName);
+
+                SearchEngineInstance container;
+                lock (_dictionaryLock)
+                {
+                    if (!_instances.TryGetValue(key, out var found) || found?.theInstance == null)
+                        throw new InvalidOperationException($"No active instance for dataset '{dataSetName}'");
+                    container = found;
+                }
+
+                ConfigurationParameters configuration;
+                using (var cfg = new Persistence(SearchDbConnectionString, dataSetName, teamId))
+                    configuration = ConfigurationFor(cfg.ReadDataSetConfiguration()
+                        ?? throw new InvalidOperationException($"Dataset '{dataSetName}' has no configuration"), dataSetName, teamId);
+
+                shadow = NewReplaceEngine(configuration, dataSetName, teamId);
+                if (!shadow.LoadDocumentFieldsFromDb(out var fieldsError))
+                    throw new InvalidOperationException(fieldsError);
+
+                // A field's own rules are a normalizer built over the engine's and saved whole: made
+                // again over the new one. Emptied first, since the same rules are otherwise left.
+                var own = shadow.GetFieldConfiguration().Where(f => f.TextRules is { Length: > 0 }).ToArray();
+                if (own.Length > 0)
+                {
+                    var stored = shadow.Persistence!.ReadDocumentFields();
+                    ApplyCarry(shadow, own.Select(f => new FieldProxy { FieldName = f.FieldName, TextRules = [] }).ToArray());
+                    ApplyCarry(shadow, own.Select(f => new FieldProxy { FieldName = f.FieldName, TextRules = f.TextRules }).ToArray());
+                    shadow.Persistence.SaveDocumentFields(shadow.DocumentFields!.GetSerialized());
+                    fieldsBefore = stored;
+                }
+
+                RestoreSynonyms(shadow, dataSetName, teamId);
+                UseSavedEmbeddings(shadow, dataSetName, teamId);
+                shadow.LoadFromDatabaseSync(monitor);
+                monitor.WaitForCompletion();
+                if (!monitor.Succeeded)
+                    throw new InvalidOperationException(
+                        $"Shadow load from the store failed: {monitor.ErrorMessage ?? "unknown error"}", monitor.Exception);
+                RunIndex(shadow, key, "from the store");
+
+                var live = shadow;
+                var swappedOut = SwapIn(container, shadow, key, dataSetName);
+                shadow = null; // the container owns it from here
+                fieldsBefore = null;
+                SaveFieldsOfTheSwappedIn(live, dataSetName, teamId);
+                ReportChange(dataSetName, teamId, Services.DatasetChangeKind.Reindex);
+
+                if (swappedOut != null)
+                    _ = Task.Run(() => DisposeAfterGraceAsync(swappedOut, dataSetName, teamId));
+            }
+            catch (Exception ex)
+            {
+                failure = ex.Message;
+                _logger.LogError(ex, "{Prefix}rebuild from the store failed; the text rules are put back", MakeLogPrefix(teamId, dataSetName));
+                try
+                {
+                    _textRuleStore?.Save(teamId, dataSetName, rulesBefore);
+                    if (fieldsBefore != null)
+                        using (var back = new Persistence(SearchDbConnectionString, dataSetName, teamId))
+                            back.SaveDocumentFields(fieldsBefore);
+                }
+                catch (Exception restoreEx)
+                {
+                    _logger.LogError(restoreEx, "{Prefix}the text rules from before could not be put back", MakeLogPrefix(teamId, dataSetName));
+                }
+                throw;
+            }
+            finally
+            {
+                _shadowMonitors.TryRemove(key, out _);
+                if (shadow != null)
+                {
+                    try { shadow.Dispose(); }
+                    catch (Exception disposeEx)
+                    {
+                        _logger.LogError(disposeEx, "{Prefix}Failed to dispose abandoned shadow", MakeLogPrefix(teamId, dataSetName));
+                    }
+                }
+                ReleaseShadowBuild(key, failure);
+            }
+        }
+
+        /// <summary>
         /// The swap: the rebuilt engine takes the place of the one serving, in the instance the
         /// build started from, and the one it replaces is returned for disposal. Only while that
         /// instance is still the dataset's (16 Nov 2026). A dataset deleted, transferred or

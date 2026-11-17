@@ -1469,6 +1469,8 @@ namespace IndxServer.Services.Observr
             // The engine reads back null where the field follows the search, and a proxy's null
             // leaves the value alone: a negative number is how "follows the search" is put back.
             Tolerance = x.Tolerance, RerankWeight = x.RerankWeight, TypingPrefixFrom = FieldProfiles.StartsOf(x) ?? -1,
+            // The field's own text rules as they were: an empty list is the engine's again.
+            TextRules = x.TextRules is { } rules ? [.. rules] : [],
         };
 
         /// <summary>Carries out field changes as the Fields tab's Save does: refused as a whole when
