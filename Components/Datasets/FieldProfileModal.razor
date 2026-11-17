@@ -110,7 +110,7 @@
                         }
                         <p class="fp-hint">@(_rules.Count == 0
                             ? "None: these fields are read with the dataset's rules alone."
-                            : "Read in this order, before the dataset's own. Write them in small letters: the text is lower-cased first. An empty To removes the text: \"-\" to nothing reads 978-82-05 as 9788205.")</p>
+                            : "Read in this order, before the dataset's own. Write them in small letters: the text is lower-cased first. An empty To removes the text: \"-\" to nothing reads 978-0-306 as 9780306.")</p>
                     </div>
                 </div>
             </ChildContent>
@@ -295,8 +295,8 @@
     private const string PatternHelp = "How PatternMatching cuts the text into pieces. A field with PatternMatching on is scored by pieces of its words as well as whole words. That score orders the records inside each typo level, blended with the reranker's score, and brings records in for the fallback, Rest and Bm25f mode. In the default mode it does not decide on its own which records match.";
     private const string IndexSizesHelp = "The piece lengths. 3: \"potter\" gives pot, ott, tte, ter. 2 and 3 adds po, ot, tt, te, er, so short and partial values score better, at about twice the memory.";
     private const string StartHelp = "Anchor pieces at the start of the text, so text that begins with what was typed counts more: a name starting with \"oslo\" above one with \"oslo\" inside it. 2 is the default; 0 turns it off.";
-    private const string TextRulesHelp = "FieldProxy.TextRules: text replaced in these fields before they are indexed and before a search is read against them. \"-\" to nothing makes 978-82-05 and 9788205 the same. An empty To removes the text. For codes and numbers written in more than one way; most fields need none.";
-    private const string KeepOriginalHelp = "The text is indexed both with the rule and without it, so either way of writing finds the record: 978-82-05-53315-8, 9788205533158, and a part such as 53315.";
+    private const string TextRulesHelp = "FieldProxy.TextRules: text replaced in these fields before they are indexed and before a search is read against them. \"-\" to nothing makes 978-0-306 and 9780306 the same. An empty To removes the text. For codes and numbers written in more than one way; most fields need none.";
+    private const string KeepOriginalHelp = "The text is indexed both with the rule and without it, so either way of writing finds the record: 978-0-306-40615-7, 9780306406157, and a part such as 40615.";
     private const string StopHelp = "The same at the end of the text. With both, a whole value outranks a longer one containing it: \"1234\" ranks 1234 above 91234 and 12345. For codes; 0 is the default.";
 
     /// <summary>A label that explains itself: dotted underline, the help cursor, its examples in a
