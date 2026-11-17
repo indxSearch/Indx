@@ -459,6 +459,17 @@ namespace IndxServer.Engine
             return null;
         }
 
+        /// <summary>Whether a normalizer's string rules are Indx's shipped ones, as they are, with no
+        /// kept originals: a field's own normalizer that holds no rules of the field's.</summary>
+        private static bool IsShippedReplacements(TextNormalizer normalizer)
+        {
+            var shipped = TextNormalizer.Default.StringReplacer;
+            var mine = normalizer.StringReplacer;
+            return mine != null && normalizer.KeepOriginalOf.Length == 0
+                && mine.ToReplace.AsSpan().SequenceEqual(shipped.ToReplace)
+                && mine.ReplaceBy.SequenceEqual(shipped.ReplaceBy);
+        }
+
         /// <summary>
         /// A rebuild from the store with the configuration the dataset has now, for a dataset the
         /// caller has claimed; releases the claim. The engine is new, with its own connection: the
@@ -496,14 +507,31 @@ namespace IndxServer.Engine
                 if (!shadow.LoadDocumentFieldsFromDb(out var fieldsError))
                     throw new InvalidOperationException(fieldsError);
 
-                // A field's own rules are a normalizer built over the engine's and saved whole: made
-                // again over the new one. Emptied first, since the same rules are otherwise left.
-                var own = shadow.GetFieldConfiguration().Where(f => f.TextRules is { Length: > 0 }).ToArray();
+                // A field with a normalizer of its own has it saved whole, the engine's folds and
+                // one-way inside it: given the engine's again, then its own rules, if any, made over
+                // the new one. A field without one reads the engine's instance itself, which is how
+                // it is told apart (the library's flag is internal). Not only fields with rules: a
+                // field configuration saved between 13 and 15 Nov 2026 gave every field the engine's
+                // normalizer of the day as its own, and on gyldendal.no (alpha, 17 Nov) a fold
+                // switched off for the dataset did not reach them.
+                var withOwn = shadow.DocumentFields!.GetFieldList()
+                    .Where(f => !ReferenceEquals(f.TextNormalizer, configuration.TextNormalizer))
+                    .Select(f => f.Name).ToHashSet(StringComparer.Ordinal);
+                // Rules are kept only where the field has some over Indx's shipped replacements: one
+                // that was given the plain tables as its own would otherwise be read as having the
+                // shipped replacements the dataset switched off, and keep them.
+                var plain = shadow.DocumentFields.GetFieldList()
+                    .Where(f => withOwn.Contains(f.Name) && IsShippedReplacements(f.TextNormalizer))
+                    .Select(f => f.Name).ToHashSet(StringComparer.Ordinal);
+                var own = shadow.GetFieldConfiguration().Where(f => withOwn.Contains(f.FieldName))
+                    .Select(f => plain.Contains(f.FieldName) ? new FieldProxy { FieldName = f.FieldName, TextRules = [] } : f).ToArray();
                 if (own.Length > 0)
                 {
                     var stored = shadow.Persistence!.ReadDocumentFields();
                     ApplyCarry(shadow, own.Select(f => new FieldProxy { FieldName = f.FieldName, TextRules = [] }).ToArray());
-                    ApplyCarry(shadow, own.Select(f => new FieldProxy { FieldName = f.FieldName, TextRules = f.TextRules }).ToArray());
+                    var ruled = own.Where(f => f.TextRules is { Length: > 0 }).ToArray();
+                    if (ruled.Length > 0)
+                        ApplyCarry(shadow, ruled.Select(f => new FieldProxy { FieldName = f.FieldName, TextRules = f.TextRules }).ToArray());
                     shadow.Persistence.SaveDocumentFields(shadow.DocumentFields!.GetSerialized());
                     fieldsBefore = stored;
                 }
