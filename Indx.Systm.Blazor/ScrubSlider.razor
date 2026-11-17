@@ -61,7 +61,8 @@
 
     private readonly string _generatedId = $"indx-scrub-{Guid.NewGuid():N}";
     private string _id => Id ?? _generatedId;
-    private string? _typed;
+    // Only named by ValueExpression, which an InputField needs; the typed text goes through Typed.
+    private readonly string? _typed = null;
     private ElementReference _ruler;
     private IJSObjectReference? _module;
     private DotNetObjectReference<ScrubSlider>? _self;

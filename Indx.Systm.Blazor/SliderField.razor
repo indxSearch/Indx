@@ -33,7 +33,8 @@
     [Parameter] public string? AriaLabel { get; set; }
     [Parameter] public string? Class { get; set; }
 
-    private string? _typed;
+    // Only named by ValueExpression, which an InputField needs; the typed text goes through Typed.
+    private readonly string? _typed = null;
     // A typed value that was refused or moved into range leaves the model as it was, so nothing
     // would rewrite the box: a new key recreates it, showing what was applied.
     private int _tick;

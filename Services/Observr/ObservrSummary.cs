@@ -52,7 +52,7 @@ namespace IndxServer.Services.Observr
     /// dataset is loaded, its engine. Never loads a dataset: a summary of a sleeping one has no field
     /// list, which is also a fact about it.</summary>
     internal sealed class ObservrSummaryBuilder(StatisticsService statistics, DatasetMetadataStore metadata, IDatasetEngines engines,
-        ObservrFindingStore findings, SearchOrAsk.SearchOrAskStore searchOrAskStore, SearchOrAsk.SearchOrAskService searchOrAsk,
+        ObservrFindingStore findings, SearchOrAsk.SearchOrAskService searchOrAsk,
         DataCheckStore dataChecks)
     {
         private const int TopQueries = 20;

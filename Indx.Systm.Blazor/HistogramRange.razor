@@ -53,7 +53,9 @@
     [Parameter] public string? Class { get; set; }
 
     private IReadOnlyList<Bar> _bars = [];
-    private string? _typedFrom, _typedTo;
+    // Only named by ValueExpression, which an InputField needs; the typed text goes through
+    // TypedFrom and TypedTo, never into these.
+    private readonly string? _typedFrom = null, _typedTo = null;
     // A typed end that was refused leaves From and To as they were, so nothing would rewrite the
     // box: a new key recreates it, showing the range as it stands.
     private int _tick;

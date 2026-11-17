@@ -1994,7 +1994,9 @@ namespace IndxServer.Engine
             query.Candidates = resolved.Candidates;
             query.Ranking = resolved.Ranking;
             var ranking = queryProxy.Ranking;
-            query.Filter = ResolveRequestFilter(engine, queryProxy.Filter, queryProxy.FilterExpression, queryProxy.FilterParameters);
+            // Null is no filter, which a new query already has: Query.Filter is declared non-null.
+            if (ResolveRequestFilter(engine, queryProxy.Filter, queryProxy.FilterExpression, queryProxy.FilterParameters) is { } requestFilter)
+                query.Filter = requestFilter;
             // The facet selections, and the facet ranges an expression each (13 Nov 2026); one that
             // makes no filter is a 400.
             if (queryProxy.FacetSelections != null)

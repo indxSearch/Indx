@@ -97,6 +97,7 @@
 
     @* ── Statistics: whether each search's filter is stored (the Browsing report). A privacy
        setting, so a team admin's call; editors see where it stands. ── *@
+    @* StatisticsShown holds Stats.Store, which the switch below reads. *@
     @if (section == "statistics" && StatisticsShown)
     {
         <h3 class="indx-section-heading indx-section-heading--first">Statistics</h3>
@@ -109,7 +110,7 @@
         </p>
         <div class="opt-row">
             <ToggleSwitch Label="Record filters for the Browsing report"
-                          Checked="Stats.Store.RecordsFilters(Ctx.TeamId, Ctx.Name)"
+                          Checked="Stats.Store!.RecordsFilters(Ctx.TeamId, Ctx.Name)"
                           CheckedChanged="SetRecordFilters" Disabled="!Ctx.IsAdmin" />
             @if (!Ctx.IsAdmin)
             {
