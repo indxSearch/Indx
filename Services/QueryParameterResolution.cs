@@ -22,6 +22,10 @@ namespace IndxServer.Services
         public const int MaxCandidates = 100_000;
 
         /// <summary>The values a search runs with, and which of them came from the dataset.</summary>
+        /// <param name="Mode">How records are fetched.</param>
+        /// <param name="Match">What counts as a hit.</param>
+        /// <param name="Candidates">Which records come in.</param>
+        /// <param name="Ranking">The order.</param>
         /// <param name="FromDataset">The JSON names of the values the dataset supplied, e.g.
         /// <c>mode</c>, <c>candidates.maxCandidates</c>. Empty when the dataset decided nothing.</param>
         public sealed record Resolved(SearchMode Mode, MatchSetup Match, CandidateSetup Candidates,

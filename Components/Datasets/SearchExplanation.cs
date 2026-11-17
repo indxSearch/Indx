@@ -44,6 +44,7 @@ namespace IndxServer.Components.Datasets
         /// (8 Nov 2026: a single letter showed the pattern note and the candidate bound's).</summary>
         public const string TooShort = "Too short to look up as a word: the records holding it as part of a word.";
 
+        /// <param name="result">The search's result, read for its count, rungs and fill.</param>
         /// <param name="wordMatching">Whether any searched field has WordMatching on; without one
         /// the matches are the pattern matcher's, and the search says why first.</param>
         /// <param name="tooShort">No word of the text is long enough for the word lookup

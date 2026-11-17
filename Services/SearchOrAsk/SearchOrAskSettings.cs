@@ -233,7 +233,7 @@ namespace IndxServer.Services.SearchOrAsk
         /// description of what to list counts as well since 10 Nov: "show me second world war movies"
         /// is 0.03 a question and 0.89 a description), when no record holds every
         /// word of the page's search, the intent answer carries the list in BM25F's order
-        /// (<see cref="SearchOrAskService.IntentResult"/>'s Refocused), where the rarest words a
+        /// (<see cref="IntentResult"/>'s Refocused), where the rarest words a
         /// record holds weigh most and the common words of a question little; the page shows it in
         /// place of its own, its count and facets kept. 0 is off, the default. Replayed word by word
         /// on the committed tmdb23k and school-register sets: every line from 0.2 to 0.65 refocused

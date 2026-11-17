@@ -22,11 +22,6 @@ namespace IndxServer.Swagger
     /// </summary>
     public class SearchExamplesOperationFilter : IOperationFilter
     {
-        /// <summary>
-        /// Applies the named examples to the Search endpoint operation
-        /// </summary>
-        /// <param name="operation">The OpenAPI operation to modify</param>
-        /// <param name="context">The operation filter context</param>
         /// <summary>A search with every setting at the value a dataset with no query parameters
         /// runs with (6.0: the mode and the members of match, candidates and ranking).</summary>
         private static QueryProxy FullExample()
@@ -39,6 +34,11 @@ namespace IndxServer.Swagger
             };
         }
 
+        /// <summary>
+        /// Applies the named examples to the Search endpoint operation
+        /// </summary>
+        /// <param name="operation">The OpenAPI operation to modify</param>
+        /// <param name="context">The operation filter context</param>
         public void Apply(OpenApiOperation operation, OperationFilterContext context)
         {
             // Only the text search: POST .../datasets/{dataSetName}/search (not /search/vector or

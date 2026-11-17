@@ -64,7 +64,7 @@ namespace IndxServer.Services
         /// (<c>Fallback</c> true): the values holding the most of the words, then the pattern matches.
         /// So Donna Reed stays in the list while "donna rea" is typed, and "leodicaprio" (the start of a
         /// word run into the next) finds Leonardo DiCaprio through the pattern index.
-        /// <paramref name="readValues"/> gives every value of the field when the micro-index has to be
+        /// <paramref name="readFacet"/> gives every value of the field when the micro-index has to be
         /// built.</summary>
         public (IReadOnlyList<string> Values, bool Fallback) Find(string teamId, string dataSetName, IServerSearchEngine engine, string field, string text,
             Func<KeyValuePair<string, int>[]> readFacet)

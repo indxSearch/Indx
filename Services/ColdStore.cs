@@ -102,7 +102,7 @@ namespace IndxServer.Services
 
     /// <summary>
     /// The server's table of cold storage in indx.db, opened as the other stores open it (a
-    /// connection of its own, <see cref="SqLiteManager"/> only to make sure the base schema is there),
+    /// connection of its own, <see cref="Indx.Storage.SqLiteManager"/> only to make sure the base schema is there),
     /// so the library's store of the records is not touched. A dataset's items go with it on delete,
     /// rename and transfer, called where <see cref="IndxServer.Engine.IndxServerInternalApi"/> calls
     /// the other stores; a record's when the server deletes the record, and a read leaves out the

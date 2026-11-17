@@ -493,6 +493,8 @@ CREATE TABLE IF NOT EXISTS WebhookHeld (
 
         // ── The log ──────────────────────────────────────────────────────────────────────
 
+        /// <summary>Records a delivery in the webhook's log.</summary>
+        /// <param name="d">The delivery.</param>
         /// <param name="approved">An admin applied it past the brake: it is not counted against
         /// the brake again (<see cref="DestructiveSince"/>).</param>
         public void Log(WebhookDelivery d, bool approved = false)

@@ -637,6 +637,10 @@ namespace IndxServer.Services.SearchOrAsk
         }
 
         /// <summary>What the search found, reduced to what the judge reads.</summary>
+        /// <param name="Hits">How many records the search returned.</param>
+        /// <param name="CloseMatch">Whether the list holds a record the search counted, not only
+        /// records from a fallback or a fill.</param>
+        /// <param name="Top">The first records the judge reads: key, title, section and snippet.</param>
         /// <param name="Count">Result.Count: the records the search counted, not the ten listed. Null
         /// where a summary is built from keys (a catalogue's filtered list): then <see cref="Hits"/>.</param>
         /// <param name="Match">The kind of match (SearchExplanation.MatchKind): strong, fuzzy, partial,
