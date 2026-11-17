@@ -28,6 +28,8 @@ const ICONS = [
   'FuzzySearch', 'HybridSearch', 'Eye', 'Key', 'Speedometer', 'Github',
   // 2.0 beta 2.
   'SearchOrAsk', 'Observr', 'Analytics', 'Folder', 'Database', 'LayoutAlignLeft',
+  // 2.0 beta 3.
+  'Webhooks', 'SearchJumpTo', 'NodeTree', 'Support', 'UserPlus', 'Cpu', 'Update', 'Download', 'Flag', 'Clock',
 ];
 
 const SCALE = 3;                 // CSS pixels per grid unit: a 7x5 icon becomes 21x15
