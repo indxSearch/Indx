@@ -1,4 +1,5 @@
 @inherits LayoutComponentBase
+@using IndxServer.Shared
 
 <PageTitle>indx</PageTitle>
 
@@ -9,8 +10,10 @@
             <img src="/indxlogowhite.svg" alt="indx" class="unauth-logo unauth-logo-dark" />
         </div>
         @* Die, the search core as a circuit board (wwwroot/js/indx-die.js), over the logo: the
-           logo is what shows without JavaScript, and for the moment before the board's first frame *@
-        <indx-die></indx-die>
+           logo is what shows without JavaScript, and for the moment before the board's first frame.
+           Its label names the core this server runs (dieVersion; the build's own default is a
+           made-up "6.0.0-ALPHA"). *@
+        <indx-die data-settings="@DieSettings"></indx-die>
     </div>
 
     <div class="unauth-right">
@@ -21,3 +24,8 @@
         </div>
     </div>
 </div>
+
+@code {
+    private static readonly string DieSettings =
+        System.Text.Json.JsonSerializer.Serialize(new { dieVersion = AdminNav.CoreVersion });
+}

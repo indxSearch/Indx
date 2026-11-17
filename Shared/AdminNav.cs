@@ -13,6 +13,9 @@ namespace IndxServer.Shared
         /// <summary>"Indx 2.0.0 · Core 5.0.5": the server and the library, for the column's note.</summary>
         public static string VersionLine => $"Indx {_apiVersion} · Core {_indxVersion}";
 
+        /// <summary>The library's release, "6.0.0-beta1": what the login screen's die names as its core.</summary>
+        public static string CoreVersion => _indxVersion;
+
         // The product version (5.0.1), not the assembly version: IndxSearchLib pins AssemblyVersion
         // at 5.0.0.0 so an application built on 5.0.0 loads every 5.0.x unchanged, which made this
         // read "Core 5.0.0" on every patch release. The informational version carries the release,
