@@ -26,8 +26,9 @@ namespace IndxServer.Controllers
     {
         /// <summary>
         /// Returns the dataset's synonym list, or a <c>null</c> body when it has none — always 200.
-        /// The list widens every search on this dataset: a query word that matches an entry gets that
-        /// entry's terms appended to the query text before scoring.
+        /// The list widens every search on this dataset: a query word that matches an entry also finds
+        /// the records holding the entry's other terms, ranked below the records holding the words as
+        /// typed.
         /// <para>One list per dataset — there is no name to supply, and no other dataset is affected.</para>
         /// </summary>
         [KeyAccess(ApiKeyLevel.Read)]

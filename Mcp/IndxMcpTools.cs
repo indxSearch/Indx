@@ -424,8 +424,9 @@ namespace IndxServer.Mcp
 
         [McpServerTool(Name = "get_synonyms", UseStructuredContent = false, ReadOnly = true)]
         [System.ComponentModel.Description("Get a dataset's synonym list (an experimental feature), or an empty entries list when it has none. " +
-                     "Searches expand through these entries: when the query matches an entry, its terms are appended to the " +
-                     "query text before scoring, so this explains why a search matched more than its literal words. " +
+                     "Searches widen through these entries: a query word that matches an entry also finds the records holding " +
+                     "the entry's other terms, ranked below those holding the words as typed, so this explains why a search " +
+                     "matched more than its literal words. " +
                      "Multidirectional entries expand from any of their terms; OneWay entries expand only from their Source " +
                      "term. Read-only — synonyms are edited in the portal or via PUT .../synonyms.")]
         public async Task<JsonNode?> GetSynonyms(

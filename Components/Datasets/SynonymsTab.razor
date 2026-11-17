@@ -16,8 +16,9 @@
 <div class="syn-tab">
     <div class="syn-intro">
         <p>
-            Synonyms widen searches: when a query matches an entry, its synonyms are appended to the query text before scoring.
-            Changes apply on the next search — no re-indexing. Expansion widens recall but dilutes the reranker's scores.
+            Synonyms widen a search: a word in an entry also finds records holding one of the entry's other words, as if it had
+            been typed. Those records come below the ones holding the words as typed, so a search for "matte" lists matte
+            first, then matematikk. Changes apply from the next search, with no reindexing.
         </p>
     </div>
 

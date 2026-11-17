@@ -202,9 +202,10 @@ A rule is a name, one or more conditions, and a strength:
 
 ## Synonyms (experimental)
 
-Each dataset can carry a synonym list that widens searches: when a query matches an entry,
-the entry's terms are appended to the query text before scoring. Changes apply on the next
-search, and nothing is re-indexed.
+Each dataset can carry a synonym list that widens searches: a query word that matches an entry
+also finds the records holding the entry's other terms, as if they had been typed. Those records
+come below the ones holding the words as typed. Changes apply on the next search, and nothing is
+re-indexed.
 
 Two kinds of entries:
 
