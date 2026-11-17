@@ -8,7 +8,7 @@ Versions: the server has its own line (2.x). It bundles the Indx core library (`
 OpenAPI document (`/swagger/v2.0-beta/swagger.json`). A server patch can pick up a newer core
 without changing the HTTP contract.
 
-## [2.0.0-beta.4] - Unreleased
+## [2.0.0-beta.4] - 2026-11-17
 
 Runs on IndxSearchLib 6.0.0-beta1 or later.
 
