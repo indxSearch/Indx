@@ -80,7 +80,7 @@
                     <div class="tr-control">
                         <div>
                             <Button Variant="ghost" Size="micro" IconRight="@(_showOwn ? DatasetIcons.ChevronDown : DatasetIcons.ChevronRight)" @onclick="@(() => _showOwn = !_showOwn)">
-                                @($"{ShippedFolds.Sum(g => g.Letters.Length)} folds, {ShippedRules.Length} replacements")
+                                @($"{ShippedFolds.Sum(g => g.Letters.Length)} letters folded, {ShippedRules.Length} replacements")
                             </Button>
                         </div>
                         @if (_showOwn)
@@ -94,9 +94,9 @@
                                         <span class="tr-chips">
                                             @foreach (var letter in g.Letters)
                                             {
-                                                var l = letter.ToString();
-                                                <Chip Class="tr-chip" Selected="@(!_removedFolds.Contains(l))" Disabled="@(!CanEdit)" Title="@($"U+{(int)letter:X4}")"
-                                                      OnClick="@(() => Toggle(_removedFolds, l))">@l</Chip>
+                                                var on = !letter.Patterns.Any(_removedFolds.Contains);
+                                                <Chip Class="tr-chip" Selected="@on" Disabled="@(!CanEdit)" Title="@letter.Title"
+                                                      OnClick="@(() => ToggleFoldLetter(letter.Patterns, on))">@letter.Shown</Chip>
                                             }
                                         </span>
                                     </div>
@@ -178,14 +178,41 @@
         if (!removed.Remove(what)) removed.Add(what);
     }
 
-    /// <summary>Indx's own folds, grouped by the letter they are read as.</summary>
-    private static readonly (char ReadAs, char[] Letters)[] ShippedFolds = MakeShippedFolds();
+    /// <summary>A letter of Indx's own fold table as one chip: its small form shown, its capital
+    /// with it (17 Nov 2026). Text is lower-cased before it is folded, so the capital's fold
+    /// never applies on its own; as two chips, "Å" came first and was switched off in place of
+    /// "å", and å went on being read as a.</summary>
+    internal sealed record FoldLetter(string Shown, string[] Patterns, string Title);
 
-    private static (char, char[])[] MakeShippedFolds()
+    /// <summary>Indx's own folds, a chip per letter, grouped by the letter they are read as.</summary>
+    internal static readonly (char ReadAs, FoldLetter[] Letters)[] ShippedFolds = MakeShippedFolds();
+
+    private static (char, FoldLetter[])[] MakeShippedFolds()
     {
         var c = TextNormalizer.Default.CharReplacer;
-        return c.ToBeReplaced.Zip(c.ReplaceBy).GroupBy(p => p.Second, p => p.First)
-            .OrderBy(g => g.Key).Select(g => (g.Key, g.OrderBy(l => l).ToArray())).ToArray();
+        var folds = c.ToBeReplaced.Zip(c.ReplaceBy).ToList();
+        var inTable = folds.Select(p => p.First).ToHashSet();
+        return folds
+            .GroupBy(p => char.ToLowerInvariant(p.First))
+            .Select(g =>
+            {
+                var letters = g.Select(p => p.First).OrderBy(l => char.IsUpper(l)).ToArray();
+                var readAs = char.ToLowerInvariant(g.OrderBy(p => char.IsUpper(p.First)).First().Second);
+                var shown = inTable.Contains(g.Key) ? g.Key : letters[0];
+                var title = string.Join(", ", letters.Select(l => $"{l} U+{(int)l:X4}"));
+                return (ReadAs: readAs, Letter: new FoldLetter(shown.ToString(), letters.Select(l => l.ToString()).ToArray(), title));
+            })
+            .GroupBy(x => x.ReadAs, x => x.Letter)
+            .OrderBy(g => g.Key)
+            .Select(g => (g.Key, g.OrderBy(l => l.Shown, StringComparer.Ordinal).ToArray()))
+            .ToArray();
+    }
+
+    /// <summary>A letter switched off with its capital when it is on, else on again with it.</summary>
+    private void ToggleFoldLetter(string[] patterns, bool on)
+    {
+        foreach (var p in patterns)
+            if (on) _removedFolds.Add(p); else _removedFolds.Remove(p);
     }
 
     /// <summary>Indx's own replacements, in their order.</summary>

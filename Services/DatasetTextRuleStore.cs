@@ -244,9 +244,19 @@ namespace IndxServer.Services
             var folded = shipped.CharReplacer?.ToBeReplaced ?? [];
             var foldedTo = shipped.CharReplacer?.ReplaceBy ?? [];
             var own = rules.Folds.ToDictionary(f => f.From[0], f => f.To[0]);
+            // A letter switched off in either case is switched off in both (17 Nov 2026): text is
+            // lower-cased before it is folded, so a capital's fold alone never applies, and "Å"
+            // switched off in place of "å" left å read as a.
+            var removed = new HashSet<char>();
+            foreach (var letter in rules.RemovedFolds.Where(l => l.Length == 1).Select(l => l[0]))
+            {
+                removed.Add(letter);
+                removed.Add(char.ToLowerInvariant(letter));
+                removed.Add(char.ToUpperInvariant(letter));
+            }
             var folds = new List<(char, char)>(folded.Length + own.Count);
             for (int i = 0; i < folded.Length; i++)
-                if (!own.ContainsKey(folded[i]) && !rules.RemovedFolds.Contains(folded[i].ToString())) folds.Add((folded[i], foldedTo[i]));
+                if (!own.ContainsKey(folded[i]) && !removed.Contains(folded[i])) folds.Add((folded[i], foldedTo[i]));
             foreach (var (letter, readAs) in own) folds.Add((letter, readAs));
 
             var kept = rules.Replacements.Where(r => r.KeepOriginal).Select(r => r.From).Distinct().ToArray();
