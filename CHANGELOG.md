@@ -10,16 +10,167 @@ without changing the HTTP contract.
 
 ## [2.0.0-beta.4] - Unreleased
 
-Runs on IndxSearchLib 6.0.0-beta1 or later, and changes the HTTP API: read the v5 to v6
-migration guide before upgrading a client.
+Runs on IndxSearchLib 6.0.0-beta1 or later.
+
+This release moves the server to Indx 6: word indexing, more control over ranking, and faster
+searches. The fault tolerance and pattern matching Indx is known for are still there, chosen
+field by field.
+
+The search API changes with it, and result lists change by design. Read the
+[v5 to v6 migration guide](https://github.com/indxSearch/skill-indx-search/blob/v6/references/migration-v5-to-v6.md)
+before upgrading; section 7 covers the HTTP API. `@indxsearch/intrface` and
+`@indxsearch/indx-types` 4.0 are the clients for this server.
+
+### Main changes
+
+- **A new search core.** The server runs on Indx 6. A field's words are indexed as words, and a
+  query word is looked up as typed, then within one, two or three edits. How records are fetched
+  and whether they are reranked are separate choices.
+- **Performance.** Searching and loading are faster and take less memory, most of all on datasets
+  with many searched fields or long texts. Facets over large result sets and filtered searches are
+  faster too.
+- **A better read of what a visitor is asking.** Search or ask (experimental) tells a question
+  from a search more surely. Its judge also says whether what is asked about is found in the
+  results, and the page dims a list that does not hold it. A catalogue's answer puts its own picks
+  on the page as the result list, each with why it was chosen. Automatic reads the records and
+  chooses what the judge is shown. The Ask phrases are removed.
+- **Observr does more.** It works with Indx 6: it reads a dataset's field profiles and its
+  records, proposes a profile where one fits, and makes a new profile when asked in the chat. It
+  proposes pattern matching only where the searches call for it. A Yes can still be undone for an
+  hour.
+- **Typo tolerance by levels.** A record holding the words as typed is never placed below one
+  holding a misspelling. The result says which level its hits are on (`countedTolerance`) and how
+  many there are on each (`toleranceCounts`).
+- **One set of records for count, facets and list.** `count` is the number of records that answer
+  the search. Facets are counted over all of them, not the returned rows, and a facet's number is
+  the number a filter on that value returns.
+- **Matching per field.** A field is matched by its words (`wordMatching`), inside its words
+  (`patternMatching`), or both, with its own typo tolerance (`tolerance`) and its own weight in the
+  ordering (`rerankWeight`). Field configuration in the console has a column for each, and the
+  weight is a slider.
+- **Field profiles.** A searched field's settings under one name. Five are built in (title, name,
+  category, code, text) and a dataset can keep its own. Choose and edit them in the field table or
+  the Profile manager, or over HTTP with `GET` and `PUT fields/profiles`.
+- **The query in three parts.** A search's settings live in `match` (what counts as a hit),
+  `candidates` (which records come in) and `ranking` (the order), beside `mode`, which is how
+  records are fetched. Every member is optional: one left out is the dataset's query parameter,
+  then the default. The Query parameters tab follows the same parts.
+- **Filter expressions.** `POST filters/expression`, and `filterExpression` on a search, take one
+  expression such as
+  `brand IN ["nike", "puma"] AND price BETWEEN 100 AND 2000 AND NOT category = "outlet"`. New
+  filters besides: one of a set of values (`POST filters/in`) and within a distance of a position
+  (`POST filters/position`). `POST filters/combine` takes a list of any length.
+- **Bury rules.** The counterpart of a boost rule: the records a rule matches are taken down, and
+  nothing else moves. They sit in the same list as the boost rules in the console, on one scale
+  from Bury high to Boost high, and over HTTP under `buries`.
+- **More in one search call.** `offset` for paging, `includeDocuments` for the records' JSON in
+  the answer, `collapseBy` for one record per value of a field, and `counts` for named counts
+  beside the list. Facets can be limited to the fields asked for, come with `facetStats` for
+  number fields, and can leave out their own selection (`facetSelections`, `facetRanges`), which is
+  what a page with OR facets needs.
+- **Several searches at once.** `POST search/multi` answers up to 20 searches in one call, and
+  `POST search/groups` answers one text in named sections, each with its own filter, rows and
+  count: the books, authors and events of one search box.
+- **Facet value search.** `POST facets/{field}/search` finds a facet's values with Indx's own
+  matching, for a search field inside a long facet.
+- **Codes and numbers.** A field can have text rules of its own (`textRules`), so a code is found
+  with hyphens, without them, or in part. A profile holds them as rows of From and To, each with
+  the original kept or not. A search for a long number no record holds can return nothing
+  (`candidates.noFallbackForNumbersFrom`).
+- **Text rules for the whole dataset.** Under Query parameters, Text sets strings to replace and
+  letters to read as other letters in every searched field, over what Indx does by itself. A fold
+  is one-way, where both letters are kept and "gra" finds grå, or both ways, where they are one
+  letter. Indx's own rules are listed beside them and can be switched off for the dataset, one
+  by one or a kind at a time: å, ø and æ taken out are kept apart from a and o. The group is under
+  Advanced, and saving rebuilds the index in the background.
+- **Match report.** With `enableMatchReport` each returned record says how every query word was
+  met and in which field. `measureFit` says how much of the text the best results explain.
+- **Records.** A new section on each dataset shows its records as a table: searched as you type,
+  filtered, ordered and paged, with resizable columns. A row opens in place and shows how each
+  word matched.
+- **The search preview says how it found what it found:** strong, fuzzy, partial, pattern or
+  broad matches, with the count on each typo level. A facet value is a filter by a click, and a
+  number field is filtered by a range picked on its histogram.
+- **Cold storage.** Text kept beside a record and never searched or held in memory: a table of
+  contents, a review, stock notes. It is read by key when a page, a backend or an agent needs it,
+  with three levels of who may read. The routes are under `documents/{key}/cold`, and a sync can
+  send a batch to `PUT cold`.
+
+### Upgrading from beta 3
+
+The guide has the details; these are the changes a client or an owner meets.
+
+- **Turn on word matching.** A dataset from an earlier server is read as it was searched, which
+  for most fields is by pattern only. Until its fields have word matching, searches do not narrow
+  the list to the records that match, and counts and facets cover nearly the whole dataset. Turn
+  it on for the fields visitors type in (titles, names, codes); the dataset's pages say when no
+  field has it.
+- **Query parameters are set again.** A dataset's saved `coverageDepth` and `coverageSetup` are
+  read as none set. Set them again on the Query parameters tab, a coverage depth as
+  `candidates.maxCandidates`.
+- **The old search settings are ignored, not refused.** `enableCoverage`, `coverageDepth`,
+  `coverageSetup`, `enableBoost`, and `boosts` and `fieldBoosts` at the top level of a search bind
+  to nothing, so an older client keeps getting answers and loses those settings. Move each into
+  `match`, `candidates` or `ranking`.
+- **The result.** `truncationIndex` and `truncationScore` are gone; read `count`, `ranked` and
+  `isFallback`.
+- **Enums are written by name** in every answer: `"systemState": "Ready"`, `"boostStrength":
+  "Med"`. A number is still read in a request.
+- **Field roles.** `searchable` in a field configuration is read as `wordMatching` alone: send
+  `wordMatching` and `patternMatching` to search a field as before. `wordIndexing` and
+  `highResolution` are gone, with `GET fields/searchable` and `GET fields/word-indexing`; read the
+  roles from `GET fields/configuration`. A field's own `bm25k1` is no longer read, and a changed
+  value is refused.
+- **Saved boost and bury rules apply to every search,** with no flag in the body.
+- **Boosts.** A strength outside 1 to 3 is a `400 invalidArgument`, and
+  `Indx:BoostSaturationCeiling` is read as 1 to 255.
+- **`POST filters/combine`** takes `{ "filters": [ … ], "useAndOperation": true }` in place of
+  `{ "a", "b", "useAndOperation" }`.
+- **`removeDuplicates` is gone.** `collapseBy` gives one record per value.
+- **A field has one type.** A record whose value does not fit its field's type is left out at
+  load, and the status says so; an insert or update with one is refused. A number in a text field
+  is read as text.
+- **Vector and hybrid searches** change scores and order, as in the library.
 
 ### Added
 
+- **Sign-in methods.** The account page lists the ways you sign in, and a Google or Microsoft
+  login can be added to the account or removed there.
+- **Journeys in Statistics.** A section of its own for the ways visitors go on from a search.
+  Browsing switches between paths and filters, facet picks are recorded, and the Changes badge
+  counts what is new to you.
+- **MCP.** `search` pages, names its facets, takes a filter expression and says the total beside
+  the hits returned. `search_many` runs several searches in one call, `get_cold` reads a record's
+  cold storage, and `describe_dataset` gives the owner's descriptions of the site and its fields.
+  Nine tools, all read-only.
+- **Display.** Light, dark or the system's, on the account page.
+- **Upload limit.** `Indx:MaxUploadBytes` sets the most one upload may hold, 2 GB by default.
+- **Admin > Datasets** has a hibernate button on each loaded dataset that is not pinned, and
+  **Admin > Teams** opens each team to its members, datasets and keys.
 - **The terminal monitor opens with the indx mark.** It turns while the datasets load at startup,
   then lands as the monitor's logo as the monitor draws itself in. It names the dataset loading
   and how far it has got, and shows the versions and the address. Any key skips it.
 - The terminal monitor shows a dataset waiting its turn in the startup load as **Queued**, where
   it said Hibernated.
+
+### Changed
+
+- **Writes and rebuilds keep apart.** A document or synonym write while the dataset is rebuilding
+  answers `409`, and a webhook call waits for the rebuild. A write to a sleeping dataset is
+  refused: wake it first.
+- **Sign-in pauses** after five wrong passwords.
+- **Team pages open faster.** A dataset's record count is kept, not counted on every visit, and a
+  sleeping dataset keeps its count until it wakes.
+- **Dataset Options** shows one section at a time, with a menu of its own as Admin > Settings has.
+- **Memory in the monitors** is Indx's own first, with the machine's named as the machine's.
+- **Team key names are unique in the team,** and a deleted team's keys go with it.
+
+### Fixed
+
+- A dataset's settings follow it through a rename.
+- A range open at one end reads "100000000 or more" or "up to 50" in the statistics' paths.
+- The terminal monitor's event pane wraps long lines and keeps showing new events.
+- A Search or ask answer that fails on the server says so, in the console and to a visitor.
 
 ## [2.0.0-beta.3] - 2026-11-10
 
@@ -46,8 +197,7 @@ Runs on IndxSearchLib 5.0.6 or later.
   went next.
 - **Search or ask.** Five modes set how forward the offer is, from strict to proactive. Needs in
   its Statistics group the questions visitors asked in different words, across visits, with how
-  each ended. A catalogue's best answer streams, and puts its own picks on the page as the result
-  list, each with why it was chosen, so asking for something no field holds still lists what fits. OpenAI is a provider of its own, each provider takes
+  each ended. A catalogue's best answer streams. OpenAI is a provider of its own, each provider takes
   one key, models come from the provider's list, and an admin can offer more answer models for the
   owners to choose from.
 - **Observr's Agent** keeps whole conversations with a History, remembers a No per dataset, offers
@@ -174,41 +324,6 @@ in the AI skill.
 
 ### Changed
 
-- **A dataset's query parameters are 6.0's settings.** `GET`/`PUT`/`DELETE …/query-parameters` and
-  the console's Query parameters tab set the `mode` and the members of `match`, `candidates` and
-  `ranking` a search takes when it leaves them out: `{ "match": { "tolerance": "Exact" },
-  "candidates": { "maxCandidates": 1000 } }`. A value a search sends still wins, one at a time, and
-  `Indx-Query-Parameters` names what came from the dataset (`match.tolerance`). What is a search's
-  own is refused: `match.cursorAt`, `candidates.indexTerms`, the field weights and boosts, the
-  boosts and buries. Settings saved by an earlier server (`coverageDepth`, `coverageSetup`) are read
-  as none: set them again.
-- **The Coverage report** (IndxSearchLib 5.1): `enableCoverageReport` on a search returns
-  `coverageReport`, how each query word was met in each returned record and in which field, and
-  per field how many words were met each way. Null unless asked for.
-- **A field is matched by whole words unless it has pattern matching** (IndxSearchLib 5.1,
-  `Field.PatternMatching`). `PUT fields/configuration` takes `patternMatching` (true or false) with
-  `indexSizes`, `numberOfStartCharacters` and `numberOfStopCharacters`, which are its settings;
-  `GET` reports them, null for a field matched by whole words only. A dataset configured before
-  keeps pattern matching on every searchable field, so it ranks as it did; a new one has it off
-  until it is set. `wordIndexing` is gone: every searchable field has its words in the word lookup,
-  a body that still sends it is read without it, and `GET fields/word-indexing` is removed. The
-  console's WordIndexing column is a PatternMatching column.
-- **High resolution is removed** (`highResolution`, the console column). A body that still sends it
-  is read without it.
-- **`Indx:BoostSaturationCeiling` is read as 1 to 255.** 0 or less ("no cap") or more than 255 is
-  read as 255, the most a search can carry, with a warning in the log, so saved boost rules can
-  never take a search past it and have it refused.
-- **Statistics record a filter given as `filterExpression`**, and a token and an expression
-  together as the filter the search ran with. Only the token was read, so a search filtered by an
-  expression went unrecorded or was stored without its filter.
-- **A filter expression is at most 100 000 characters**, and the `pointer` of an
-  `invalidFilterExpression` is a window round the first error, not the whole expression.
-- **A combined token spelled otherwise than the server writes it is `400 unknownFilter`** with the
-  token to use. A token the server handed out is always spelled right.
-- **A boost with a strength outside 1-3 is a `400 invalidArgument`**, from `boosts/from-filter`, a
-  search's `boosts` and `PUT boosts`; `boosts/from-filter` used to echo it back, and a search
-  added it to the score unchecked. A search whose boosts' strengths, saved rules included, sum
-  past 255 answers `200` with no records and `reason` set.
 - **Searches starting with periods work.** A search such as `... og noen` answered `500` on a
   dataset with a title that starts with an ellipsis. It now finds that title. A search of
   punctuation only, such as `...`, returns no records with a `reason`, since it has no words to
@@ -277,39 +392,6 @@ in the AI skill.
 
 ### Added
 
-- **Bury rules, the boost rules' counterpart.** `GET`/`PUT`/`DELETE buries` keep a dataset's saved
-  bury rules, a boost rule's shape (name, conditions on filterable fields, And/Or, a strength, an
-  active period), applied to every search that runs with `enableBury`; `POST buries/from-filter`
-  makes a bury a search carries itself in `buries`. A bury takes the matching documents down
-  without excluding them, and nothing else moves. The rules are capped by `Indx:BurySaturationCeiling`
-  (1 to 255, default 6) as the boost rules are by theirs, follow the dataset through rename,
-  transfer and replace, and expire with a notification of their own. The console has a **Bury
-  rules** tab beside Boost rules; the MCP search applies both kinds.
-
-- **Filter expressions: `POST filters/expression`, and `filterExpression` on a search.** One
-  expression for what took a request per filter and per combine:
-  `brand IN ["nike", "puma"] AND price BETWEEN 100 AND 2000 AND NOT category = "outlet"`, with
-  `= != < <= > >=`, `IN`, `BETWEEN`, `within(field, lat, lon, meters)`, `AND OR NOT`, parentheses
-  and `MATCHCASE`. `filters/expression` answers `{hashString, canonical}`: the token is the one the
-  other filter routes give for the same filter, `canonical` the expression as the engine reads it.
-  `search`, `search/vector` and `search/hybrid` take `filterExpression` (ANDed with `filter`) and
-  `filterParameters`, the tokens for `$name` placeholders. An expression that makes no filter is
-  `400 invalidFilterExpression` with every error, its kind and its place, and a pointer; it never
-  runs unfiltered. The MCP `search` tool takes `filter`, an expression ANDed with `filters`.
-- **`POST filters/in`: documents whose field holds one of a set of values.** The body is
-  `{fieldName, values, isCaseSensitive}`. One request and one filter for the whole set, where
-  value filters combined with OR were a request per value and per combine - and on a field with
-  no index (an array) a walk of the documents per value, against one for the set. On a numeric
-  field the values compare as numbers. The token describes the filter. An empty list, a value
-  that is not a number on a numeric field, or case sensitivity on one is a `400` with the reason.
-- **`POST filters/position`: documents within a distance of a position** - "a shop within 1 km".
-  The body is `{fieldName, latitude, longitude, withinMeter}`: `fieldName` names an object holding
-  the numbers `latitude` and `longitude` in decimal degrees (`location` for
-  `{"location": {"latitude": 59.91, "longitude": 10.75}}`), and both `location.latitude` and
-  `location.longitude` must be Filterable. The distance is measured on a sphere, the short way
-  round across the antimeridian, both ends inclusive. Like a range filter's, the token describes
-  the filter and is honoured after the cache has let it go. A position off the Earth, a negative
-  distance, or a field without a position is a `400` with the reason.
 - **Query parameters per dataset.** A new tab on each dataset, and
   `GET`/`PUT`/`DELETE …/query-parameters`, set the coverage values a search uses when it leaves
   them out: typo tolerance, joined words, truncation, coverage depth and the rest. A value a
@@ -353,13 +435,6 @@ in the AI skill.
 
 ### Breaking
 
-- **`POST filters/combine` takes a list: `{ "filters": [ … ], "useAndOperation": true }`**, in place
-  of `{ "a", "b", "useAndOperation" }`. Two or more filters make one filter - one request, one
-  token and one cache entry, where pairs combined in turn were a request and a filter per pair. A
-  filter listed twice counts once, the order does not matter, one filter gives its own token, and
-  an empty list is `400`. An AND holding a filter on an array field checks it only on the documents
-  the other filters leave: next to a selective filter, on 500 000 documents, 9 ms where loading it
-  took 73 ms. `@indxsearch/intrface` sends the list from its next release.
 - **Team-scoped routes.** Every dataset operation lives under
   `/api/teams/{team}/datasets/{dataset}/…`. The 47 v1 route aliases are gone.
 - **Errors are RFC 9457 problem documents** (`application/problem+json`) with a machine-readable
