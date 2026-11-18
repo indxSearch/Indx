@@ -8,6 +8,29 @@ Versions: the server has its own line (2.x). It bundles the Indx core library (`
 OpenAPI document (`/swagger/v2.0-beta/swagger.json`). A server patch can pick up a newer core
 without changing the HTTP contract.
 
+## [2.0.0-beta.5] - 2026-11-18
+
+Runs on IndxSearchLib 6.0.0-beta2 or later.
+
+A fix for records holding emoji, and the shortest word as a setting of the dataset. Nothing
+changes in the search API; upgrading from beta 4 needs no other change.
+
+### Added
+
+- **The shortest word.** Under Query parameters, Text sets how short a word may be and still be
+  looked up as a word: 1 makes single letters and digits words, for codes and sizes such as
+  "a 4", and 3 leaves two-letter words to pattern matching. Indx's own is 2. It is built into
+  the index, so saving rebuilds the dataset in the background, as text rules do.
+
+### Fixed
+
+- **Records holding emoji.** A character outside the basic set, such as an emoji, made every
+  value after it in the record read one character too early when the dataset was loaded from
+  its store, at a restart or a wake, and when records were added or updated. A key after one
+  stopped the dataset from loading, and a text was indexed with its last character missing. A
+  dataset that failed this way loads again after the upgrade; reload one that holds such records
+  to have them indexed as written.
+
 ## [2.0.0-beta.4] - 2026-11-17
 
 Runs on IndxSearchLib 6.0.0-beta1 or later.

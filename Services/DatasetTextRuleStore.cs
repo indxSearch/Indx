@@ -40,18 +40,31 @@ namespace IndxServer.Services
         /// look for.</summary>
         public List<string> RemovedReplacements { get; set; } = [];
 
+        /// <summary>The shortest word (<see cref="TokenizerSetup.MinimumWordSize"/>, 18 Nov 2026):
+        /// a shorter one is not indexed or looked up as a word, and is found as part of a word
+        /// only. Null is Indx's own, <see cref="TokenizerSetup.Default"/>'s 2. 1 makes single
+        /// letters and digits words ("a 4"); 3 leaves two-letter words to the pattern matcher.</summary>
+        public int? MinimumWordSize { get; set; }
+
         /// <summary>Nothing over what Indx does by itself.</summary>
         [JsonIgnore]
-        public bool IsDefault => Replacements.Count == 0 && Folds.Count == 0 && OneWay && RemovedFolds.Count == 0 && RemovedReplacements.Count == 0;
+        public bool IsDefault => !ChangesText && MinimumWordSize is null;
+
+        /// <summary>Whether the rules change how text is read (the normalizer), not only the
+        /// shortest word.</summary>
+        [JsonIgnore]
+        public bool ChangesText => Replacements.Count > 0 || Folds.Count > 0 || !OneWay || RemovedFolds.Count > 0 || RemovedReplacements.Count > 0;
 
         public DatasetTextRules Copy() => new()
         {
             Replacements = [.. Replacements], Folds = [.. Folds], OneWay = OneWay,
             RemovedFolds = [.. RemovedFolds], RemovedReplacements = [.. RemovedReplacements],
+            MinimumWordSize = MinimumWordSize,
         };
 
         public bool SameAs(DatasetTextRules? other) =>
-            other != null && OneWay == other.OneWay && Replacements.SequenceEqual(other.Replacements) && Folds.SequenceEqual(other.Folds)
+            other != null && OneWay == other.OneWay && MinimumWordSize == other.MinimumWordSize
+            && Replacements.SequenceEqual(other.Replacements) && Folds.SequenceEqual(other.Folds)
             && RemovedFolds.Order(StringComparer.Ordinal).SequenceEqual(other.RemovedFolds.Order(StringComparer.Ordinal))
             && RemovedReplacements.Order(StringComparer.Ordinal).SequenceEqual(other.RemovedReplacements.Order(StringComparer.Ordinal));
     }
@@ -67,6 +80,10 @@ namespace IndxServer.Services
         private const string Table = "DatasetTextRules";
 
         public const int MaxReplacements = 200, MaxFolds = 500, MaxLength = 64;
+
+        /// <summary>The shortest word a dataset can choose, 1 to 5: past that a word of the
+        /// records' language is left out of the word lookup.</summary>
+        public const int LowestMinimumWordSize = 1, HighestMinimumWordSize = 5;
 
         private static readonly JsonSerializerOptions JsonOptions = new()
         {
@@ -201,7 +218,30 @@ namespace IndxServer.Services
             }
             if (rules.RemovedFolds.Any(l => l is not { Length: 1 })) return "A removed fold is named by its one letter.";
             if (rules.RemovedReplacements.Any(string.IsNullOrEmpty)) return "A removed replacement is named by what it looks for.";
+            if (rules.MinimumWordSize is { } size && (size < LowestMinimumWordSize || size > HighestMinimumWordSize))
+                return $"The shortest word is {LowestMinimumWordSize} to {HighestMinimumWordSize} characters.";
             return null;
+        }
+
+        /// <summary>The engine's tokenizer for a shortest word: Indx's own in everything else.</summary>
+        public static TokenizerSetup Tokenizer(int minimumWordSize)
+        {
+            var shipped = TokenizerSetup.Default;
+            return new TokenizerSetup(shipped.Delimiters, minimumWordSize)
+            {
+                MaxSizeOfWordToken = shipped.MaxSizeOfWordToken,
+                AllowedWordTerminators = shipped.AllowedWordTerminators,
+            };
+        }
+
+        /// <summary>The configuration a dataset's engine is built with, given its rules: the
+        /// normalizer when they change text, the tokenizer when they set the shortest word.</summary>
+        public static ConfigurationParameters Apply(ConfigurationParameters configuration, DatasetTextRules? rules)
+        {
+            if (rules == null) return configuration;
+            return configuration.With(
+                textNormalizer: rules.ChangesText ? Build(rules) : null,
+                tokenizerSetup: rules.MinimumWordSize is { } size ? Tokenizer(size) : null);
         }
 
         /// <summary>

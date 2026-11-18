@@ -140,7 +140,8 @@ namespace IndxServer.Engine
         /// <summary>
         /// The configuration a dataset's engine is built with: <see cref="ResolveConfiguration"/>,
         /// with the dataset's own text rules as the engine's normalizer when it has any (17 Nov
-        /// 2026, <see cref="Services.DatasetTextRuleStore"/>). Rules that cannot be built are
+        /// 2026, <see cref="Services.DatasetTextRuleStore"/>) and its shortest word as the
+        /// tokenizer's (18 Nov 2026). Rules that cannot be built are
         /// logged and left out: a dataset must open.
         /// </summary>
         internal static ConfigurationParameters ConfigurationFor(int? persisted, string dataSetName, string teamId)
@@ -148,8 +149,7 @@ namespace IndxServer.Engine
             var configuration = ResolveConfiguration(persisted, dataSetName);
             try
             {
-                var text = _manager?._textRuleStore?.Load(teamId, dataSetName);
-                return text == null ? configuration : configuration.With(textNormalizer: Services.DatasetTextRuleStore.Build(text));
+                return Services.DatasetTextRuleStore.Apply(configuration, _manager?._textRuleStore?.Load(teamId, dataSetName));
             }
             catch (Exception ex)
             {

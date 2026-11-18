@@ -5,9 +5,12 @@
    and can be switched off one by one. Drawn as the query parameters' groups are, a table with a
    setting in each row: its name, its help and its control under them. Unlike them this is built
    into the index, so it has its own Save, which rebuilds the dataset from its store in the
-   background; the dataset must be Ready. A field's own replacements are in its profile. *@
+   background; the dataset must be Ready. A field's own replacements are in its profile. The
+   shortest word (18 Nov 2026) is the tokenizer's, not the normalizer's, but saved and rebuilt the
+   same way, so it is a row here. *@
 @using Indx.Api
 @using IndxServer.Engine
+@using IndxServer.Services
 @implements IDisposable
 
 <div class="tr-panel">
@@ -66,6 +69,17 @@
                         : "Off: they are one letter. \"grå\" and \"gra\" are the same search, in less memory. Indx's own folds are read the same way.")</span>
                     <div class="tr-control">
                         <ToggleSwitch Label="One-way" Variant="positive" Checked="@_oneWay" CheckedChanged="@(v => _oneWay = v)" Disabled="@(!CanEdit)" />
+                    </div>
+                </TableCell>
+            </TableRow>
+
+            <TableRow Class="@(_minimumWordSize != null ? "tr-row--set" : null)">
+                <TableCell Class="tr-cell">
+                    <span class="tr-label">Shortest word</span>
+                    <span class="tr-help">A word shorter than this is not looked up as a word, and is found only as part of a longer one. 1 makes single letters and digits words, for codes and sizes such as "a 4"; 3 leaves two-letter words to the pattern matching.</span>
+                    <div class="tr-control">
+                        <div class="tr-size"><SelectField Size="micro" Options="MinimumWordSizes" Value="@((_minimumWordSize ?? TokenizerSetup.Default.MinimumWordSize).ToString())"
+                                     ValueChanged="@(v => _minimumWordSize = int.TryParse(v, out var n) && n != TokenizerSetup.Default.MinimumWordSize ? n : null)" /></div>
                     </div>
                 </TableCell>
             </TableRow>
@@ -282,6 +296,15 @@
         return sb.ToString();
     }
     private bool _oneWay = true;
+    /// <summary>The shortest word, null for Indx's own (2): choosing 2 is choosing none.</summary>
+    private int? _minimumWordSize;
+
+    private static readonly SelectField.SelectOption[] MinimumWordSizes = Enumerable
+        .Range(DatasetTextRuleStore.LowestMinimumWordSize, DatasetTextRuleStore.HighestMinimumWordSize - DatasetTextRuleStore.LowestMinimumWordSize + 1)
+        .Select(n => new SelectField.SelectOption(
+            n == TokenizerSetup.Default.MinimumWordSize ? $"{n} characters (Indx's)" : n == 1 ? "1 character" : $"{n} characters", n.ToString()))
+        .ToArray();
+
     private DatasetTextRules _saved = new();
     private string? _loadedFor;
     private bool _saving, _rebuilding, _disposed;
@@ -297,6 +320,7 @@
         OneWay = _oneWay,
         RemovedFolds = [.. _removedFolds],
         RemovedReplacements = [.. _removedReplacements],
+        MinimumWordSize = _minimumWordSize,
     };
 
     private bool IsDirty => !Edited.SameAs(_saved);
@@ -319,6 +343,7 @@
         _oneWay = _saved.OneWay;
         _removedFolds = new(_saved.RemovedFolds, StringComparer.Ordinal);
         _removedReplacements = new(_saved.RemovedReplacements, StringComparer.Ordinal);
+        _minimumWordSize = _saved.MinimumWordSize == TokenizerSetup.Default.MinimumWordSize ? null : _saved.MinimumWordSize;
         _error = null;
     }
 

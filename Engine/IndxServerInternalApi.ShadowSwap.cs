@@ -424,7 +424,7 @@ namespace IndxServer.Engine
         {
             if (_textRuleStore == null) return "Text rules are not available on this server.";
             if (Services.DatasetTextRuleStore.Objection(rules) is { } objection) return objection;
-            try { _ = Services.DatasetTextRuleStore.Build(rules); }
+            try { _ = Services.DatasetTextRuleStore.Apply(ConfigurationParameters.Default, rules); }
             catch (Exception ex) { return $"The rules cannot be used: {ex.Message}"; }
 
             var key = MakeKey(dataSetName, teamId);

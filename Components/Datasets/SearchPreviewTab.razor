@@ -551,11 +551,20 @@ else
                 catch { }
             }
         }
-        // Too short for the lookup: every word below the shortest word token, read from the
-        // tokenizer the server builds every engine with (ConfigurationParameters.Default).
-        bool tooShort = !string.IsNullOrWhiteSpace(text) && text.Split(TokenizerSetup.Default.Delimiters, StringSplitOptions.RemoveEmptyEntries)
-            .All(w => w.Length < TokenizerSetup.Default.MinimumWordSize);
+        // Too short for the lookup: every word below the shortest word token, the dataset's own
+        // (its text rules, 18 Nov 2026) or Indx's. Read only when no rung was counted, where it
+        // can matter: the rules are in the store, not on the engine.
+        bool tooShort = result.ToleranceCounts is null && !string.IsNullOrWhiteSpace(text) && TooShortForTheLookup(text);
         return (hits, SearchExplanation.Of(result, wordMatching: Ctx.SavedFields?.Any(f => f.WordMatching == true) != false, tooShort));
+    }
+
+    private bool TooShortForTheLookup(string text)
+    {
+        int shortest = TokenizerSetup.Default.MinimumWordSize;
+        // No engine registry (a page rendered without the server started): Indx's own.
+        try { shortest = IndxServer.Engine.IndxServerInternalApi.Manager.GetTextRules(Ctx.Name, Ctx.TeamId)?.MinimumWordSize ?? shortest; }
+        catch (InvalidOperationException) { }
+        return text.Split(TokenizerSetup.Default.Delimiters, StringSplitOptions.RemoveEmptyEntries).All(w => w.Length < shortest);
     }
 
     private async Task RunPerfTest()
