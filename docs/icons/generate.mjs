@@ -30,6 +30,8 @@ const ICONS = [
   'SearchOrAsk', 'Observr', 'Analytics', 'Folder', 'Database', 'LayoutAlignLeft',
   // 2.0 beta 3.
   'Webhooks', 'SearchJumpTo', 'NodeTree', 'Support', 'UserPlus', 'Cpu', 'Update', 'Download', 'Flag', 'Clock',
+  // 2.0 beta 4.
+  'TableIcon', 'DocumentFields', 'Milestone', 'FieldConfiguration', 'Coverage', 'Filter', 'Layers',
 ];
 
 const SCALE = 3;                 // CSS pixels per grid unit: a 7x5 icon becomes 21x15
