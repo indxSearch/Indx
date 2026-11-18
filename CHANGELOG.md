@@ -26,6 +26,15 @@ before upgrading; section 7 covers the HTTP API. `@indxsearch/intrface` and
 - **A new search core.** The server runs on Indx 6. A field's words are indexed as words, and a
   query word is looked up as typed, then within one, two or three edits. How records are fetched
   and whether they are reranked are separate choices.
+- **Records.** A new section on each dataset shows its records as a table: searched as you type,
+  filtered, ordered and paged, with resizable columns. A row opens in place and shows how each
+  word matched. A scan reads every record and reports, field by field, how many lack a value and
+  which have text cut at indexing; each list opens in the table, and a record fixed since is
+  marked.
+- **Journeys in Statistics.** A section of its own for the ways visitors go on from a search, a
+  facet value or a catalogue page, to a chosen result, a conversion or nothing. Browsing switches
+  between paths and filters, facet picks are recorded, and the Changes badge counts what is new
+  to you.
 - **Performance.** Searching and loading are faster and take less memory, most of all on datasets
   with many searched fields or long texts. Facets over large result sets and filtered searches are
   faster too.
@@ -85,9 +94,6 @@ before upgrading; section 7 covers the HTTP API. `@indxsearch/intrface` and
   Advanced, and saving rebuilds the index in the background.
 - **Match report.** With `enableMatchReport` each returned record says how every query word was
   met and in which field. `measureFit` says how much of the text the best results explain.
-- **Records.** A new section on each dataset shows its records as a table: searched as you type,
-  filtered, ordered and paged, with resizable columns. A row opens in place and shows how each
-  word matched.
 - **The search preview says how it found what it found:** strong, fuzzy, partial, pattern or
   broad matches, with the count on each typo level. A facet value is a filter by a click, and a
   number field is filtered by a range picked on its histogram.
@@ -136,9 +142,6 @@ The guide has the details; these are the changes a client or an owner meets.
 
 - **Sign-in methods.** The account page lists the ways you sign in, and a Google or Microsoft
   login can be added to the account or removed there.
-- **Journeys in Statistics.** A section of its own for the ways visitors go on from a search.
-  Browsing switches between paths and filters, facet picks are recorded, and the Changes badge
-  counts what is new to you.
 - **MCP.** `search` pages, names its facets, takes a filter expression and says the total beside
   the hits returned. `search_many` runs several searches in one call, `get_cold` reads a record's
   cold storage, and `describe_dataset` gives the owner's descriptions of the site and its fields.

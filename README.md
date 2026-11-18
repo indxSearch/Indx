@@ -2,7 +2,7 @@
 
 A self-hosted search service built on [Indx Search](https://indx.co). Blazor Server UI, HTTP API with JWT authentication, user management, and everything needed to run a multi-user search service on your own infrastructure.
 
-![A tour of the Indx console: the dataset list, a hibernated dataset, field configuration, query parameters, search statistics, boost rules, synonyms, and the admin views of teams, datasets and the monitor](docs/images/tour.gif)
+![A tour of the Indx console: the dataset list, a hibernated dataset, status, search statistics and journeys, field configuration, the records browser and its scan report, categories, query parameters, boost rules, synonyms, and the admin views of teams, datasets and the monitor](docs/images/tour.gif)
 
 ## What's Included
 
@@ -10,7 +10,7 @@ A self-hosted search service built on [Indx Search](https://indx.co). Blazor Ser
 <tr>
 <td width="50%" valign="top">
 <img src="docs/icons/internet-browser.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Dashboard</b><br>
-<sub>Teams, datasets, field configuration with weight sliders, categories as a tree, search preview, status, statistics, boost rules, synonyms, options; plus an admin panel</sub>
+<sub>Teams, datasets, field configuration with field profiles, a records browser with a data scan, categories as a tree, search preview, status, statistics with journeys, boost and bury rules, synonyms, options; plus an admin panel</sub>
 </td>
 <td width="50%" valign="top">
 <img src="docs/icons/user-group.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Teams</b><br>
@@ -50,7 +50,7 @@ A self-hosted search service built on [Indx Search](https://indx.co). Blazor Ser
 <tr>
 <td width="50%" valign="top">
 <img src="docs/icons/boost.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Relevance</b><br>
-<sub>Server-side boost rules with schedules, facets, coverage, vector and hybrid search</sub>
+<sub>Typo tolerance by levels, matching chosen per field, boost and bury rules with schedules, facets, vector and hybrid search</sub>
 </td>
 <td width="50%" valign="top">
 <img src="docs/icons/synonym.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Synonyms</b><br>
@@ -127,14 +127,17 @@ membership and per-team roles are managed.
 
 Data goes in as **JSON**, from the web UI or over the API.
 
-**From the UI:** open your dataset, upload a JSON file, mark which fields are searchable
-(and filterable / facetable / sortable), then **Load & Index**. The search preview tab lets
+**From the UI:** open your dataset, upload a JSON file, mark how each field is searched, by its
+words, inside its words or both, and which are filterable / facetable / sortable, then
+**Load & Index**. The search preview tab lets
 you try queries immediately.
 
-![Field configuration: each field with its detected type, the four role checkboxes and a weight slider. Nested objects are listed with their children indented beneath them](docs/images/console-field-configuration.png)
+![Field configuration: each field with its detected type, WordMatching and PatternMatching, its field profile, the filter roles and a weight slider. Nested objects are listed with their children indented beneath them](docs/images/console-field-configuration.png)
 
 Nested objects appear as their own row with the fields inside them indented underneath, so the
-structure of the source document stays readable while you configure it.
+structure of the source document stays readable while you configure it. A searched field takes
+its settings from a **field profile**: five are built in (title, name, category, code, text), and
+a dataset can keep its own.
 
 **The format:** an array of JSON documents. Nested objects become dotted field names
 (`brand.displayName`), arrays are supported, and fields are auto-detected with types on
@@ -161,6 +164,28 @@ Those two do not wait for the build: they answer `202` when it is started. While
 why it failed, or is null. Field roles are written by `PUT …/fields/configuration` only; the
 per-role lists (`GET …/fields/searchable` and the rest) are for reading.
 
+## Records
+
+The **Records** section shows a dataset's records as a table: searched as you type, filtered,
+ordered and paged, with columns you choose and resize. A row opens in place, as fields or as JSON,
+and with a search it shows how each query word was matched, and in which field.
+
+![Records: a catalogue's records as a table with name, brand, category and price, and the
+toolbar's filter, order, columns, search and Run scan](docs/images/console-records.png)
+
+**Run scan** reads every record once and reports, field by field, how many records lack a value
+and how many values the field has, the searched fields first and the worst first, and which records
+have text cut at indexing. A record without a searched field cannot be found by it, so this is
+where a gap in the data shows before a visitor finds it. **Show** lists those records in the
+table. The report says when records have changed since the scan, and a record fixed since is
+marked as fixed.
+
+![The scan's report: each searched field with the records that lack a value, their share and the
+field's number of values, worst first, each with a Show button](docs/images/console-records-report.png)
+
+A scan keeps one processor core busy while it runs, and searches go on as usual. Only an editor
+runs one; anyone who can open the dataset reads the report.
+
 ## Categories
 
 A catalogue has a shape, and the **Categories** tab draws it: every category as a node with the
@@ -182,9 +207,10 @@ know where the catalogue is thin; the counts behind the marks are in the categor
 
 ## Boost rules
 
-Ranking rules that lift matching documents when a search runs with `enableBoost`. They are
-per-dataset, edited on the dataset's **Boost rules** tab, and they stack: a document matching
-three rules is lifted by all three.
+Ranking rules that lift matching documents in every search of the dataset, or, as **bury
+rules**, take them down while nothing else moves. They are per-dataset, edited on the dataset's
+**Boost rules** tab on one scale from Bury high to Boost high, and they stack: a document
+matching three rules is lifted by all three.
 
 ![The boost rules tab: four rules, one with a date window, showing value, boolean and numeric
 range conditions and Low, Medium and High strengths](docs/images/console-boost-rules.png)
@@ -226,9 +252,20 @@ in a dialog, or import/export the whole list as JSON.
 **Over the API:** `GET`/`PUT api/teams/<team>/datasets/<dataset>/synonyms`. `GET` returns
 the list (or `null`), `PUT` replaces it (`null` removes it; editor role required).
 
-**Why experimental:** expansion widens recall but grows the query text, which dilutes
-Coverage scores proportionally. Measure the net effect on your data before shipping a
-large list to production. Behavior may still change.
+**Why experimental:** a synonym widens what a search finds, and a long list on a large dataset
+widens it a lot. Measure the effect on your data before shipping one to production. Behavior may
+still change.
+
+## Query parameters
+
+What a search uses when its request leaves a value out: the typos a word may have and from how many
+letters, how the word being typed is read, and what the result list does when nothing matches every
+word. Under **Advanced**, how records are fetched and ranked, and the dataset's text rules: strings
+to replace and letters to read as other letters, beside Indx's own. A value the request sends
+always wins, and a change applies from the next search.
+
+![Query parameters: the typos, typing and result list settings, each with its help text and its
+control](docs/images/console-query-parameters.png)
 
 ## Search statistics (experimental)
 
@@ -243,7 +280,7 @@ marked, then the Overview section's tiles and pictures](docs/images/console-stat
 
 Below the chart, one section at a time, each with its own view settings:
 
-- **Overview** opens with the window's figures, searches, fuzzy finds, click-through, the average
+- **Overview** opens with the window's figures, searches, partial finds, click-through, the average
   click position and, once there are any, conversions, and then the pictures: when people search,
   as a week-by-hour grid and as a clock of the day; where the searches come from; which result
   gets chosen; which languages visitors search in; how they type; and the search profile, six
@@ -255,17 +292,22 @@ of the day, searches by surface, which result is chosen and how people type](doc
 - **Top queries** gives each query its click-through and the average position of the result
   people chose. A low position means the right document was found and ranked too low. Order by
   searches or by click-through, ten more at a time.
-- **Fuzzy search** shows what Indx found for searches with typos too large for an exact match:
-  how often the visitor still chose a result, and which one. **All** adds the misspelled searches
-  nothing was chosen from.
+- **Partial matches** shows the searches no record held every word of, where the visitor still
+  chose one of the nearest results: how often, and which one. **All** adds those nothing was
+  chosen from.
 - **Top documents** lists what gets chosen, or what converts.
+- **Journeys** follows visits from how they started, a search, a facet value or a catalogue
+  page: open a start to see what came next, a chosen result, a conversion or nothing.
 - **Browsing** lists what people narrowed the catalogue by, filter value by filter value, with or
   without typing. On a dataset of people, where a filter can hold a name, switch it off on the
   **Options** tab.
 - **Changes** lists what was changed on the dataset itself. Pick a kind of change, and the chart
   marks only those.
 
-![The Fuzzy search section: misspelled searches, how often a result was chosen anyway, and the
+![The Journeys section: visits that began with the search "walnut", how many chose a result and
+how many of those converted](docs/images/console-statistics-journeys.png)
+
+![The Partial matches section: misspelled searches, how often a result was chosen anyway, and the
 result chosen most](docs/images/console-statistics-coverage.png)
 
 Every dataset card on the team page also draws the last two weeks of searches, so a dataset
@@ -298,7 +340,8 @@ for 90 days and daily totals until you delete them, on the dataset's **Options**
 
 The server exposes a [Model Context Protocol](https://modelcontextprotocol.io) endpoint at `/mcp` (Streamable HTTP). Point an MCP-capable client at it with a bearer token, whether Claude Code, Claude Desktop, or any other, and the agent gets read-only tools over your datasets, for both querying and setting one up:
 
-- **Querying**: `list_datasets`, `describe_dataset`, `search`, `get_document`, `get_synonyms`
+- **Querying**: `list_datasets`, `describe_dataset`, `search`, `search_many`, `get_document`,
+  `get_cold`, `get_synonyms`
 - **Inspecting**: `get_status` (state, document count, scoring mode, errors, and what to do next)
   and `get_field_configuration` (every field including the ones switched off, with weights, BM25
   parameters and a sample of the real content)
@@ -551,7 +594,7 @@ was last indexed, and its keep-alive policy:
 
 ![Admin, Datasets: every dataset across both teams with state, document count, last indexed and keep-alive](docs/images/admin-datasets.png)
 
-Over the HTTP API, the per-dataset `Hibernate`, `WakeUp`, and `LoadFromDatabase` operations control loading. See the [API reference](https://docs.indx.co).
+Over the HTTP API, the per-dataset `Hibernate`, `WakeUp`, and `LoadFromDatabase` operations control loading. See `/swagger` for the API reference.
 
 ## Monitor
 
@@ -689,7 +732,7 @@ The test suite lives in the full IndxSolutions repository and is not part of thi
 
 - [`@indxsearch/intrface`](https://www.npmjs.com/package/@indxsearch/intrface): React search UI components for IndxServer (with [`@indxsearch/systm`](https://www.npmjs.com/package/@indxsearch/systm) and [`@indxsearch/pixl`](https://www.npmjs.com/package/@indxsearch/pixl))
 - [`@indxsearch/indx-types`](https://www.npmjs.com/package/@indxsearch/indx-types): TypeScript types for every request, response and error code
-- [Indx Search skill](https://skills.sh/indxsearch/skill-indx-search/indx-search): teaches AI coding agents this API, including a v1 → v2 migration guide
+- [Indx Search skill](https://github.com/indxSearch/skill-indx-search/tree/v6): teaches AI coding agents this API; the Indx 6 version, for this server, is on its `v6` branch while in preview, with the v5 to v6 migration guide
 - [`IndxSearchLib`](https://www.nuget.org/packages/IndxSearchLib): the embedded C# search engine this server is built on
-- [Documentation](https://docs.indx.co): guides, how-tos, and the full API reference
+- [Documentation](https://v5.docs.indx.co) for Indx 5; the documentation for Indx 6 is in preview
 - [Changelog](CHANGELOG.md) and [release notes](docs/release-notes/)
