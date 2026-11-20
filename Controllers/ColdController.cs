@@ -14,7 +14,7 @@ namespace IndxServer.Controllers
 
     /// <summary>One item of a sync's batch: <see cref="ColdWrite"/> with the record it is of, by its
     /// Indx key (<see cref="RecordKey"/>) or by the sender's own id (<see cref="Id"/>): the id a webhook
-    /// gave the record, or the record's key as text (12 Nov 2026, Notes/cold-storage.md).</summary>
+    /// gave the record, or the record's key as text.</summary>
     public sealed record ColdBatchItem(string Name, string Content, long? RecordKey = null, string? Id = null, string? Language = null,
         string? ContentType = null, string? Description = null, string? Visibility = null, string? SourceRef = null,
         DateTime? SourceUpdatedUtc = null);
@@ -35,8 +35,8 @@ namespace IndxServer.Controllers
 
     /// <summary>
     /// Cold storage: items kept beside a record, never searched and not in memory, read when a
-    /// question needs them: a book's table of contents, a review, a whole article
-    /// (Notes/cold-storage.md). Reading takes a Search key, which sees the public items only; who sees
+    /// question needs them: a book's table of contents, a review, a whole article. Reading takes a
+    /// Search key, which sees the public items only; who sees
     /// more is <see cref="ColdValues.AccessFor"/>. Writing takes a Full key or an editor. An item is
     /// private unless written otherwise. Who wrote an item is set from the caller, never from the body.
     /// </summary>

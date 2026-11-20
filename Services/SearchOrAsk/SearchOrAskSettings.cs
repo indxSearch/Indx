@@ -240,7 +240,7 @@ namespace IndxServer.Services.SearchOrAsk
         /// the questions (first place 19 to 23 of 30, 34 to 37 of 40) and not one lookup or
         /// description, which the same order unguarded had moved. With descriptions too, Jev found the
         /// refocused list the better one for 9 descriptions and the worse for 1, of 79, no lookup
-        /// refocused (Notes/focusing.md).</summary>
+        /// refocused.</summary>
         public double Refocus { get; set; }
 
         /// <summary>The line the console's switch turns refocusing on with: Jev's invitation.</summary>

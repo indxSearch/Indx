@@ -587,7 +587,7 @@ namespace IndxServer.Controllers
         }
 
         /// <summary>Which of the result's records hold cold storage the caller may read, by key, from
-        /// the store's memory (Notes/cold-storage.md), as <see cref="ColdValues.AccessFor"/> lets the caller.</summary>
+        /// the store's memory, as <see cref="ColdValues.AccessFor"/> lets the caller.</summary>
         private Dictionary<long, string[]> ColdOf(TeamContext ctx, string dataSetName, Indx.Api.Result result)
         {
             if (IndxServerInternalApi.Manager.Cold is not { } store || result.Records is not { Length: > 0 } records) return [];
