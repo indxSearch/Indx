@@ -1323,6 +1323,50 @@ LIMIT $n";
         }
 
         /// <summary>
+        /// The filter each of <paramref name="texts"/> was searched with most in the period, and in how
+        /// many of its searches, of how many (Nov 2026, for Observr's summary): a page that searches one
+        /// section of the dataset (a multi search's books, with authors in another section) misses
+        /// records outside it, and a query's misses are then the page's filter, not the dataset. Read
+        /// from the raw rows, which keep the filter; the daily rollup groups by text alone. Counted
+        /// searches only, the texts lowercased as TopQueries returns them. A text with no counted
+        /// search in the raw rows (pruned, or never) is left out.
+        /// </summary>
+        public Dictionary<string, (string? FilterKey, long WithIt, long Searches)> CommonFilters(string teamId, string dataSet,
+            long fromDay, long toDay, IReadOnlyCollection<string> texts)
+        {
+            var result = new Dictionary<string, (string? FilterKey, long WithIt, long Searches)>();
+            if (texts.Count == 0) return result;
+            var tz = ZoneOf(teamId, dataSet);
+            using var conn = Open();
+            using var cmd = conn.CreateCommand();
+            var names = texts.Select((_, i) => $"$q{i}").ToList();
+            cmd.CommandText = $"SELECT lower(c.QueryText), c.FilterKey, COUNT(*) FROM " +
+                CountedSearches("s.TeamId = $t AND s.DataSet = $d AND s.Timestamp >= $from AND s.Timestamp < $to") +
+                $" c WHERE lower(c.QueryText) IN ({string.Join(", ", names)}) GROUP BY 1, 2";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSet);
+            cmd.Parameters.AddWithValue("$from", StatisticsDays.Start(tz, fromDay));
+            cmd.Parameters.AddWithValue("$to", StatisticsDays.Start(tz, toDay + 1));
+            int n = 0;
+            foreach (var text in texts) cmd.Parameters.AddWithValue(names[n++], text.ToLowerInvariant());
+            var all = new Dictionary<string, List<(string? Key, long Count)>>();
+            using (var r = cmd.ExecuteReader())
+                while (r.Read())
+                {
+                    var text = r.GetString(0);
+                    if (!all.TryGetValue(text, out var keys)) all[text] = keys = [];
+                    keys.Add((r.IsDBNull(1) ? null : r.GetString(1), r.GetInt64(2)));
+                }
+            foreach (var (text, keys) in all)
+            {
+                // The most used; among equals, a filter over none, so a section's search is named.
+                var top = keys.OrderByDescending(k => k.Count).ThenBy(k => k.Key == null).First();
+                result[text] = (top.Key, top.Count, keys.Sum(k => k.Count));
+            }
+            return result;
+        }
+
+        /// <summary>
         /// One query text's counts over [fromDay, toDay], through the same union as
         /// <see cref="TopQueries"/> (compared lowercased, as that groups it), so a query that is
         /// not among the top lists can still be looked up. Null when it was not searched in the
