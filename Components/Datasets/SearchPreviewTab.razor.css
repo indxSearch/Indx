@@ -136,12 +136,44 @@
     display: none;
 }
 
-.indx-search-clear {
+.indx-search-actions {
     position: absolute;
     right: 4px;
     display: flex;
     align-items: center;
+    gap: 2px;
     height: 100%;
+}
+
+/* Room for the sort button beside Clear. */
+.indx-search-field-wrap--sort .indx-search-field-input {
+    padding-right: 180px;
+}
+
+/* The sort menu: Relevance, then each Sortable field with its two directions. */
+::deep .indx-sort-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px;
+    min-width: 200px;
+}
+
+.indx-sort-row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.indx-sort-field {
+    flex: 1;
+    min-width: 0;
+    padding: 0 8px;
+    font: var(--text-xs);
+    color: var(--lv7);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .indx-search-empty {
