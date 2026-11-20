@@ -35,13 +35,19 @@
                    value="@_box.Rendered"
                    @oninput="@(e => OnTyped(e.Value?.ToString() ?? string.Empty))" />
             <div class="indx-search-actions">
-                @* The order, in the box's end beside Clear (20 Nov 2026): a quiet button that says
-                   what the list is ordered by, for a dataset with a Sortable field. *@
+                @* Clear first, so the sort keeps its place at the end when Clear comes and goes. *@
+                @if (!string.IsNullOrEmpty(_text))
+                {
+                    <Button Variant="ghost" Size="micro" @onclick="Clear">Clear</Button>
+                }
+                @* The order, in the box's end (20 Nov 2026): a quiet button that says what the list
+                   is ordered by, for a dataset with a Sortable field. *@
                 @if (SortFields.Count > 0)
                 {
                     <Popover AriaLabel="Sort by" Open="_sortOpen" OpenChanged="v => _sortOpen = v" Class="indx-sort-menu">
                         <Trigger>
-                            <Button Variant="ghost" Size="micro" title="What the list is ordered by">@SortLabel</Button>
+                            <Button Variant="ghost" Size="micro" title="What the list is ordered by"
+                                    IconRight="@(_sort is { } s ? (s.Ascending ? DatasetIcons.SortAscending : DatasetIcons.SortDescending) : null)">@(_sort?.Field ?? "Relevance")</Button>
                         </Trigger>
                         <ChildContent>
                             <div class="indx-sort-row">
@@ -51,18 +57,14 @@
                             {
                                 <div class="indx-sort-row">
                                     <span class="indx-sort-field">@field</span>
-                                    <Button Variant="@(_sort == new SortChoice(field, true) ? "secondary" : "ghost")" Size="micro"
-                                            title="@($"Lowest {field} first")" @onclick="() => SortBy(new SortChoice(field, true))">↑</Button>
-                                    <Button Variant="@(_sort == new SortChoice(field, false) ? "secondary" : "ghost")" Size="micro"
-                                            title="@($"Highest {field} first")" @onclick="() => SortBy(new SortChoice(field, false))">↓</Button>
+                                    <Button Variant="@(_sort == new SortChoice(field, true) ? "secondary" : "ghost")" Size="micro" IconLeft="DatasetIcons.SortAscending"
+                                            title="@($"Lowest {field} first")" aria-label="@($"Lowest {field} first")" @onclick="() => SortBy(new SortChoice(field, true))" />
+                                    <Button Variant="@(_sort == new SortChoice(field, false) ? "secondary" : "ghost")" Size="micro" IconLeft="DatasetIcons.SortDescending"
+                                            title="@($"Highest {field} first")" aria-label="@($"Highest {field} first")" @onclick="() => SortBy(new SortChoice(field, false))" />
                                 </div>
                             }
                         </ChildContent>
                     </Popover>
-                }
-                @if (!string.IsNullOrEmpty(_text))
-                {
-                    <Button Variant="ghost" Size="micro" @onclick="Clear">Clear</Button>
                 }
             </div>
         </div>
@@ -373,7 +375,6 @@ else
     private bool _sortOpen;
     /// <summary>The saved configuration's Sortable fields: what the engine can order by now.</summary>
     private List<string> SortFields => Ctx.SavedFields?.Where(f => f.Sortable == true).Select(f => f.FieldName).Order().ToList() ?? [];
-    private string SortLabel => _sort is { } s ? $"{s.Field} {(s.Ascending ? "↑" : "↓")}" : "Relevance";
 
     private void SortBy(SortChoice? choice)
     {
