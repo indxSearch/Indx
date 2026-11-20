@@ -79,7 +79,7 @@ namespace IndxServer.Components.Shared
             Add("/account/manage", "Account", "Account", Icon<Indx.Systm.Blazor.Icons.User>(), null, "profile password email");
             Add("/account/api-key", "API keys", "Account", Icon<Indx.Systm.Blazor.Icons.Key>(), null, "personal keys tokens");
             Add("/account/notifications", "Notifications", "Account", Icon<Indx.Systm.Blazor.Icons.Bell>(), null, "alerts");
-            Add("https://docs.indx.co", "Docs", "Account", Icon<Indx.Systm.Blazor.Icons.Book>(), "opens in a new tab", "documentation help guide");
+            Add("https://v6.docs.indx.co", "Docs", "Account", Icon<Indx.Systm.Blazor.Icons.Book>(), "opens in a new tab", "documentation help guide");
             Add("/swagger", "Swagger", "Account", Icon<Indx.Systm.Blazor.Icons.Api>(), "opens in a new tab", "api reference openapi");
 
             if (c.InstanceAdmin)
