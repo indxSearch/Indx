@@ -740,7 +740,7 @@ The test suite lives in the full IndxSolutions repository and is not part of thi
 
 - [`@indxsearch/intrface`](https://www.npmjs.com/package/@indxsearch/intrface): React search UI components for IndxServer (with [`@indxsearch/systm`](https://www.npmjs.com/package/@indxsearch/systm) and [`@indxsearch/pixl`](https://www.npmjs.com/package/@indxsearch/pixl))
 - [`@indxsearch/indx-types`](https://www.npmjs.com/package/@indxsearch/indx-types): TypeScript types for every request, response and error code
-- [Indx Search skill](https://github.com/indxSearch/skill-indx-search/tree/v6): teaches AI coding agents this API; the Indx 6 version, for this server, is on its `v6` branch while in preview, with the v5 to v6 migration guide
+- [Indx Search skill](https://github.com/indxSearch/skill-indx-search): teaches AI coding agents this API, with the v5 to v6 migration guide
 - [`IndxSearchLib`](https://www.nuget.org/packages/IndxSearchLib): the embedded C# search engine this server is built on
-- [Documentation](https://v6.docs.indx.co) for Indx 6, in beta; Indx 5 is at [docs.indx.co](https://docs.indx.co)
+- [Documentation](https://docs.indx.co) for Indx 6; Indx 5 is at [v5.docs.indx.co](https://v5.docs.indx.co)
 - [Changelog](CHANGELOG.md) and [release notes](docs/release-notes/)
