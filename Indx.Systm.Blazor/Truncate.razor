@@ -1,0 +1,19 @@
+@* Port of indx-systm Truncate: one line of text that ellipsizes instead of wrapping or
+   overflowing, and that shrinks inside a flex row or a grid column. Side="start" cuts the
+   beginning and keeps the end, for text whose last part identifies it: a nested field name, a
+   file path, a URL. *@
+<span class="indx-truncate @(Side == "start" ? "indx-truncate-start" : null) @Class" title="@Title">
+    @* The start variant lays the line out right to left so that the overflow, and the ellipsis,
+       land on the left. The bdi puts the text itself back in its own direction, which also keeps
+       a trailing dot or slash where it was written. *@
+    @if (Side == "start") { <bdi>@ChildContent</bdi> } else { @ChildContent }
+</span>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    /// <summary>"end" (default) | "start" — which end gives way.</summary>
+    [Parameter] public string Side { get; set; } = "end";
+    /// <summary>Tooltip with the full text.</summary>
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Class { get; set; }
+}

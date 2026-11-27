@@ -1,0 +1,191 @@
+.indx-datepicker-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.indx-datepicker-label {
+    font: var(--text-xs);
+    color: var(--lv6);
+}
+
+.indx-datepicker-field {
+    position: relative;
+}
+
+.indx-datepicker-input-box {
+    display: flex;
+    align-items: center;
+    height: 30px;
+    width: 100%;
+    min-width: 160px;
+    border: 1px solid var(--lv3);
+    border-radius: var(--radius);
+    background: transparent;
+    box-sizing: border-box;
+    overflow: hidden;
+}
+
+.indx-datepicker-input-box:hover {
+    border-color: var(--lv5);
+}
+
+.indx-datepicker-input-box:focus-within {
+    border-color: var(--lv5);
+}
+
+.indx-datepicker-input-box-error {
+    border-color: var(--CSignal);
+}
+
+.indx-datepicker-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 100%;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--lv5);
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.indx-datepicker-icon:hover {
+    color: var(--lv7);
+}
+
+.indx-datepicker-icon:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+}
+
+.indx-datepicker-input {
+    flex: 1;
+    min-width: 0;
+    height: 100%;
+    padding: 0 10px 0 0;
+    border: none;
+    background: transparent;
+    font: var(--text-xs);
+    font-family: inherit;
+    color: var(--lv7);
+}
+
+.indx-datepicker-input:focus {
+    outline: none;
+}
+
+.indx-datepicker-input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Our own Clock icon opens our calendar — hide the browser's native picker button. */
+.indx-datepicker-input::-webkit-calendar-picker-indicator {
+    display: none;
+}
+
+.indx-datepicker-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 999;
+}
+
+.indx-datepicker-calendar {
+    position: absolute;
+    top: calc(100% + 5px);
+    left: 0;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 10px;
+    background: var(--lv1);
+    border-radius: var(--radius);
+}
+
+.indx-datepicker-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+.indx-datepicker-month {
+    font: var(--text-xs);
+    font-weight: var(--med);
+    color: var(--lv7);
+}
+
+.indx-datepicker-nav {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--lv5);
+    cursor: pointer;
+    border-radius: var(--radius);
+}
+
+.indx-datepicker-nav:hover {
+    background: var(--lv2);
+    color: var(--lv7);
+}
+
+.indx-datepicker-weekdays,
+.indx-datepicker-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+}
+
+.indx-datepicker-weekday {
+    font: var(--text-2xs);
+    color: var(--lv4);
+    text-align: center;
+    padding: 4px 0;
+}
+
+.indx-datepicker-day {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    font: var(--text-xs);
+    border: none;
+    background: transparent;
+    color: var(--lv7);
+    cursor: pointer;
+    border-radius: var(--radius);
+}
+
+.indx-datepicker-day:hover {
+    background: var(--lv2);
+}
+
+.indx-datepicker-outside {
+    color: var(--lv3);
+}
+
+.indx-datepicker-today {
+    outline: 1px solid var(--lv4);
+    outline-offset: -1px;
+}
+
+.indx-datepicker-selected,
+.indx-datepicker-selected:hover {
+    background: var(--lv7);
+    color: var(--lv1);
+}
+
+.indx-datepicker-error-text {
+    font: var(--text-2xs);
+    color: var(--CSignal);
+}

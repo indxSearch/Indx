@@ -1,0 +1,64 @@
+.opt-tab { margin-top: 0; }
+.opt-narrow { max-width: 560px; }
+.opt-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.opt-row--top { margin-top: 8px; }
+/* A second setting under the same heading: room between it and the control above. */
+.opt-gap { margin-top: 24px; }
+.opt-row--top10 { margin-top: 10px; }
+.opt-w80 { width: 80px; }
+.opt-w220 { width: 220px; }
+.opt-w240 { width: 240px; }
+.opt-tabular { font-variant-numeric: tabular-nums; }
+.opt-muted { color: var(--lv4); font: var(--text-xs); }
+.opt-error { color: var(--CSignal); font: var(--text-xs); margin-top: 4px; }
+.opt-error--6 { margin-top: 6px; }
+.opt-success { color: var(--CTeal); font: var(--text-xs); margin-top: 6px; }
+.opt-warning { color: var(--CWarning); font: var(--text-xs); margin-top: 4px; max-width: 560px; }
+.opt-danger-text { color: var(--CSignal); font: var(--text-sm); }
+
+::deep .opt-steps-surface { max-width: 560px; padding: 14px 16px; margin: 4px 0 8px; box-sizing: border-box; }
+.opt-steps { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.opt-steps-foot { margin-top: 10px; justify-content: space-between; }
+.opt-steps-note { margin: 0; flex: 1; }
+.opt-step { display: flex; align-items: center; gap: 10px; font: var(--text-sm); color: var(--lv6); }
+.opt-step--active { color: var(--lv8); font-weight: var(--med); }
+.opt-step--done { color: var(--lv8); }
+.opt-step-mark { width: 14px; height: 14px; display: inline-flex; align-items: center; justify-content: center; flex: none; }
+.opt-step-dot { width: 4px; height: 4px; background: var(--lv3); }
+.opt-step--done .opt-step-mark { color: var(--CTeal); }
+.opt-step-label { flex: none; }
+.opt-step-pct { font: var(--text-xs); color: var(--lv8); font-variant-numeric: tabular-nums; margin-left: 4px; }
+
+/* The sections' menu beside the section, built as Admin > Settings builds its own
+   (Settings.razor.css): a column from the header to the window's bottom, sticking while the
+   section scrolls, its title level with the dataset menu's. The layout reaches out over the
+   content's padding and the panel Surface's (one --spacing more on each side than the admin page
+   has) and the section takes them back; without that it sat lower than the admin one (12 Nov 2026).
+   On a phone the menu is the row above the section. */
+.opt-layout {
+    display: flex;
+    align-items: flex-start;
+    margin: calc(var(--spacing) * -5) 0 calc((var(--page-gutter) + var(--spacing)) * -1) calc((var(--page-gutter) + var(--spacing)) * -1);
+}
+.opt-side {
+    width: 200px;
+    flex: none;
+    position: sticky;
+    top: 0;
+    height: calc(100vh - var(--header-height));
+    overflow-y: auto;
+}
+/* As on the admin page: the icons under the header trail's icon. */
+.opt-side ::deep .side-menu { padding-left: 39px; }
+.opt-main {
+    flex: 1;
+    min-width: 0;
+    max-width: calc(640px + var(--page-gutter) * 2);
+    padding: calc(var(--spacing) * 5) var(--page-gutter) var(--page-gutter);
+}
+@media (max-width: 768px) {
+    .opt-layout { flex-direction: column; align-items: stretch; margin: 0; }
+    .opt-side { width: auto; height: auto; position: static; border-bottom: 1px solid var(--lv2); overflow: visible; padding-bottom: 8px; }
+    .opt-side ::deep .side-menu { padding-left: 0; }
+    .opt-main { padding: 16px 0 0; max-width: none; }
+}

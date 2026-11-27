@@ -1,0 +1,4 @@
+.ddl { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ddl-progress { display: flex; align-items: center; gap: 8px; min-width: 220px; }
+.ddl-progress ::deep .indx-progress-wrapper { width: 140px; }
+.ddl-text { color: var(--lv4); font: var(--text-xs); font-variant-numeric: tabular-nums; }

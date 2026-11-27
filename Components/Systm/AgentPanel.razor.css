@@ -1,0 +1,72 @@
+﻿/* The panel fills its column (app.css .shell-agent) and the chat fills the panel. */
+::deep .agent-chat { height: 100%; min-height: 0; border-radius: 0; }
+
+/* The head is the header's height, with the same edge, so the two read as one bar. */
+.agent-head { display: flex; align-items: center; gap: 8px; height: var(--header-height); box-sizing: border-box; padding: 0 0 0 4px; border-bottom: 1px solid var(--lv2); }
+::deep .agent-chat .indx-chat-header { padding-top: 0; }
+::deep .agent-chat .indx-chat-thread { overscroll-behavior: contain; }
+/* The title is the conversation's first question, cut to the head's width. */
+.agent-title { display: inline-flex; align-items: center; gap: 7px; min-width: 0; font: var(--text-sm); font-weight: var(--med); color: var(--lv8); }
+.agent-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* The icon keeps its 14 px: as a flex item it was what gave way to a long title. */
+.agent-title ::deep svg { flex: none; }
+
+/* The input with where it is about above it: one chip, quiet. */
+.agent-compose { display: flex; flex-direction: column; gap: 6px; }
+.agent-context-chip { display: inline-flex; max-width: 100%; }
+
+/* What Observr keeps of a long conversation's earlier part: its summary, where the turns end for it. */
+.agent-summary { margin: 4px 0 8px; padding: 10px 12px; border: 1px dashed var(--lv3); border-radius: var(--radius); font: var(--text-xs); color: var(--lv6);
+    display: flex; flex-direction: column; gap: 4px; white-space: pre-wrap; }
+.agent-summary-head { color: var(--lv5); font-weight: var(--med); }
+
+/* Where Observr's memory of a long conversation starts, when it has no summary of what is above. */
+.agent-forgotten { margin: 4px 0; padding: 6px 0; border-top: 1px dashed var(--lv3); font: var(--text-2xs); color: var(--lv5); }
+
+/* The History: one row a conversation, the current one on the raised tone. The list and its rows
+   keep their height (flex: none): the thread is a scrolling flex column, and squeezed to fit it a
+   row's wrapped title ran over the next row (Nov 2026). A long title stops at two lines. */
+.agent-history { display: flex; flex-direction: column; flex: none; }
+.agent-history-row { display: flex; flex-direction: column; align-items: flex-start; flex: none; gap: 2px; padding: 9px 10px; border: 0; border-radius: var(--radius);
+    background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.agent-history-row:hover, .agent-history-row--current { background: var(--lv1); }
+.agent-history-title { font: var(--text-sm); color: var(--lv8); overflow-wrap: anywhere; max-width: 100%;
+    display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.agent-history-meta { font: var(--text-2xs); color: var(--lv5); }
+.agent-note { margin: 8px 0 0; font: var(--text-xs); color: var(--lv5); }
+
+/* The input's head: where it is about, and the notes beside it. */
+.agent-compose-head { display: flex; align-items: center; gap: 6px; }
+.agent-notes-link { margin-left: auto; }
+.agent-notes-link ::deep .indx-btn { color: var(--lv5); }
+
+/* The notes Observr keeps about the dataset. */
+.agent-notes { display: flex; flex-direction: column; margin-top: 6px; }
+.agent-note-row { display: flex; align-items: flex-start; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--lv2); }
+.agent-note-text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 3px; font: var(--text-sm); color: var(--lv7); overflow-wrap: anywhere; }
+.agent-note-add { display: flex; align-items: center; gap: 6px; margin-top: 10px; }
+.agent-note-add ::deep .indx-input-wrapper, .agent-note-add ::deep .indx-input { flex: 1; min-width: 0; }
+.agent-spacer { flex: 1; }
+.agent-error { margin: 0; font: var(--text-xs); color: var(--CSignal); }
+.agent-allowance { margin: 0; font: var(--text-xs); color: var(--lv5); }
+.agent-decided { display: inline-flex; align-items: center; gap: 6px; font: var(--text-xs); color: var(--lv5); }
+
+/* History: every turn before the exchange under way, a tone back. */
+::deep .agent-past { opacity: 0.55; }
+
+/* A turn asked on another page: where, before the text. */
+.agent-where { display: block; font: var(--text-2xs); color: var(--lv5); margin-bottom: 2px; }
+
+/* The proposals inside a turn: the list's margins were made for a page, not a 340px column. */
+::deep .indx-chat-assistant-body .ofl { max-width: none; }
+::deep .indx-chat-assistant-body .ofl-item { margin: 0; padding: 10px 12px; }
+::deep .indx-chat-assistant-body .ofl-item--open { background: var(--lv2); }
+::deep .indx-chat-assistant-body .ofl-text { max-width: none; }
+
+/* The answer's own markup: paragraphs and lists at the chat's size. */
+::deep .indx-chat-assistant-body ul { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 4px; }
+::deep .indx-chat-assistant-body li { line-height: 1.45; }
+::deep .indx-chat-assistant-body code { font-family: var(--font-mono); font-size: 0.92em; background: var(--lv2); padding: 0 4px; border-radius: 3px; }
+
+/* The answer on its way: the status line, then skeleton lines in the shape of the answer. */
+.agent-pending-lines { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; max-width: 420px; }

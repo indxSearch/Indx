@@ -1,0 +1,881 @@
+﻿@* Quick search against the live engine (with the dataset's boost rules applied, as real
+   searches see them) plus an engine-side timing loop. Reads the edited field configuration
+   from the context to pick which fields to show per hit. *@
+@using System.Text.Json
+@using Indx.Api
+@using IndxServer.Models
+@inject StatisticsService Stats
+
+@inherits DatasetTabBase
+@if (!Active) { return; }
+
+@if (Ctx.EngineState == SystemState.Ready)
+{
+    @* Box and facets: stacked, or side by side once this area is wide enough (a container query
+       in the CSS, so it follows the room the preview has, not the window). *@
+    <div class="indx-search-layout" data-fill-viewport>
+    <div class="indx-search-grid">
+    <div class="indx-search-panel">
+        @if (string.IsNullOrEmpty(_text) && _results == null)
+        {
+            <svg class="indx-search-bg-logo" viewBox="0 0 203 146" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                <path d="M58.4248 145.003V145.503H58.9248V145.003H58.4248ZM29.7109 145.003H29.2109V145.503H29.7109V145.003ZM29.7109 116.203V115.703H29.2109V116.203H29.7109ZM58.4248 116.203H58.9248V115.703H58.4248V116.203ZM173.284 145.003V145.503H173.784V145.003H173.284ZM144.57 145.003H144.07V145.503H144.57V145.003ZM144.57 116.203V115.703H144.07V116.203H144.57ZM173.284 116.203H173.784V115.703H173.284V116.203ZM29.7139 116.198V116.698H30.2139V116.198H29.7139ZM1 116.198H0.5V116.698H1V116.198ZM1 87.3984V86.8984H0.5V87.3984H1ZM29.7139 87.3984H30.2139V86.8984H29.7139V87.3984ZM202.003 116.198V116.698H202.503V116.198H202.003ZM173.289 116.198H172.789V116.698H173.289V116.198ZM173.289 87.3984V86.8984H172.789V87.3984H173.289ZM202.003 87.3984H202.503V86.8984H202.003V87.3984ZM144.565 87.4014V87.9014H145.065V87.4014H144.565ZM58.4297 87.4014H57.9297V87.9014H58.4297V87.4014ZM58.4297 58.6016V58.1016H57.9297V58.6016H58.4297ZM144.565 58.6016H145.065V58.1016H144.565V58.6016ZM58.4248 29.7998V30.2998H58.9248V29.7998H58.4248ZM29.7139 29.7998V29.2998H29.2139V29.7998H29.7139ZM29.7139 58.5967V59.0967H30.2139V58.5967H29.7139ZM1 58.5967H0.5V59.0967H1V58.5967ZM1 29.7969V29.2969H0.5V29.7969H1ZM29.7109 29.7969V30.2969H30.2109V29.7969H29.7109ZM29.7109 1V0.5H29.2109V1H29.7109ZM58.4248 1H58.9248V0.5H58.4248V1ZM202.003 58.5967V59.0967H202.503V58.5967H202.003ZM173.289 58.5967H172.789V59.0967H173.289V58.5967ZM173.289 29.7969V29.2969H172.789V29.7969H173.289ZM202.003 29.7969H202.503V29.2969H202.003V29.7969ZM173.284 29.7998V30.2998H173.784V29.7998H173.284ZM144.57 29.7998H144.07V30.2998H144.57V29.7998ZM144.57 1V0.5H144.07V1H144.57ZM173.284 1H173.784V0.5H173.284V1ZM58.4248 145.003V144.503H29.7109V145.003V145.503H58.4248V145.003ZM29.7109 145.003H30.2109V116.203H29.7109H29.2109V145.003H29.7109ZM29.7109 116.203V116.703H58.4248V116.203V115.703H29.7109V116.203ZM58.4248 116.203H57.9248V145.003H58.4248H58.9248V116.203H58.4248ZM173.284 145.003V144.503H144.57V145.003V145.503H173.284V145.003ZM144.57 145.003H145.07V116.203H144.57H144.07V145.003H144.57ZM144.57 116.203V116.703H173.284V116.203V115.703H144.57V116.203ZM173.284 116.203H172.784V145.003H173.284H173.784V116.203H173.284ZM29.7139 116.198V115.698H1V116.198V116.698H29.7139V116.198ZM1 116.198H1.5V87.3984H1H0.5V116.198H1ZM1 87.3984V87.8984H29.7139V87.3984V86.8984H1V87.3984ZM29.7139 87.3984H29.2139V116.198H29.7139H30.2139V87.3984H29.7139ZM202.003 116.198V115.698H173.289V116.198V116.698H202.003V116.198ZM173.289 116.198H173.789V87.3984H173.289H172.789V116.198H173.289ZM173.289 87.3984V87.8984H202.003V87.3984V86.8984H173.289V87.3984ZM202.003 87.3984H201.503V116.198H202.003H202.503V87.3984H202.003ZM144.565 87.4014V86.9014H58.4297V87.4014V87.9014H144.565V87.4014ZM58.4297 87.4014H58.9297V58.6016H58.4297H57.9297V87.4014H58.4297ZM58.4297 58.6016V59.1016H144.565V58.6016V58.1016H58.4297V58.6016ZM144.565 58.6016H144.065V87.4014H144.565H145.065V58.6016H144.565ZM58.4248 29.7998V29.2998H29.7139V29.7998V30.2998H58.4248V29.7998ZM29.7139 29.7998H29.2139V58.5967H29.7139H30.2139V29.7998H29.7139ZM29.7139 58.5967V58.0967H1V58.5967V59.0967H29.7139V58.5967ZM1 58.5967H1.5V29.7969H1H0.5V58.5967H1ZM1 29.7969V30.2969H29.7109V29.7969V29.2969H1V29.7969ZM29.7109 29.7969H30.2109V1H29.7109H29.2109V29.7969H29.7109ZM29.7109 1V1.5H58.4248V1V0.5H29.7109V1ZM58.4248 1H57.9248V29.7998H58.4248H58.9248V1H58.4248ZM202.003 58.5967V58.0967H173.289V58.5967V59.0967H202.003V58.5967ZM173.289 58.5967H173.789V29.7969H173.289H172.789V58.5967H173.289ZM173.289 29.7969V30.2969H202.003V29.7969V29.2969H173.289V29.7969ZM202.003 29.7969H201.503V58.5967H202.003H202.503V29.7969H202.003ZM173.284 29.7998V29.2998H144.57V29.7998V30.2998H173.284V29.7998ZM144.57 29.7998H145.07V1H144.57H144.07V29.7998H144.57ZM144.57 1V1.5H173.284V1V0.5H144.57V1ZM173.284 1H172.784V29.7998H173.284H173.784V1H173.284Z" fill="currentColor" />
+            </svg>
+        }
+        <div class="indx-search-field-wrap @(SortFields.Count > 0 ? "indx-search-field-wrap--sort" : null)">
+            <span class="indx-search-field-icon"><Search Size="14" /></span>
+            @* The box is not written back to while the text comes from typing: a search takes
+               long enough that the answer to one keystroke would overwrite the next
+               (LiveInputState). *@
+            <input class="indx-search-field-input"
+                   @key="_box.Key"
+                   @ref="_boxElement"
+                   type="search"
+                   placeholder="@($"Search {Ctx.Name}")"
+                   value="@_box.Rendered"
+                   @oninput="@(e => OnTyped(e.Value?.ToString() ?? string.Empty))" />
+            <div class="indx-search-actions">
+                @* Clear first, so the sort keeps its place at the end when Clear comes and goes. *@
+                @if (!string.IsNullOrEmpty(_text))
+                {
+                    <Button Variant="ghost" Size="micro" @onclick="Clear">Clear</Button>
+                }
+                @* The order, in the box's end (20 Nov 2026): a quiet button that says what the list
+                   is ordered by, for a dataset with a Sortable field. *@
+                @if (SortFields.Count > 0)
+                {
+                    <Popover AriaLabel="Sort by" Open="_sortOpen" OpenChanged="v => _sortOpen = v" Class="indx-sort-menu">
+                        <Trigger>
+                            <Button Variant="ghost" Size="micro" title="What the list is ordered by"
+                                    IconRight="@(_sort is { } s ? (s.Ascending ? DatasetIcons.SortAscending : DatasetIcons.SortDescending) : null)">@(_sort?.Field ?? "Relevance")</Button>
+                        </Trigger>
+                        <ChildContent>
+                            <div class="indx-sort-row">
+                                <Button Variant="@(_sort == null ? "secondary" : "ghost")" Size="micro" @onclick="() => SortBy(null)">Relevance</Button>
+                            </div>
+                            @foreach (var field in SortFields)
+                            {
+                                <div class="indx-sort-row">
+                                    <span class="indx-sort-field">@field</span>
+                                    <Button Variant="@(_sort == new SortChoice(field, true) ? "secondary" : "ghost")" Size="micro" IconLeft="DatasetIcons.SortAscending"
+                                            title="@($"Lowest {field} first")" aria-label="@($"Lowest {field} first")" @onclick="() => SortBy(new SortChoice(field, true))" />
+                                    <Button Variant="@(_sort == new SortChoice(field, false) ? "secondary" : "ghost")" Size="micro" IconLeft="DatasetIcons.SortDescending"
+                                            title="@($"Highest {field} first")" aria-label="@($"Highest {field} first")" @onclick="() => SortBy(new SortChoice(field, false))" />
+                                </div>
+                            }
+                        </ChildContent>
+                    </Popover>
+                }
+            </div>
+        </div>
+        @if (_results != null)
+        {
+            @if (_results.Count == 0 && (!string.IsNullOrEmpty(_text) || HasFilters))
+            {
+                <p class="indx-search-empty">No results</p>
+            }
+            else if (_results.Count > 0)
+            {
+                @* Hovering a hit shows its whole document in the panel to the right; clicking pins it
+                   there, so a long one can be scrolled. Keyboard: focus shows, Enter pins. *@
+                <div class="indx-search-results" @onmouseleave="() => _hovered = null">
+                    @foreach (var hit in _results)
+                    {
+                        <div class="indx-search-result-item @(_pinned?.Key == hit.Key ? "indx-search-result-item--pinned" : null)"
+                             tabindex="0" role="button" aria-pressed="@(_pinned?.Key == hit.Key ? "true" : "false")"
+                             title="Click to keep this document in the panel"
+                             @onmouseenter="() => _hovered = hit" @onfocus="() => _hovered = hit"
+                             @onclick="() => TogglePin(hit)"
+                             @onkeydown="@(e => { if (e.Key is "Enter" or " ") TogglePin(hit); })">
+                            <span class="indx-search-result-fields">
+                                @foreach (var prop in GetDisplayFields(hit.Doc))
+                                {
+                                    <span class="indx-search-result-field"><span class="indx-search-result-key">@prop.Name</span> @prop.Value</span>
+                                }
+                            </span>
+                            @* The score at the top of the right edge; the pin at the bottom while the
+                               document is kept in the panel. *@
+                            <span class="indx-search-result-side">
+                                <span class="indx-search-result-score" title="Relevance score">@hit.Score</span>
+                                @if (_pinned?.Key == hit.Key)
+                                {
+                                    <span class="indx-search-result-pin" aria-hidden="true"><Indx.Systm.Blazor.Icons.Pin Size="14" Color="currentColor" /></span>
+                                }
+                            </span>
+                        </div>
+                    }
+                </div>
+                <div class="indx-perf-toolbar">
+                    <Button Variant="ghost" Size="micro" IconLeft="@(_perfRunning ? DatasetIcons.SpeedometerRunning : DatasetIcons.Speedometer)"
+                            disabled="@_perfRunning"
+                            @onclick="RunPerfTest">
+                        @(_perfRunning ? "Running…" : "Run performance benchmark")
+                    </Button>
+                    @if (_perf != null)
+                    {
+                        <span class="indx-perf-result" title="@($"{_perf.Iterations} sequential searches after warm-up: min {_perf.MinMs:0.00} ms, max {_perf.MaxMs:0.00} ms. Throughput: the same {_perf.Iterations} searches run in parallel across all cores.")">
+                            latency <strong>@_perf.MedianMs.ToString("0.00") ms</strong> median, @_perf.P95Ms.ToString("0.00") ms p95
+                            <span class="indx-perf-sep"></span>
+                            throughput <strong>@_perf.PerSecond.ToString("N0")</strong>/s
+                        </span>
+                    }
+                </div>
+            }
+        }
+    </div>
+
+    @* ── Facets: a glance, not a filter panel (that is what indx-react is for). The base has a
+       fixed height and scrolls inside itself, so facets arriving, changing or vanishing never
+       move the page. With an empty box it shows the whole dataset's facets. The base is a
+       plain --lv1 ground with the search box's hairline; the chips sit a step darker on it. ── *@
+    <div class="indx-facets-cell">
+    <div class="indx-facets">
+        @* Built like the search field above, measure for measure, so icon and heading sit at
+           the same distance from the base's edges as the magnifier and the text do from the box's. *@
+        @{ var shown = _pinned ?? _hovered; }
+        @if (shown != null)
+        {
+            <div class="indx-facets-caption">
+                <span class="indx-facets-caption-icon"><Indx.Systm.Blazor.Icons.Json Size="14" Color="currentColor" /></span>
+                <span class="indx-facets-caption-text">Document @shown.Key</span>
+                @if (_pinned != null)
+                {
+                    <span class="indx-doc-unpin"><Button Variant="ghost" Size="micro" @onclick="() => _pinned = null">Unpin</Button></span>
+                }
+            </div>
+            <div class="indx-facets-body">
+                @DocumentPanel(shown)
+            </div>
+        }
+        else
+        {
+        @if (_summary is { } summary && !string.IsNullOrWhiteSpace(_text))
+        {
+            @* How the search found what it found, as IndxWorkbench's summary line says it. The kind of
+               match is the caption itself, with no heading over it; the levels under it carry the
+               numbers. In a narrow preview (the facets under the box) it is one line, the levels
+               after the caption and the notes left out. *@
+            <div class="indx-facets-caption indx-search-explain-caption">
+                <Tooltip Content="@HeadlineTitle(summary.Headline)" Position="bottom">
+                    <span class="indx-search-explain-headline" tabindex="0">
+                        <span class="indx-facets-caption-icon">@HeadlineIcon(summary.Headline)</span>
+                        <span class="indx-facets-caption-text">@summary.Headline</span>
+                    </span>
+                </Tooltip>
+                @if (summary.Levels.Count > 0)
+                {
+                    <span class="indx-search-explain-inline">
+                        <span class="indx-search-explain-label">every word</span>
+                        @foreach (var level in summary.Levels)
+                        {
+                            @LevelChip(level)
+                        }
+                    </span>
+                }
+            </div>
+            <div class="indx-search-explain">
+                @if (summary.Levels.Count > 0)
+                {
+                    <div class="indx-search-explain-levels">
+                        <span class="indx-search-explain-label">@SearchExplanation.LevelsLabel</span>
+                        @foreach (var level in summary.Levels)
+                        {
+                            @LevelChip(level)
+                        }
+                    </div>
+                }
+                @foreach (var note in summary.Notes)
+                {
+                    <p class="indx-search-explain-note">@note</p>
+                }
+            </div>
+        }
+        <div class="indx-facets-caption">
+            <span class="indx-facets-caption-icon"><Indx.Systm.Blazor.Icons.Filter Size="14" Color="currentColor" /></span>
+            <span class="indx-facets-caption-text">Facets</span>
+            @if (HasFilters)
+            {
+                <span class="indx-doc-unpin"><Button Variant="ghost" Size="micro" @onclick="ClearFilters">Clear filters</Button></span>
+            }
+        </div>
+        <div class="indx-facets-body">
+            @if (!HasFacetableFields)
+            {
+                <p class="indx-facets-note">No facetable fields. Mark a field <strong>Facetable</strong> under Field configuration to see its values here.</p>
+            }
+            else if (_facets == null)
+            {
+                @* Nothing counted yet (first visit, or the documents were just replaced). *@
+                <p class="indx-facets-note">Counting…</p>
+            }
+            else if (_facets.Count == 0)
+            {
+                <p class="indx-facets-note">No facets for this search.</p>
+            }
+            else
+            {
+                @* A value of a filterable field is a toggle: picked, it filters the hits and the
+                   other fields' counts (Nov 2026). A facetable field that is not filterable stays a
+                   plain chip. *@
+                @foreach (var row in _facets!)
+                {
+                    @if (row.Numbers is { } numbers)
+                    {
+                        @* A number field is picked by range, on its histogram or typed (Nov 2026). *@
+                        var range = _ranges.TryGetValue(row.Field, out var r) ? r : ((double?)null, (double?)null);
+                        <div class="indx-facet-row indx-facet-row--range">
+                            <span class="indx-facet-field" title="@row.Field">
+                                @row.Field
+                                @if (range.Item1 != null || range.Item2 != null)
+                                {
+                                    <span class="indx-facet-count">@CountIn(numbers, range.Item1, range.Item2).ToString("N0")</span>
+                                }
+                            </span>
+                            <HistogramRange Values="numbers" From="range.Item1" To="range.Item2" AriaLabel="@row.Field"
+                                            Step="@(numbers.All(n => n.Key == Math.Floor(n.Key)) ? 1 : 0.1)"
+                                            RangeChanged="@(v => SetRange(row.Field, v.From, v.To))" />
+                        </div>
+                        continue;
+                    }
+                    var filterable = IsFilterable(row.Field);
+                    <div class="indx-facet-row">
+                        <span class="indx-facet-field" title="@row.Field">@row.Field</span>
+                        <span class="indx-facet-values">
+                            @foreach (var value in row.Values)
+                            {
+                                @if (filterable)
+                                {
+                                    var picked = IsPicked(row.Field, value.Key);
+                                    <Chip Selected="picked" Title="@(picked ? "Remove this filter" : "Filter on this value")"
+                                          OnClick="@(() => ToggleFilter(row.Field, value.Key))"><span class="indx-facet-value">@value.Key</span><span class="indx-facet-count">@value.Value.ToString("N0")</span></Chip>
+                                }
+                                else
+                                {
+                                    <Chip Color="var(--lv2)" TextColor="var(--lv7)"><span class="indx-facet-value" title="@value.Key">@value.Key</span><span class="indx-facet-count">@value.Value.ToString("N0")</span></Chip>
+                                }
+                            }
+                            @if (row.MoreValues > 0)
+                            {
+                                <span class="indx-facet-more">+@row.MoreValues.ToString("N0") more</span>
+                            }
+                        </span>
+                    </div>
+                }
+            }
+        </div>
+        }
+    </div>
+    </div>
+    </div>
+    </div>
+}
+else
+{
+    <p class="indx-search-not-ready">Index your dataset first to enable search preview.</p>
+}
+
+@code {
+
+    // Rank is the 1-based place in the list. Kind: counted, related, partial or broad, with what it
+    // means (SearchExplanation.KindOf; 5.x's close and pattern match until Nov 2026). Matches: how the
+    // reranker met each query word in this record (Result.MatchReport).
+    private record PreviewHit(JsonElement Doc, ushort Score, long Key, int Rank, (string Label, string Title) Kind, IReadOnlyList<SearchExplanation.Word>? Matches);
+    private record PerfTestResult(int Iterations, double MedianMs, double P95Ms, double MinMs, double MaxMs, double PerSecond);
+    private record DisplayField(string Name, string Value);
+
+    private string _text = string.Empty;
+    private List<PreviewHit>? _results;
+    // How this search found what it found, for the right column while no document is shown.
+    private SearchExplanation.Summary? _summary;
+    // The document panel: the hit under the pointer (or focus), and the one clicked to keep.
+    private PreviewHit? _hovered;
+    private PreviewHit? _pinned;
+
+    private void TogglePin(PreviewHit hit) => _pinned = _pinned?.Key == hit.Key ? null : hit;
+    private PerfTestResult? _perf;
+    private bool _perfRunning;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        // A Replace swaps the documents under the cached hits.
+        Ctx.DocumentsReplaced += Invalidate;
+    }
+
+    private void Invalidate()
+    {
+        _searches.Begin(); // a search still running was made against the old documents
+        _facetRuns.Begin();
+        _facetsWanted = null;
+        _facets = null;
+        _facetsFor = null;
+        _results = null; _summary = null;
+        _hovered = _pinned = null;
+        _perf = null;
+    }
+
+    private readonly LiveInputState _box = new(string.Empty);
+    private ElementReference _boxElement;
+    private bool _focusBox;
+    private bool _wasActive;
+
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+        // The tab renders nothing while inactive, so coming back creates the box anew.
+        if (Active && !_wasActive)
+        {
+            _box.Sync();
+            // Recount when the text moved on, and when the field configuration was saved since
+            // (SetSavedFields hands out a new array): a save can add or drop facetable fields,
+            // and the counts on screen would otherwise be those of the old configuration.
+            if (!ReferenceEquals(_facetsFields, Ctx.SavedFields) && HasFilters)
+            {
+                DropUnfilterable();
+                _ = RunQuickSearchAsync(_text);
+            }
+            else if (_facetsFor != _text || !ReferenceEquals(_facetsFields, Ctx.SavedFields))
+                _ = RunFacetsAsync(_text);
+        }
+        _wasActive = Active;
+    }
+
+    private Task OnTyped(string text)
+    {
+        _box.Typed(text);
+        return RunQuickSearchAsync(text);
+    }
+
+    private void Clear()
+    {
+        _searches.Begin(); // a search still running must not bring its hits back
+        _focusBox = _box.Set(string.Empty);
+        _text = string.Empty;
+        _results = null; _summary = null;
+        _hovered = _pinned = null;
+        _perf = null;
+        // The filters stay: with the box empty they list what they hold.
+        _ = RunQuickSearchAsync(string.Empty);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        await base.OnAfterRenderAsync(firstRender);
+        if (!_focusBox) return;
+        _focusBox = false;
+        try { await _boxElement.FocusAsync(); } catch { /* a disposed circuit */ }
+    }
+
+    private readonly LatestOnly _searches = new();
+
+    // ── Sort (20 Nov 2026) ───────────────────────────────────────────────────
+    /// <summary>A Sortable field and its direction; null is relevance, the engine's own order.</summary>
+    private sealed record SortChoice(string Field, bool Ascending);
+    private SortChoice? _sort;
+    private bool _sortOpen;
+    /// <summary>The saved configuration's Sortable fields: what the engine can order by now.</summary>
+    private List<string> SortFields => Ctx.SavedFields?.Where(f => f.Sortable == true).Select(f => f.FieldName).Order().ToList() ?? [];
+
+    private void SortBy(SortChoice? choice)
+    {
+        _sortOpen = false;
+        if (choice == _sort) return;
+        _sort = choice;
+        _ = RunQuickSearchAsync(_text ?? string.Empty);
+    }
+
+    /// <summary>More than fits without scrolling on purpose: the hit list scrolls inside the box,
+    /// so a tall screen shows more of them and a short one loses nothing.</summary>
+    private const int PreviewHits = 24;
+
+    /// <summary>One search per keystroke, the newest answer wins (see LatestOnly). The search
+    /// runs off the circuit, so the next keystroke is not kept waiting behind it; a result that
+    /// has been overtaken by then is dropped. The facets follow on their own (RunFacetsAsync).</summary>
+    private async Task RunQuickSearchAsync(string text)
+    {
+        var ticket = _searches.Begin();
+        _text = text;
+        _perf = null;
+        _ = RunFacetsAsync(text);
+        if (string.IsNullOrWhiteSpace(text) && !HasFilters)
+        {
+            _results = null; _summary = null;
+            return;
+        }
+        var filters = FiltersNow();
+        // A field that stopped being Sortable since it was picked is relevance again.
+        var sort = _sort is { } picked && SortFields.Contains(picked.Field) ? picked : null;
+        (List<PreviewHit> Hits, SearchExplanation.Summary? Summary)? searched;
+        try { searched = await Task.Run(() => Search(text, filters, sort)); }
+        catch (Exception ex) when (ex is not ObjectDisposedException)
+        {
+            // A filter the engine refuses (a field configuration saved meanwhile) must not take
+            // the circuit down: the preview shows no hits for it.
+            Console.WriteLine($"[SearchPreview] search failed for {Ctx.Name}: {ex.Message}");
+            searched = ([], null);
+        }
+        var hits = searched?.Hits;
+        MarkStep("try");
+        if (!_searches.IsCurrent(ticket)) return; // a newer keystroke, Clear or Replace overtook this one
+        if (hits != null)
+        {
+            _results = hits;
+            _summary = searched!.Value.Summary;
+            // A pinned document stays while it is still among the hits, with its new rank; one
+            // that dropped out goes, rather than showing a rank and score from another search.
+            _pinned = _pinned == null ? null : hits.FirstOrDefault(h => h.Key == _pinned.Key);
+            _hovered = null;
+        }
+    }
+
+    // ── Facets ───────────────────────────────────────────────────────────────
+
+    private readonly LatestOnly _facetRuns = new();
+    private IReadOnlyList<FacetPreview.Row>? _facets;
+    private string? _facetsFor;      // the text the shown facets belong to
+    private object? _facetsFields;   // the saved field configuration they were counted under
+
+    // What the facets should be counted for next, and whether a count is running.
+    private sealed record FacetRequest(string Text, FilterState Filters, object? Fields);
+    private FacetRequest? _facetsWanted;
+    private bool _facetsRunning;
+
+    private bool HasFacetableFields => Ctx.SavedFields?.Any(f => f.Facetable == true) == true;
+
+    /// <summary>One facet count in flight, always for the newest text (Nov 2026). A keystroke
+    /// starts one at once when none is running; while one runs, keystrokes only note what they
+    /// want, and when it ends the newest is counted next. A count overtaken while it ran is
+    /// dropped, and until the new counts arrive the previous ones stay on screen, which in a
+    /// fixed-height base moves nothing. The engine cannot cancel a search, so this is what keeps
+    /// fast typing on a large dataset from queueing counts; on LWIN (199k) the worst in-engine
+    /// count was well under the 350 ms the preview used to wait before starting one. The hits
+    /// above never wait for it.</summary>
+    private async Task RunFacetsAsync(string text)
+    {
+        if (!HasFacetableFields) return;
+        _facetsWanted = new FacetRequest(text, FiltersNow(), Ctx.SavedFields);
+        if (_facetsRunning) return; // the running count takes it up when it ends
+        _facetsRunning = true;
+        try
+        {
+            while (_facetsWanted is { } want)
+            {
+                var ticket = _facetRuns.Begin();
+                IReadOnlyList<FacetPreview.Row>? rows;
+                try { rows = await Task.Run(() => SearchFacets(want.Text, want.Filters)); }
+                catch (ObjectDisposedException) { return; }
+                catch (Exception ex)
+                {
+                    // A glance that fails must not take the circuit down with it.
+                    Console.WriteLine($"[SearchPreview] facets failed for {Ctx.Name}: {ex.Message}");
+                    rows = [];
+                }
+                // Overtaken by a newer text or filter (count that one next), or by a Replace
+                // (Invalidate: nothing is wanted any more).
+                if (!_facetRuns.IsCurrent(ticket) || !ReferenceEquals(_facetsWanted, want)) continue;
+                _facetsWanted = null;
+                _facets = rows ?? [];
+                _facetsFor = want.Text;
+                _facetsFields = want.Fields;
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+        finally { _facetsRunning = false; }
+    }
+
+    private IReadOnlyList<FacetPreview.Row>? SearchFacets(string text, FilterState filters)
+    {
+        // Empty text with facets enabled is a valid query: the whole dataset's counts. Every field
+        // is counted under all the filters, except that a field with picked values is counted
+        // under the others only, so its other values can still be picked (as a shop's panel does):
+        // one more query for each such field.
+        var facets = new Dictionary<string, KeyValuePair<string, int>[]>(FacetsOf(text, filters.Expression(TypeOf)) ?? []);
+        foreach (var field in filters.Values.Keys.Concat(filters.Ranges.Keys).Distinct())
+            if (FacetsOf(text, filters.Expression(TypeOf, except: field)) is { } own)
+                facets[field] = own.TryGetValue(field, out var values) ? values : [];
+        var order = Ctx.SavedFields?.Where(f => f.Facetable == true).Select(f => f.FieldName ?? "");
+        var numberFields = Ctx.SavedFields?.Where(f => f.Facetable == true && IsRangeField(f.FieldName ?? "")).Select(f => f.FieldName ?? "").ToHashSet();
+        return FacetPreview.Build(facets, order, selected: filters.Values, numberFields: numberFields, keep: filters.Ranges.Keys);
+    }
+
+    private Dictionary<string, KeyValuePair<string, int>[]>? FacetsOf(string text, string? filterExpression)
+    {
+        var query = new global::Indx.Http.QueryProxy
+        {
+            Text = text ?? string.Empty, MaxNumberOfRecordsToReturn = 1, EnableFacets = true, FilterExpression = filterExpression,
+        };
+        return Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId).Facets;
+    }
+
+    // ── Filters: facet values picked ────────────────────────────────────────────
+
+    // By field, in the order picked: values on a text field, a range on a number field. Read on
+    // the circuit only; a search off it takes a copy.
+    private readonly Dictionary<string, List<string>> _filters = new();
+    private readonly Dictionary<string, (double? From, double? To)> _ranges = new();
+    private bool HasFilters => _filters.Count > 0 || _ranges.Count > 0;
+
+    private sealed record FilterState(Dictionary<string, List<string>> Values, Dictionary<string, (double? From, double? To)> Ranges)
+    {
+        public string? Expression(Func<string, string?> typeOf, string? except = null) =>
+            FacetFilter.Expression(Values, typeOf, except, Ranges);
+    }
+    private FilterState FiltersNow() => new(_filters.ToDictionary(f => f.Key, f => f.Value.ToList()), new(_ranges));
+
+    private string? TypeOf(string field) => Ctx.SavedFields?.FirstOrDefault(f => f.FieldName == field)?.FieldType;
+    private bool IsFilterable(string field) => Ctx.SavedFields?.Any(f => f.FieldName == field && f.Filterable == true) == true;
+    /// <summary>A filterable number field: picked by range on its histogram, not value by value.</summary>
+    private bool IsRangeField(string field) => IsFilterable(field) && TypeOf(field) == "Number";
+
+    private static int CountIn(IReadOnlyList<KeyValuePair<double, int>> numbers, double? from, double? to) =>
+        numbers.Where(n => (from is not { } f || n.Key >= f) && (to is not { } t || n.Key <= t)).Sum(n => n.Value);
+
+    private Task SetRange(string field, double? from, double? to)
+    {
+        if (from == null && to == null) _ranges.Remove(field);
+        else _ranges[field] = (from, to);
+        _hovered = null;
+        return RunQuickSearchAsync(_text);
+    }
+    private bool IsPicked(string field, string value) => _filters.TryGetValue(field, out var values) && values.Contains(value);
+
+    private Task ToggleFilter(string field, string value)
+    {
+        if (!_filters.TryGetValue(field, out var values)) _filters[field] = values = [];
+        if (!values.Remove(value)) values.Add(value);
+        if (values.Count == 0) _filters.Remove(field);
+        _hovered = null;
+        return RunQuickSearchAsync(_text);
+    }
+
+    private Task ClearFilters()
+    {
+        _filters.Clear();
+        _ranges.Clear();
+        return RunQuickSearchAsync(_text);
+    }
+
+    /// <summary>A saved field configuration can take a field's Filterable away; a filter on it
+    /// would then be refused, so it goes.</summary>
+    private void DropUnfilterable()
+    {
+        foreach (var field in _filters.Keys.Where(f => !IsFilterable(f)).ToList())
+            _filters.Remove(field);
+        foreach (var field in _ranges.Keys.Where(f => !IsRangeField(f)).ToList())
+            _ranges.Remove(field);
+    }
+
+    private (List<PreviewHit> Hits, SearchExplanation.Summary? Summary)? Search(string text, FilterState filters, SortChoice? sort)
+    {
+        var engine = Ctx.FindEngine();
+        if (engine == null) return null;
+        // The dataset's saved boost rules are applied server-side in FromQueryProxy, as in every
+        // search, so the preview matches what real searches return.
+        // With the match report, as IndxWorkbench asks: it reads the rows returned once more, which
+        // for the preview's few hits costs little, and says how each word was met.
+        // An empty text is a valid search only with facets on: with filters picked, the box empty
+        // lists the records they hold.
+        var query = new global::Indx.Http.QueryProxy
+        {
+            Text = text ?? string.Empty, MaxNumberOfRecordsToReturn = PreviewHits, EnableMatchReport = true,
+            EnableFacets = string.IsNullOrWhiteSpace(text), FilterExpression = filters.Expression(TypeOf),
+            SortBy = sort?.Field ?? string.Empty, SortAscending = sort?.Ascending ?? false,
+        };
+        var result = Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
+        var hits = new List<PreviewHit>();
+        for (int i = 0; i < result.Records.Length; i++)
+        {
+            var record = result.Records[i];
+            var json = engine.GetJsonDataOfKey(record.DocumentKey);
+            if (!string.IsNullOrEmpty(json))
+            {
+                try
+                {
+                    hits.Add(new PreviewHit(JsonDocument.Parse(json).RootElement.Clone(), record.Score,
+                        record.DocumentKey, i + 1, SearchExplanation.KindOf(result, i), SearchExplanation.For(result, record.DocumentKey)));
+                }
+                catch { }
+            }
+        }
+        // Too short for the lookup: every word below the shortest word token, the dataset's own
+        // (its text rules, 18 Nov 2026) or Indx's. Read only when no rung was counted, where it
+        // can matter: the rules are in the store, not on the engine.
+        bool tooShort = result.ToleranceCounts is null && !string.IsNullOrWhiteSpace(text) && TooShortForTheLookup(text);
+        return (hits, SearchExplanation.Of(result, wordMatching: Ctx.SavedFields?.Any(f => f.WordMatching == true) != false, tooShort));
+    }
+
+    private bool TooShortForTheLookup(string text)
+    {
+        int shortest = TokenizerSetup.Default.MinimumWordSize;
+        // No engine registry (a page rendered without the server started): Indx's own.
+        try { shortest = IndxServer.Engine.IndxServerInternalApi.Manager.GetTextRules(Ctx.Name, Ctx.TeamId)?.MinimumWordSize ?? shortest; }
+        catch (InvalidOperationException) { }
+        return text.Split(TokenizerSetup.Default.Delimiters, StringSplitOptions.RemoveEmptyEntries).All(w => w.Length < shortest);
+    }
+
+    private async Task RunPerfTest()
+    {
+        var text = _text;
+        if (string.IsNullOrWhiteSpace(text) || _perfRunning) return;
+        _perfRunning = true;
+        _perf = null;
+        StateHasChanged();
+        await Task.Yield();
+
+        const int iterations = 100;
+        const int warmUp = 10;
+        var query = new global::Indx.Http.QueryProxy { Text = text, MaxNumberOfRecordsToReturn = 8 };
+        // Counted apart from the visitors' searches (BenchmarkSearches), on the copy that answers them.
+        var engine = Ctx.FindEngine();
+        var result = await Task.Run(() =>
+        {
+            // Warm-up: JIT, caches and the first-touch page faults are not what we're measuring.
+            for (int i = 0; i < warmUp; i++) Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
+
+            // Latency: one search at a time on one thread — what a single user waits.
+            var timings = new double[iterations];
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            for (int i = 0; i < iterations; i++)
+            {
+                var t0 = sw.Elapsed.TotalMilliseconds;
+                Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId);
+                timings[i] = sw.Elapsed.TotalMilliseconds - t0;
+            }
+            Array.Sort(timings);
+            var median = timings[iterations / 2];
+            var p95 = timings[(int)(iterations * 0.95)];
+
+            // Throughput: the same searches spread across all cores — what the box sustains.
+            // (This is the figure SpectreJsonClient's benchmark reports.)
+            var wall = System.Diagnostics.Stopwatch.StartNew();
+            Parallel.For(0, iterations, _ => Ctx.Engines.Search(query, Ctx.Name, Ctx.TeamId));
+            var perSecond = iterations / wall.Elapsed.TotalSeconds;
+
+            return new PerfTestResult(iterations, median, p95, timings[0], timings[^1], perSecond);
+        });
+        if (engine is not null) IndxServer.Services.BenchmarkSearches.Add(engine, warmUp + 2 * iterations);
+        _perf = result;
+        _perfRunning = false;
+    }
+
+    /// <summary>
+    /// The (up to four) fields shown per hit: the record's name first (the field it is named by in
+    /// the statistics and Observr, <see cref="StatisticsLabels"/>), then searchable, facetable and
+    /// the rest. Until Nov 2026 the name was not first: the first four searchable fields in list
+    /// order were shown, and a title listed after them never appeared.
+    /// Walks the configured fields, which already carry the parser's (dotted) names, and
+    /// resolves each name as a path into the document — see <see cref="ResolveFieldValue(JsonElement,string)"/>.
+    /// Enumerating the document's own top-level properties instead would miss every nested field.
+    /// </summary>
+    // The name field, worked out once per field list rather than per hit: it reads two settings.
+    private FieldProxy[]? _nameFieldOf;
+    private string? _nameField;
+
+    private IEnumerable<DisplayField> GetDisplayFields(JsonElement doc)
+    {
+        const int max = 4;
+
+        var fields = Ctx.EditedFields;
+        if (fields == null)
+            return doc.EnumerateObject()
+                .Where(p => p.Value.ValueKind is JsonValueKind.String or JsonValueKind.Number
+                                              or JsonValueKind.True or JsonValueKind.False)
+                .Take(max)
+                .Select(p => new DisplayField(p.Name, p.Value.ToString()))
+                .ToList();
+
+        if (!ReferenceEquals(_nameFieldOf, fields))
+        {
+            _nameField = Stats.NameField(fields, Ctx.TeamId, Ctx.Name);
+            _nameFieldOf = fields;
+        }
+        static bool Searched(FieldProxy f) => f.WordMatching == true || f.PatternMatching == true;
+        var ordered = fields.Where(f => f.FieldName == _nameField)
+            .Concat(fields.Where(f => Searched(f) && f.FieldName != _nameField))
+            .Concat(fields.Where(f => f.Facetable == true && !Searched(f) && f.FieldName != _nameField))
+            .Concat(fields.Where(f => !Searched(f) && f.Facetable != true && f.FieldName != _nameField));
+
+        var result = new List<DisplayField>(max);
+        foreach (var f in ordered)
+        {
+            if (result.Count >= max) break;
+            // Absent on this document — an Optional field, say — shows as an empty cell
+            // rather than being skipped, so the columns stay the same down the result list.
+            result.Add(new DisplayField(f.FieldName, ResolveFieldValue(doc, f.FieldName)));
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Follows a parser field name — dot-separated, no array indices — down to its value.
+    /// A segment landing on an array applies the rest of the path to its elements and takes
+    /// the first that yields something, which mirrors how the parser collapses arrays when
+    /// it names the field. Returns an empty string when the document has no value there.
+    /// </summary>
+    private static string ResolveFieldValue(JsonElement element, string path) =>
+        ResolveFieldValue(element, path.Split('.'), 0);
+
+    private static string ResolveFieldValue(JsonElement element, string[] segments, int index)
+    {
+        for (; index < segments.Length; index++)
+        {
+            if (element.ValueKind == JsonValueKind.Array)
+            {
+                // Resume the SAME segment inside each element: the parser did not spend a
+                // segment on the array, so neither do we.
+                foreach (var item in element.EnumerateArray())
+                {
+                    var found = ResolveFieldValue(item, segments, index);
+                    if (!string.IsNullOrEmpty(found)) return found;
+                }
+                return string.Empty;
+            }
+            if (element.ValueKind != JsonValueKind.Object ||
+                !element.TryGetProperty(segments[index], out element))
+                return string.Empty;
+        }
+
+        // A name always ends at a scalar, but guard anyway: a future change to how fields
+        // are named should leave an empty cell, not a type name, in the UI.
+        if (element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var item in element.EnumerateArray())
+            {
+                if (item.ValueKind is JsonValueKind.Object or JsonValueKind.Array) continue;
+                var text = item.ToString();
+                if (!string.IsNullOrEmpty(text)) return text;
+            }
+            return string.Empty;
+        }
+        return element.ValueKind == JsonValueKind.Object ? string.Empty : element.ToString();
+    }
+
+    /// <summary>Longest value shown in full; past it the panel says how much was left out, so a
+    /// document of whole books does not put megabytes into the page.</summary>
+    private const int ValueChars = 5000;
+
+    /// <summary>A typo level as a chip, the facets' chips: its name, then its count in the fainter
+    /// tone. The level counted, which the results come from, a step darker. What it counts on hover
+    /// (SearchExplanation.Level.Hint).</summary>
+    private static RenderFragment LevelChip(SearchExplanation.Level level) => __builder =>
+    {
+        <Tooltip Content="@level.Hint" Position="bottom">
+            <span class="indx-search-explain-chip" tabindex="0">
+                <Chip Color="@(level.Counted ? "var(--lv3)" : "var(--lv2)")" TextColor="@(level.Counted ? "var(--lv8)" : "var(--lv6)")">
+                    <span class="indx-facet-value">@level.Name</span><span class="indx-facet-count">@level.Records.ToString("N0")</span>
+                </Chip>
+            </span>
+        </Tooltip>
+    };
+
+    /// <summary>The caption's icon for a kind of match: the query as typed for a strong match, a
+    /// fuzzy search for one within typos, a partial search for the fallback, pattern recognition when
+    /// only parts of words matched, the plain search glass for a broad match.</summary>
+    private static RenderFragment HeadlineIcon(string headline) => __builder =>
+    {
+        switch (headline)
+        {
+            case "Strong matches": <Indx.Systm.Blazor.Icons.SearchQuery Size="14" Color="currentColor" />; break;
+            case "Fuzzy matches": <Indx.Systm.Blazor.Icons.FuzzySearch Size="14" Color="currentColor" />; break;
+            case "Pattern matches": <Indx.Systm.Blazor.Icons.PatternRecognition Size="14" Color="currentColor" />; break;
+            case "Partial matches": <Indx.Systm.Blazor.Icons.PartialSearch Size="14" Color="currentColor" />; break;
+            default: <Search Size="14" />; break;
+        }
+    };
+
+    /// <summary>What a headline means, on hover: the level it names is the one marked below.</summary>
+    private static string HeadlineTitle(string headline) => headline switch
+    {
+        "Strong matches" => "Every word is found as typed, the word still being typed also as the start of a longer one.",
+        "Fuzzy matches" => "Every word is found, some of them within a typo.",
+        "Partial matches" => "Some of the words: no record holds them all.",
+        "Pattern matches" => "Found by parts of words, the pattern matcher's work: not by whole words or typos of them.",
+        _ => "Any of the words, or parts of them: no typo levels.",
+    };
+
+    private RenderFragment DocumentPanel(PreviewHit hit) => __builder =>
+    {
+        var fields = Ctx.SavedFields;
+        <p class="indx-doc-meta">
+            <span>#@hit.Rank</span>
+            <span>score @hit.Score.ToString("N0")</span>
+            <Tooltip Content="@hit.Kind.Title"><span tabindex="0">@hit.Kind.Label</span></Tooltip>
+        </p>
+        @if (hit.Matches is { Count: > 0 } words)
+        {
+            @* How the reranker met each query word here, as IndxWorkbench's record pane shows it. *@
+            <div class="indx-doc-section">
+                <div class="indx-doc-section-title">How each word matched</div>
+                @foreach (var word in words)
+                {
+                    <div class="indx-doc-match @(word.Found ? null : "indx-doc-match--missing")">
+                        <span class="indx-doc-match-word">@word.Text</span>
+                        <span class="indx-doc-match-how">@word.How@if (word.Field != null) { <span> in </span><span class="indx-doc-field-tag">@word.Field</span> }@foreach (var (how, inFields) in word.Also ?? [])
+                            {
+                                @* The other fields that met it (23 Nov 2026), those met the same way first. *@
+                                <span>@(how == word.How ? ", also in " : $", {how} in ")</span>
+                                @foreach (var inField in inFields)
+                                {
+                                    <span class="indx-doc-field-tag">@inField</span>
+                                }
+                            }</span>
+                    </div>
+                }
+            </div>
+        }
+        @if (fields == null)
+        {
+            <pre class="indx-doc-json">@hit.Doc.ToString()</pre>
+            return;
+        }
+        var doc = DocumentInspection.Build(hit.Doc, fields);
+        @DocumentSection("Indexed for search", $"{doc.IndexedLength:N0} characters", doc.Indexed, showWeight: true)
+        @DocumentSection("Filters, facets and sorting", null, doc.Roles, showWeight: false)
+        @DocumentSection("Stored only", "not searchable or filterable", doc.Stored, showWeight: false)
+    };
+
+    private RenderFragment DocumentSection(string title, string? note, IReadOnlyList<InspectedField> fields, bool showWeight) => __builder =>
+    {
+        if (fields.Count == 0) return;
+        <div class="indx-doc-section">
+            <div class="indx-doc-section-title">@title@if (note != null) { <span class="indx-doc-section-note">@note</span> }</div>
+            @foreach (var f in fields)
+            {
+                <div class="indx-doc-field">
+                    <div class="indx-doc-field-head">
+                        <span class="indx-doc-field-name">@f.Name</span>
+                        @if (showWeight && f.Field.Weight is float w && w != 1f)
+                        {
+                            <span class="indx-doc-field-tag">weight @w.ToString("0.##")</span>
+                        }
+                        @foreach (var role in f.RoleNames)
+                        {
+                            <span class="indx-doc-field-tag">@role</span>
+                        }
+                    </div>
+                    @if (f.Values.Count == 0)
+                    {
+                        <div class="indx-doc-value indx-doc-value--empty">no value</div>
+                    }
+                    else if (f.Field.Embeddable == true)
+                    {
+                        <div class="indx-doc-value indx-doc-value--empty">vector, @f.Values.Count.ToString("N0") numbers</div>
+                    }
+                    else
+                    {
+                        @foreach (var v in f.Values)
+                        {
+                            <div class="indx-doc-value">@(v.Length > ValueChars ? v[..ValueChars] : v)@if (v.Length > ValueChars) { <span class="indx-doc-value-more">… @((v.Length - ValueChars).ToString("N0")) more characters</span> }</div>
+                        }
+                    }
+                </div>
+            }
+        </div>
+    };
+
+    public override void Dispose()
+    {
+        base.Dispose();
+        Ctx.DocumentsReplaced -= Invalidate;
+    }
+}

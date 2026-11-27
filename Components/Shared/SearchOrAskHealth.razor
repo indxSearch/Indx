@@ -1,0 +1,117 @@
+@using IndxServer.Services
+@using IndxServer.Services.SearchOrAsk
+@inject SearchOrAskService SearchOrAsk
+@inject StatisticsService Stats
+@* How Search or ask's providers are doing on this instance (Nov 2026), whatever the provider: each
+   kind of call with when it last worked and what was refused in the last day, what the calls cost
+   where the provider reports it, and what is left on the key where the provider says. The rest
+   (OpenAI's and Anthropic's balances) is in the provider's own console, and the panel says so.
+   Kept in memory since the server started, the spend excepted, which is read from the statistics. *@
+<h3 class="settings-head">How it is going</h3>
+@if (SearchOrAsk.OffersPaused && SearchOrAsk.OffersPausedUntil is { } until)
+{
+    <Alert Variant="destructive">
+        <Title>Offers are paused</Title>
+        <Description>
+            The provider refused answers in a way that does not pass by itself, so visitors see no offer to ask until
+            <TimeAgo Value="until" />, rather than click into an answer that cannot be written. Search works as usual.
+            The next answer after that is the test: one that is written ends the pause.
+        </Description>
+    </Alert>
+}
+<Table AriaLabel="Search or ask's model calls" Class="soa-health">
+    <thead><tr><th>Call</th><th>Provider</th><th>Last worked</th><th>Refused, 24 h</th></tr></thead>
+    <tbody>
+        @foreach (var h in SearchOrAsk.CallHealth())
+        {
+            <tr>
+                <td>@CallName(h.Call)</td>
+                <td>@ProviderOf(h.Call)</td>
+                <td>
+                    @if (h.LastSuccess is { } at) { <TimeAgo Value="at" /> }
+                    else { <span class="soa-health-dim">Not since restart</span> }
+                </td>
+                <td>@(h.RefusedToday.Count == 0 ? "–" : string.Join(", ", h.RefusedToday.OrderByDescending(k => k.Value).Select(k => $"{k.Value} {KindName(k.Key)}")))</td>
+            </tr>
+        }
+    </tbody>
+</Table>
+<p class="settings-note">
+    @{ var setup = SearchOrAsk.Setup; }
+    @if (Stats.Store is { } store)
+    {
+        var today = store.InstanceAskSpend(Today);
+        var month = store.InstanceAskSpend(MonthStart);
+        <text>Today @N(today.Calls) @(today.Calls == 1 ? "call" : "calls")@(setup.CostsReported ? $", {Usd(today.Cost)}" : ""); this month @N(month.Calls) @(month.Calls == 1 ? "call" : "calls")@(setup.CostsReported ? $", {Usd(month.Cost)}" : "") (UTC, every dataset).</text>
+        @if (!setup.CostsReported)
+        {
+            <text> @string.Join(" and ", setup.UnpricedProviders) @(setup.UnpricedProviders.Count == 1 ? "does" : "do") not report what a call costs, so no cost is shown; the bill is in the provider's console.</text>
+        }
+    }
+    @if (_limit is { } l)
+    {
+        <br />
+        @if (l.Limit is { } max)
+        {
+            <text>The OpenRouter key has @Usd(l.Remaining ?? 0) left of its @Usd(max) limit@(l.Reset is { } r ? $", which resets {r}" : "").</text>
+        }
+        else
+        {
+            <text>The OpenRouter key has no spending limit; it has spent @Usd(l.Usage) in all. What the account has left is on OpenRouter's Credits page.</text>
+        }
+    }
+    else if (_limitRead)
+    {
+        <br />
+        <text>@SearchOrAskProviders.Label(setup.Provider) does not report what is left on the key; see its own console.</text>
+    }
+</p>
+
+@code {
+    private ProviderKeyLimit? _limit;
+    private bool _limitRead;
+
+    private static long Today => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() / 86_400_000L;
+    private static long MonthStart
+    {
+        get
+        {
+            var now = DateTime.UtcNow;
+            return new DateTimeOffset(now.Year, now.Month, 1, 0, 0, 0, TimeSpan.Zero).ToUnixTimeMilliseconds() / 86_400_000L;
+        }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _limit = await SearchOrAsk.KeyLimitAsync();
+        _limitRead = true;
+    }
+
+    private static string CallName(string call) => call switch
+    {
+        "judge" => "Decisions",
+        "answer" => "Answers",
+        _ => "Filters",
+    };
+
+    private string ProviderOf(string call)
+    {
+        var s = SearchOrAsk.Setup;
+        return call == "judge"
+            ? $"{SearchOrAskProviders.Label(s.JudgeProvider)}, {s.JudgeModel}"
+            : $"{SearchOrAskProviders.Label(s.Provider)}, {(call == "answer" ? s.AnswerModel : s.FilterModel)}";
+    }
+
+    private static string KindName(string kind) => kind switch
+    {
+        "credit" => "out of credit",
+        "keyLimit" => "key limit spent",
+        "inFlight" => "too much at once",
+        "key" => "key not accepted",
+        "refused" => "refused",
+        _ => "failed",
+    };
+
+    private static string N(long n) => n.ToString("N0");
+    private static string Usd(double v) => v < 0.01 && v > 0 ? "< $0.01" : v.ToString("$0.00", System.Globalization.CultureInfo.InvariantCulture);
+}

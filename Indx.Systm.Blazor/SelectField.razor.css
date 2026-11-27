@@ -1,0 +1,199 @@
+.indx-select-wrapper {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.indx-select-label {
+    font: var(--text-xs);
+    color: var(--lv6);
+}
+
+.indx-select-trigger {
+    position: relative;
+    width: 100%;
+}
+
+/* Trigger looks like the old native select box, but is a button that opens our own popover. */
+.indx-select {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    box-sizing: border-box;
+    border: 1px solid var(--lv3);
+    border-radius: var(--radius);
+    background: var(--lv0);
+    color: var(--lv7);
+    cursor: pointer;
+    text-align: left;
+}
+
+/* Sizes — match Button (micro 30 / default 40 / large 50). */
+.indx-select-micro {
+    height: 30px;
+    padding: 0 10px;
+    font: var(--text-xs);
+}
+
+.indx-select-default {
+    height: 40px;
+    padding: 0 15px;
+    font: var(--text-sm);
+}
+
+.indx-select-large {
+    height: 50px;
+    padding: 0 20px;
+    font: var(--text-base);
+}
+
+.indx-select-value {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.indx-select-placeholder {
+    color: var(--lv5);
+}
+
+.indx-select:not(:disabled):hover {
+    border-color: var(--lv4);
+}
+
+.indx-select:focus {
+    outline: none;
+    border-color: var(--lv5);
+}
+
+.indx-select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+/* Ghost: a view setting in a toolbar, styled as the ghost Button. Sized to its value; the border
+   stays, transparent, so the height matches the bordered field's. */
+.indx-select-wrapper-ghost .indx-select-trigger {
+    width: auto;
+}
+
+.indx-select-ghost {
+    width: auto;
+    background: transparent;
+    border-color: transparent;
+    color: var(--lv5);
+}
+
+.indx-select-ghost:not(:disabled):hover {
+    background: var(--lv2);
+    border-color: transparent;
+}
+
+.indx-select-ghost:focus {
+    border-color: transparent;
+}
+
+.indx-select-ghost:focus-visible {
+    outline: 2px solid var(--lv5);
+    outline-offset: 2px;
+}
+
+.indx-select-ghost .indx-select-icon {
+    color: inherit;
+}
+
+/* The ghost value neither shrinks nor clips: it is as wide as the widest option (the sizer). */
+.indx-select-ghost .indx-select-value {
+    flex: none;
+    overflow: visible;
+}
+
+.indx-select-sizer {
+    display: inline-grid;
+}
+
+.indx-select-sizer > span {
+    grid-area: 1 / 1;
+    white-space: nowrap;
+}
+
+.indx-select-sizer-hidden {
+    visibility: hidden;
+}
+
+.indx-select-icon {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    color: var(--lv5);
+}
+
+/* ── Popover ── */
+.indx-select-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+}
+
+/* Clean borderless base (like Surface): one level up in light (lv2), lv1 in dark.
+   The ghost-item hover is kept one level above the base so it stays visible. */
+.indx-select-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    right: 0;
+    z-index: 1001;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 280px;
+    overflow-y: auto;
+    padding: 6px;
+    background: var(--lv2);
+    border-radius: var(--radius);
+}
+
+.indx-select-menu ::deep .indx-btn-ghost:hover {
+    background: var(--lv3) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+    :where(:root:not([data-theme="light"])) .indx-select-menu {
+        background: var(--lv1);
+    }
+
+    :where(:root:not([data-theme="light"])) .indx-select-menu ::deep .indx-btn-ghost:hover {
+        background: var(--lv2) !important;
+    }
+}
+:where(:root[data-theme="dark"]) .indx-select-menu {
+    background: var(--lv1);
+}
+:where(:root[data-theme="dark"]) .indx-select-menu ::deep .indx-btn-ghost:hover {
+    background: var(--lv2) !important;
+}
+
+/* The rule above the menu's action entry ("New …"), as the Breadcrumbs switcher's. */
+.indx-select-menu-divider {
+    flex-shrink: 0;
+    height: 1px;
+    background: var(--lv3);
+    margin: 4px 0;
+}
+
+/* An option with its own action beside it: the option takes the row, the action its icon's width. */
+.indx-select-option-row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex-shrink: 0;
+}
+
+.indx-select-option-row > :first-child {
+    flex: 1;
+    min-width: 0;
+}

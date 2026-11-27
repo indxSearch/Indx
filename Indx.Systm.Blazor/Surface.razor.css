@@ -1,0 +1,27 @@
+.indx-surface {
+    border-radius: var(--radius);
+    background: var(--lv2);
+    padding: var(--spacing);
+}
+
+@media (prefers-color-scheme: dark) {
+    :where(:root:not([data-theme="light"])) .indx-surface {
+        background: var(--lv1);
+    }
+}
+:where(:root[data-theme="dark"]) .indx-surface {
+    background: var(--lv1);
+}
+
+.indx-surface-transparent {
+    background: transparent;
+}
+
+@media (prefers-color-scheme: dark) {
+    :where(:root:not([data-theme="light"])) .indx-surface-transparent {
+        background: transparent;
+    }
+}
+:where(:root[data-theme="dark"]) .indx-surface-transparent {
+    background: transparent;
+}

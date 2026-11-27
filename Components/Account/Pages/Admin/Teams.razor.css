@@ -1,0 +1,44 @@
+.admin-teams { display: flex; flex-direction: column; gap: 24px; min-width: 0; }
+.admin-teams-count { color: var(--lv5); font-variant-numeric: tabular-nums; margin-left: 4px; }
+.admin-teams-loading { display: flex; align-items: center; gap: 8px; color: var(--lv5); }
+
+.admin-teams-mono { font-family: var(--font-mono); }
+.admin-teams-num { text-align: right; font-variant-numeric: tabular-nums; }
+.admin-teams-faint { font: var(--text-xs); color: var(--lv5); white-space: nowrap; }
+
+/* Worth a look, and the members, datasets and keys of an opened team: a titled column of lines. */
+.admin-teams-block { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.admin-teams-block-title { display: inline-flex; align-items: center; gap: 6px; font: var(--text-xs); font-weight: var(--med); color: var(--lv7); margin-bottom: 4px; }
+.admin-teams-findings-list { padding: 0 12px 8px; }
+.admin-teams-findings-list .admin-teams-finding:last-child { border-bottom: 0; }
+.admin-teams-findings-summary { display: inline-flex; align-items: center; gap: 8px; }
+.admin-teams-findings-summary ::deep svg { flex: none; }
+.admin-teams-finding { display: flex; align-items: center; gap: 10px; padding: 6px 0; border-bottom: 0.5px solid var(--lv2); font: var(--text-sm); color: var(--lv7); }
+.admin-teams-finding .admin-teams-mono { color: var(--lv8); }
+.admin-teams-finding-text { color: var(--lv6); }
+
+
+/* Cells keep to one line; a narrow screen scrolls the table sideways. ::deep: the table is systm Table's. */
+::deep .admin-teams-table th,
+::deep .admin-teams-table td { white-space: nowrap; font-size: 13px; }
+
+/* A row opens in place, as a record does in Records: the whole row is the target. */
+.admin-teams-row { cursor: pointer; }
+.admin-teams-row:hover > td, .admin-teams-row:focus-visible > td { background: var(--lv1); }
+.admin-teams-row:focus-visible { outline: none; }
+.admin-teams-row--open > td, .admin-teams-row--open:hover > td { background: var(--lv2); }
+.admin-teams-name { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-mono); color: var(--lv7); }
+.admin-teams-name ::deep svg { flex: none; }
+.admin-teams-activity { display: inline-flex; align-items: center; gap: 10px; }
+.admin-teams-activity .admin-teams-num { min-width: 56px; font: var(--text-xs); color: var(--lv7); }
+
+::deep .admin-teams-table .admin-teams-expanded > td { background: var(--lv1); padding: 8px 12px 12px; white-space: normal; cursor: default; }
+.admin-teams-expanded-body { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr) minmax(0, 2fr); gap: 24px; }
+@media (max-width: 900px) { .admin-teams-expanded-body { grid-template-columns: minmax(0, 1fr); } }
+.admin-teams-line { display: flex; align-items: center; gap: 10px; padding: 4px 0; border-bottom: 0.5px solid var(--lv2); font: var(--text-xs); color: var(--lv7); }
+.admin-teams-line .admin-teams-num { color: var(--lv6); }
+.admin-teams-line-main { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Managing an opened team's members. */
+.admin-teams-add { margin-left: auto; }
+.admin-teams-role { width: 110px; flex: none; }

@@ -1,0 +1,29 @@
+@using System.Globalization
+@* "Delete dataset", and the modal that says what that means. Used on the Options tab and on the
+   upload flow's stuck and error panels, which are the way out when Options is unreachable. Each
+   site owns its own modal; they never render together. *@
+
+<Button Variant="@TriggerVariant" Size="micro" IconLeft="DatasetIcons.Delete" @onclick="() => _open = true">Delete dataset</Button>
+
+<ConfirmModal @bind-Open="_open" Title="@($"Delete {Ctx.Name}?")" Consequences="Consequences"
+              TypeToConfirm="@Ctx.Name" ConfirmLabel="Delete dataset" ConfirmIcon="DatasetIcons.Delete" OnConfirm="DeleteAsync" />
+
+@code {
+    [Parameter, EditorRequired] public DatasetContext Ctx { get; set; } = default!;
+    [Parameter] public string TriggerVariant { get; set; } = "ghost";
+
+    private bool _open;
+
+    private IReadOnlyList<string> Consequences =>
+    [
+        Ctx.KeepAlive?.RecordCount is > 0 and var n
+            ? $"Its {n.ToString("N0", CultureInfo.InvariantCulture)} documents are deleted, with its field configuration, boost rules and synonyms."
+            : "It is deleted, with its field configuration, boost rules and synonyms.",
+        "Websites, apps and scripts that search it get errors from now on.",
+        "API keys limited to this dataset no longer reach anything. Keys for the whole team keep working.",
+        "This can't be undone. Download the data first if you may need it.",
+    ];
+
+    private async Task<string?> DeleteAsync() =>
+        await Ctx.DeleteAsync() ? null : Ctx.OperationError ?? $"Could not delete '{Ctx.Name}'.";
+}

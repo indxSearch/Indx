@@ -1,0 +1,107 @@
+/* label | ruler | number field, on one 30px line, the height of an InputField. The port of the React
+   ScrubSlider's stylesheet, with the classes the console's way. */
+.indx-scrub {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+}
+
+.indx-scrub-label {
+    font: var(--text-xs);
+    color: var(--lv6);
+    white-space: nowrap;
+    flex: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* The ruler has no border: the ticks are its shape. Keyboard focus shows as a thin line. */
+.indx-scrub-ruler {
+    position: relative;
+    flex: 1;
+    min-width: 0;
+    height: 30px;
+    box-sizing: border-box;
+    border-radius: var(--radius);
+    overflow: hidden;
+    outline: none;
+    user-select: none;
+    touch-action: none;
+    /* The React systm draws a pixl cursor here (cursors.css); this library has none, so the system's. */
+    cursor: ew-resize;
+}
+
+.indx-scrub-ruler.indx-scrub-ruler--keyboard:focus {
+    outline: 1px solid var(--lv3);
+}
+
+/* Two repeating tiles, a minor tick every --scrub-tick and a major one every --scrub-period, phased
+   by --scrub-shift from the middle so they scroll with the value; the ends fade. */
+.indx-scrub-ticks {
+    position: absolute;
+    inset: 0;
+    background-image:
+        linear-gradient(to right, var(--lv5) 1px, transparent 1px),
+        linear-gradient(to right, var(--lv3) 1px, transparent 1px);
+    background-size: var(--scrub-period) 14px, var(--scrub-tick) 8px;
+    background-repeat: repeat-x;
+    background-position:
+        calc(50% + var(--scrub-shift)) center,
+        calc(50% + var(--scrub-shift)) center;
+    mask-image: linear-gradient(to right, transparent, #000 15%, #000 85%, transparent);
+    -webkit-mask-image: linear-gradient(to right, transparent, #000 15%, #000 85%, transparent);
+    clip-path: var(--scrub-clip, none);
+    pointer-events: none;
+}
+
+/* A marked value: a line taller than a major tick, scrolling with the ruler, under the handle. In the
+   faint ink unless a tone says the value changes what the setting does. */
+.indx-scrub-mark {
+    position: absolute;
+    top: 10%;
+    width: 2px;
+    height: 80%;
+    background-color: var(--lv5);
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+.indx-scrub-mark--warning {
+    background-color: var(--CWarning);
+}
+
+.indx-scrub-mark--signal {
+    background-color: var(--CSignal);
+}
+
+/* The handle stays put in the middle, in --CPositive (pure blue on light, teal on dark), so it reads
+   as where the value is and a mark on the ruler does not. */
+.indx-scrub-handle {
+    position: absolute;
+    top: 20%;
+    left: 50%;
+    width: 2px;
+    height: 60%;
+    background-color: var(--CPositive);
+    border-radius: var(--radius);
+    transform: translateX(-50%);
+    pointer-events: none;
+}
+
+.indx-scrub-field {
+    flex: none;
+}
+
+.indx-scrub-field ::deep input {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.indx-scrub--disabled {
+    opacity: 0.5;
+}
+
+.indx-scrub--disabled .indx-scrub-ruler {
+    cursor: not-allowed;
+}

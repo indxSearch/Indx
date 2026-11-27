@@ -1,0 +1,32 @@
+@* The header's Agent button: opens the
+   Agent panel at the right, with Observr's look. Monochrome until Observr's colour is chosen
+   (13 Oct 2026). Nothing of it for an instance whose subscription does not include Observr, and
+   nothing while the panel is open: the panel's head says Agent, right where the button stood. It
+   carried a count of the findings waiting for a decision until 15 Oct 2026; those decisions moved
+   to the dataset's Status page and the team's Observr page, and the counts went with them. *@
+@using IndxServer.Services.Observr
+@implements IDisposable
+@inject ObservrSubscription Subscription
+@inject AgentPanelState Agent
+
+@if (!Subscription.Visible || Agent.IsOpen) { return; }
+
+<span class="indx-observr agent-button">
+    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Observr" aria-label="Agent" @onclick="() => Agent.Open()">
+        <span class="nav-dropdown-label">Agent</span>
+    </Button>
+</span>
+
+@code {
+    protected override void OnInitialized()
+    {
+        // The first page after a start asks the portal in the background and the button appears
+        // when it answers.
+        Subscription.Changed += OnChanged;
+        Subscription.EnsureChecked();
+        Agent.Changed += OnChanged;
+    }
+
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+    public void Dispose() { Subscription.Changed -= OnChanged; Agent.Changed -= OnChanged; }
+}

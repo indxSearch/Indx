@@ -1,0 +1,117 @@
+.indx-toggle-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    cursor: pointer;
+    user-select: none;
+    /* This control is a <label>; null out any host-app global label margin so it
+       centers cleanly against inputs/buttons in a flex row. */
+    margin: 0;
+}
+
+.indx-toggle-input {
+    position: absolute;
+    opacity: 0;
+    width: 25px;
+    height: 17px;
+    cursor: pointer;
+}
+
+.indx-toggle-input:disabled {
+    cursor: not-allowed;
+}
+
+.indx-toggle-input:focus-visible + .indx-toggle-slider {
+    outline: 2px solid var(--lv5);
+    outline-offset: 2px;
+}
+
+.indx-toggle-label {
+    font: var(--text-sm);
+    color: var(--lv7);
+}
+
+.indx-toggle-slider {
+    position: relative;
+    display: inline-block;
+    width: 25px;
+    height: 17px;
+    background: var(--lv2);
+    border-radius: var(--radius);
+    flex-shrink: 0;
+}
+
+.indx-toggle-wrapper:not(.indx-toggle-disabled):hover .indx-toggle-input:not(:checked) + .indx-toggle-slider {
+    background-color: var(--lv3);
+}
+
+.indx-toggle-slider::before {
+    position: absolute;
+    content: "";
+    height: 11px;
+    width: 11px;
+    left: 3px;
+    top: 3px;
+    background-color: var(--lv8);
+    border-radius: var(--radius);
+    transition: transform 0.02s;
+}
+
+.indx-toggle-input:checked + .indx-toggle-slider {
+    background-color: var(--lv3);
+}
+
+.indx-toggle-input:checked + .indx-toggle-slider::before {
+    transform: translateX(8px);
+}
+
+/* Positive: on is --CPositive, pure blue on light and teal on dark, and the handle takes
+   --CPositiveHandle, white on the blue and near-black on the teal. */
+.indx-toggle-positive .indx-toggle-input:checked + .indx-toggle-slider {
+    background-color: var(--CPositive);
+}
+
+.indx-toggle-positive .indx-toggle-input:checked + .indx-toggle-slider::before {
+    background-color: var(--CPositiveHandle);
+}
+
+/* Marks: a 0 on the track when off, a | when on, as on a power switch. Drawn as background layers
+   in whole pixels, so they are sharp on a 1x screen: the 0 is a 5x5 ring with a 1px stroke and
+   the corners left out (four 1px bars), the | is 1x5. The track is 25 wide: 3px, the 11px handle,
+   3px, the 5px 0, 3px; so the 0 is centred in what the handle leaves, and on row 6 of 17 it is
+   centred vertically. The | mirrors it. The handle covers the other side. */
+.indx-toggle-marks .indx-toggle-input:not(:checked) + .indx-toggle-slider {
+    background-image:
+        linear-gradient(var(--lv3), var(--lv3)),
+        linear-gradient(var(--lv3), var(--lv3)),
+        linear-gradient(var(--lv3), var(--lv3)),
+        linear-gradient(var(--lv3), var(--lv3));
+    background-size: 3px 1px, 3px 1px, 1px 3px, 1px 3px;
+    background-position: 18px 6px, 18px 10px, 17px 7px, 21px 7px;
+    background-repeat: no-repeat;
+}
+
+.indx-toggle-marks .indx-toggle-input:checked + .indx-toggle-slider {
+    background-image: linear-gradient(var(--lv8), var(--lv8));
+    background-size: 1px 5px;
+    background-position: 5px 6px;
+    background-repeat: no-repeat;
+}
+
+/* The | on a positive track matches its handle. */
+.indx-toggle-marks.indx-toggle-positive .indx-toggle-input:checked + .indx-toggle-slider {
+    background-image: linear-gradient(var(--CPositiveHandle), var(--CPositiveHandle));
+}
+
+.indx-toggle-input:disabled + .indx-toggle-slider {
+    opacity: 0.5;
+    pointer-events: none;
+}
+
+.indx-toggle-disabled {
+    cursor: not-allowed;
+}
+
+.indx-toggle-disabled .indx-toggle-label {
+    opacity: 0.5;
+}

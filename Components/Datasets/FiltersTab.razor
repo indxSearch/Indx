@@ -1,0 +1,247 @@
+@* The dataset's filters (26 Nov 2026): the fields a search page offers as filters, each with its name,
+   its place and its panel, and whether it is shown. What GET filter-setup serves to every page, read
+   through DatasetFilters as the route reads it, so the two cannot disagree. Nothing set, the rules
+   decide (FilterPlanner, the same as intrface's planFilters); a field that becomes facetable later
+   is added at the end, shown if the rules show it. A working copy saved with the SaveBar. Needs the
+   built index for the values: mounted only while the dataset is Ready, never waking one.
+   Mockup: indx-react-ui-mockups/filter-setup, variant A. *@
+@using Indx.Api
+@inherits DatasetTabBase
+@inject FilterSetupStore Store
+@inject DatasetMetadataStore Metadata
+
+@if (!Active) { return; }
+
+<div class="filters-tab">
+    <p class="indx-section-help">
+        The filters a search page offers, in this order, with these names. Any page reads them, with
+        intrface's AutoFilters or with panels of its own. Nothing here is required: a field you leave
+        alone gets what Indx chooses by itself, and a new field shows up at the end.
+    </p>
+
+    @if (_rows == null)
+    {
+        <p class="filters-note">@(_error ?? "Reading the fields…")</p>
+    }
+    else if (_rows.Count == 0)
+    {
+        <EmptyState Title="No fields to filter by" Description="Make fields Filterable and Facetable in Field configuration, and they show up here." />
+    }
+    else
+    {
+        <ReadOnlyArea Editable="@Ctx.IsEditor">
+        <div class="filters-layout">
+            <div class="filters-list">
+                <div class="filters-head" aria-hidden="true"><span></span><span>Name</span><span>Panel</span><span>Values</span><span>Shown</span><span></span></div>
+                <SortableList TItem="EditRow" Items="_rows" ItemsChanged="@(rows => _rows = rows.ToList())" Key="@(r => r.Field)"
+                              Label="@(r => r.Name)" MoveButtons="true" Disabled="@(!Ctx.IsEditor)" AriaLabel="Filters" ItemClass="filters-item">
+                    <div class="filters-row @(context.Shown ? "" : "filters-off")">
+                        <div class="filters-name">
+                            <InputField @bind-Value="context.Label" placeholder="@context.DefaultLabel" aria-label="@($"{context.Field}: name")" />
+                            <span class="filters-raw">
+                                @(context.IsCategories ? string.Join(" › ", context.Levels ?? []) : context.Field)
+                                @if (context.IsNew) { <Chip Size="micro">New</Chip> }
+                            </span>
+                        </div>
+                        <div class="filters-panel">
+                            @if (context.IsCategories)
+                            {
+                                <span class="filters-fixed">Category menu</span>
+                            }
+                            else
+                            {
+                                <SelectField Size="micro" Options="@KindOptions(context)" Value="@(context.Kind?.ToString() ?? Auto)"
+                                             ValueChanged="@(v => context.Kind = v == Auto ? null : Enum.Parse<FilterKind>(v!))" aria-label="@($"{context.Field}: panel")" />
+                                @if ((context.Kind ?? context.DefaultKind) == FilterKind.Buckets)
+                                {
+                                    <InputField @bind-Value="context.EdgesText" placeholder="0, 50, 100, 200" aria-label="@($"{context.Field}: bucket edges")" />
+                                }
+                            }
+                        </div>
+                        <span class="filters-count" title="@(context.LeftOut == null ? null : $"Indx leaves it out: {context.LeftOut}")">
+                            @(context.ValueCount?.ToString("N0") ?? "")
+                            @if (context.LeftOut != null && !context.Shown) { <span class="filters-why"> @context.LeftOut</span> }
+                        </span>
+                        <ToggleSwitch Variant="positive" @bind-Checked="context.Shown" AriaLabel="@($"Show {context.Name}")" />
+                    </div>
+                </SortableList>
+            </div>
+            <aside class="filters-preview" aria-label="The filter column">
+                <h3 class="filters-preview-title">As a page shows it</h3>
+                @foreach (var r in _rows.Where(r => r.Shown))
+                {
+                    <div class="filters-preview-panel"><span>@r.Name</span><span class="filters-preview-kind">@KindName(r.Kind ?? r.DefaultKind)</span></div>
+                }
+            </aside>
+        </div>
+        </ReadOnlyArea>
+
+        @if (_error != null) { <p class="filters-error">@_error</p> }
+        <SaveBar Visible="@(IsDirty && Ctx.IsEditor)" Message="A page picks the change up on its next load.">
+            <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" Loading="@_saving" @onclick="SaveAsync">Save</Button>
+            <Button Variant="secondary" Size="micro" Disabled="@_saving" @onclick="Cancel">Cancel</Button>
+        </SaveBar>
+        @if (_hasSaved && Ctx.IsEditor)
+        {
+            <div class="indx-file-actions">
+                <Button Variant="ghost" Size="micro" Disabled="@_saving" @onclick="ResetToAutoAsync">Let Indx choose all</Button>
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private const string Auto = "auto";
+
+    /// <summary>A row as edited: the rules' choices beside the owner's.</summary>
+    private sealed class EditRow
+    {
+        public required string Field { get; init; }
+        public string? FieldType { get; init; }
+        public required string DefaultLabel { get; init; }
+        public string? Label { get; set; }
+        public FilterKind DefaultKind { get; init; }
+        public FilterKind? Kind { get; set; }
+        public bool Shown { get; set; }
+        public int? ValueCount { get; init; }
+        public string? LeftOut { get; init; }
+        public IReadOnlyList<string>? Levels { get; init; }
+        public string? EdgesText { get; set; }
+        public bool IsNew { get; init; }
+        public bool IsCategories => Field == FilterSetup.CategoriesRow;
+        public string Name => string.IsNullOrWhiteSpace(Label) ? DefaultLabel : Label!;
+    }
+
+    private List<EditRow>? _rows;
+    private string _savedJson = "";
+    private bool _hasSaved;
+    private string? _error;
+    private bool _saving;
+    private bool _loading;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Active && _rows == null && !_loading) await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        _loading = true;
+        _error = null;
+        try
+        {
+            var engine = Ctx.FindEngine();
+            if (engine == null || Ctx.EngineState != SystemState.Ready) { _error = "The dataset is not ready."; return; }
+            var setup = Store.Load(Ctx.TeamId, Ctx.Name);
+            var category = Metadata.LoadCategory(Ctx.TeamId, Ctx.Name);
+            // Off the circuit thread: the values are an empty search with facets.
+            var rows = await Task.Run(() => DatasetFilters.Read(engine, category, setup, out _, out _));
+            _hasSaved = setup is { Fields.Count: > 0 };
+            _rows = rows.Select(r => new EditRow
+            {
+                Field = r.Field, FieldType = r.FieldType, DefaultLabel = r.DefaultLabel, Label = r.Label,
+                DefaultKind = r.DefaultKind, Kind = r.Kind, Shown = r.Shown, ValueCount = r.ValueCount, LeftOut = r.LeftOut,
+                Levels = r.Levels, EdgesText = r.Edges == null ? null : string.Join(", ", r.Edges), IsNew = r.IsNew,
+            }).ToList();
+            _savedJson = Json(ToSetup(out _));
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not read the fields: {ex.Message}";
+        }
+        finally { _loading = false; }
+    }
+
+    /// <summary>The working copy as the store keeps it: every row, in order, so the order is the owner's.</summary>
+    private FilterSetup ToSetup(out string? edgesError)
+    {
+        edgesError = null;
+        var setup = new FilterSetup();
+        foreach (var r in _rows ?? [])
+        {
+            List<double>? edges = null;
+            if ((r.Kind ?? r.DefaultKind) == FilterKind.Buckets && !string.IsNullOrWhiteSpace(r.EdgesText))
+            {
+                edges = new();
+                foreach (var part in r.EdgesText.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
+                {
+                    if (double.TryParse(part, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var d)) edges.Add(d);
+                    else edgesError ??= $"'{part}' in the bucket edges of {r.Name} is not a number.";
+                }
+            }
+            setup.Fields.Add(new FilterSetupField
+            {
+                Field = r.Field, Label = string.IsNullOrWhiteSpace(r.Label) ? null : r.Label.Trim(), Shown = r.Shown, Kind = r.Kind, Edges = edges,
+            });
+        }
+        return setup;
+    }
+
+    private static string Json(FilterSetup s) => System.Text.Json.JsonSerializer.Serialize(s, FilterSetupStore.JsonOptions);
+
+    private bool IsDirty => _rows != null && Json(ToSetup(out _)) != _savedJson;
+
+    private async Task SaveAsync()
+    {
+        if (!Ctx.IsEditor || _saving || _rows == null) return;
+        _error = null;
+        var setup = ToSetup(out var edgesError);
+        if (edgesError != null) { _error = edgesError; return; }
+        var engine = Ctx.FindEngine();
+        if (engine == null) { _error = "The dataset is not ready."; return; }
+        _saving = true;
+        try
+        {
+            var category = Metadata.LoadCategory(Ctx.TeamId, Ctx.Name);
+            var problem = await Task.Run(() =>
+            {
+                DatasetFilters.Read(engine, category, null, out var dataset, out var levels);
+                return DatasetFilters.Validate(setup, dataset, levels);
+            });
+            if (problem != null) { _error = problem; return; }
+            await Task.Run(() => Store.Save(Ctx.TeamId, Ctx.Name, setup));
+            _savedJson = Json(setup);
+            _hasSaved = true;
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not save: {ex.Message}";
+        }
+        finally { _saving = false; }
+    }
+
+    private async Task Cancel()
+    {
+        _rows = null;
+        await LoadAsync();
+    }
+
+    private async Task ResetToAutoAsync()
+    {
+        if (!Ctx.IsEditor) return;
+        await Task.Run(() => Store.Save(Ctx.TeamId, Ctx.Name, null));
+        _rows = null;
+        await LoadAsync();
+    }
+
+    private static string KindName(FilterKind kind) => kind switch
+    {
+        FilterKind.Values => "List",
+        FilterKind.Buttons => "Buttons",
+        FilterKind.Range => "Range",
+        FilterKind.Buckets => "Buckets",
+        FilterKind.Toggle => "Switch",
+        FilterKind.Hierarchy => "Category menu",
+        _ => kind.ToString(),
+    };
+
+    /// <summary>Auto (what the rules give it), then the panels its type can have.</summary>
+    private static IEnumerable<SelectField.SelectOption> KindOptions(EditRow r)
+    {
+        yield return new SelectField.SelectOption($"Auto ({KindName(r.DefaultKind)})", Auto);
+        FilterKind[] kinds = r.FieldType == "Number" ? [FilterKind.Range, FilterKind.Buckets, FilterKind.Values, FilterKind.Buttons]
+            : r.DefaultKind == FilterKind.Toggle ? [FilterKind.Toggle, FilterKind.Values]
+            : [FilterKind.Values, FilterKind.Buttons];
+        foreach (var k in kinds) yield return new SelectField.SelectOption(KindName(k), k.ToString());
+    }
+}

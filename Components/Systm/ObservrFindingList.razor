@@ -1,0 +1,173 @@
+@* The findings as a list, one block each: what it is about, where and when on one line, the
+   text at reading width, the proposal as chips, the decision. A table put two paragraphs in a
+   narrow column beside five empty cells; this is what a finding actually looks like. Used by the
+   team's Observr page and the account's history as a list, by a dataset's Status page as a grid
+   of cards (Grid, where the dataset need not be named), and by the Agent panel for the proposals
+   under the answer that made them. *@
+@using IndxServer.Services.Observr
+
+@if (Findings.Count == 0)
+{
+    @* The caller's sentence: its first as the title, the rest under it. *@
+    var dot = Empty.IndexOf(". ", StringComparison.Ordinal);
+    <EmptyState Size="compact" Icon="DatasetIcons.Observr" Title="@(dot > 0 ? Empty[..dot] : Empty.TrimEnd('.'))">@(dot > 0 ? Empty[(dot + 2)..] : null)</EmptyState>
+}
+else
+{
+    <ol class="ofl @(Grid ? "ofl--grid" : null)">
+        @foreach (var f in Findings)
+        {
+            <li class="ofl-item @(f.Status == ObservrFinding.Open ? "ofl-item--open" : null) @(ProposalsOnly ? "ofl-item--proposals" : null)">
+                @if (!ProposalsOnly)
+                {
+                <div class="ofl-head">
+                    @if (KindIcon != null) { <span class="ofl-kind">@KindIcon(f)(14)</span> }
+                    <span class="ofl-title">@f.Title</span>
+                    <span class="ofl-where">
+                        @if (NameDataset)
+                        {
+                            @if (ShowTeam) { <text>@TeamName(f.TeamId) / </text> }@f.DataSetName
+                        }
+                        <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Open" Href="@Link(f)" title="@(NameDataset ? "Open where it is about" : "Open the section it is about")" aria-label="@($"Open {f.DataSetName}, {f.Tab}")" />
+                    </span>
+                    <span class="ofl-spacer"></span>
+                    <span class="ofl-time"><TimeAgo Value="f.CreatedUtc" TooltipPosition="left" /></span>
+                    @{ var status = f.Status == ObservrFinding.Open ? (f.Proposals.Count == 0 ? "unread" : "open") : f.Proposals.Count == 0 ? "read" : f.Status; }
+                    <Chip Color="@StatusColor(status)" TextColor="@StatusText(status)">@status</Chip>
+                </div>
+                <div class="ofl-text">@ChatMarkdown.Render(f.Answer)</div>
+                }
+                @if (f.Proposals.Count > 0)
+                {
+                    @* The proposals as sentences, each with its reason under it: "Make [Pokedex
+                       number] sortable", "Ordering by Pokedex number is the natural way to browse". *@
+                    <div class="ofl-proposals">
+                        <span class="ofl-proposals-head">@(f.Proposals.Count == 1 ? "Suggested change" : "Suggested changes")</span>
+                        @foreach (var (p, i) in f.Proposals.Select((p, i) => (p, i)))
+                        {
+                            var (before, names, after) = p.Sentence;
+                            <div class="ofl-proposal">
+                                @if (Selectable(f))
+                                {
+                                    var index = i;
+                                    <Checkbox Checked="@(!_unticked.Contains((f.Id, index)))" CheckedChanged="v => Tick(f.Id, index, v)" Disabled="@(Busy == f.Id)" aria-label="Apply this proposal" />
+                                }
+                                <div class="ofl-proposal-body">
+                                    <span class="ofl-sentence">
+                                        @before
+                                        @foreach (var n in names) { <Chip>@n</Chip> }
+                                        @after
+                                    </span>
+                                    @if (p.Ticket is { } ticket)
+                                    {
+                                        @* The ticket as it will go, read before the Yes sends it. *@
+                                        <span class="ofl-ticket">@ticket.Body</span>
+                                    }
+                                    @if (p.SearchOrAsk is { } soa)
+                                    {
+                                        @* The texts a Yes writes into the dataset's answering, read before it
+                                           does: they become what the model that answers visitors is told. *@
+                                        @if (!string.IsNullOrWhiteSpace(soa.SiteDescription)) { <span class="ofl-ticket"><strong>About the site.</strong> @soa.SiteDescription</span> }
+                                        @if (!string.IsNullOrWhiteSpace(soa.FilterNotes)) { <span class="ofl-ticket"><strong>Notes about the fields.</strong> @soa.FilterNotes</span> }
+                                        @if (!string.IsNullOrWhiteSpace(soa.AnswerInstructions)) { <span class="ofl-ticket"><strong>Answer instructions.</strong> @soa.AnswerInstructions</span> }
+                                    }
+                                    @if (!string.IsNullOrWhiteSpace(p.Reason) && p.Reason != f.Answer) { <span class="ofl-why">@p.Reason</span> }
+                                </div>
+                            </div>
+                        }
+                    </div>
+                }
+                @if (CanDecide && (f.Status == ObservrFinding.Open || OnHide.HasDelegate))
+                {
+                    <div class="ofl-actions">
+                        @if (f.Status == ObservrFinding.Open)
+                        {
+                        @if (f.Proposals.Count == 0)
+                        {
+                            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Yes" Loading="@(Busy == f.Id)" @onclick="() => OnDecide.InvokeAsync((f, true, null))">Got it</Button>
+                        }
+                        else
+                        {
+                            var chosen = Chosen(f);
+                            <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Yes" Loading="@(Busy == f.Id)" Disabled="@(chosen.Count == 0)" @onclick="() => OnDecide.InvokeAsync((f, true, chosen))">@(Selectable(f) && chosen.Count < f.Proposals.Count ? $"Yes, {chosen.Count} of {f.Proposals.Count}" : "Yes")</Button>
+                            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.No" Disabled="@(Busy == f.Id)" @onclick="() => OnDecide.InvokeAsync((f, false, null))">No</Button>
+                        }
+                        @if (OnDiscuss.HasDelegate)
+                        {
+                            <Button Variant="ghost" Size="micro" Disabled="@(Busy == f.Id)" @onclick="() => OnDiscuss.InvokeAsync(f)">Discuss</Button>
+                        }
+                        }
+                        @if (OnHide.HasDelegate)
+                        {
+                            <span class="ofl-spacer"></span>
+                            <Button Variant="ghost" Size="micro" Disabled="@(Busy == f.Id)" title="Take it off this page" @onclick="() => OnHide.InvokeAsync(f)">Hide</Button>
+                        }
+                    </div>
+                }
+                else if (f.Status == ObservrFinding.Open)
+                {
+                    <span class="ofl-label">open</span>
+                }
+                @if (Failure is { } failed && failed.Id == f.Id)
+                {
+                    <div class="ofl-failure"><Alert Variant="warning" Role="alert"><Description>@failed.Text</Description></Alert></div>
+                }
+            </li>
+        }
+    </ol>
+}
+
+@code {
+    [Parameter, EditorRequired] public IReadOnlyList<ObservrFinding> Findings { get; set; } = [];
+    /// <summary>Where a finding points: the dataset's page, on the tab it is about.</summary>
+    [Parameter, EditorRequired] public Func<ObservrFinding, string> Link { get; set; } = default!;
+    [Parameter] public Func<string, string> TeamName { get; set; } = id => id;
+    /// <summary>Name the team beside the dataset: the account's history spans teams, a team's page does not.</summary>
+    [Parameter] public bool ShowTeam { get; set; }
+    [Parameter] public bool CanDecide { get; set; }
+    [Parameter] public long Busy { get; set; }
+    /// <summary>The decision, and for a Yes with several proposals which of them (by index); null
+    /// means all of them.</summary>
+    [Parameter] public EventCallback<(ObservrFinding Finding, bool Yes, IReadOnlyList<int>? Only)> OnDecide { get; set; }
+    /// <summary>Why the last decision could not be carried out, shown on the finding it was about.</summary>
+    [Parameter] public (long Id, string Text)? Failure { get; set; }
+
+    /// <summary>A finding with several proposals lets the owner untick some before a Yes, as the
+    /// field review's rows did; every proposal starts ticked.</summary>
+    private readonly HashSet<(long, int)> _unticked = [];
+    private bool Selectable(ObservrFinding f) => CanDecide && f.Status == ObservrFinding.Open && f.Proposals.Count > 1;
+    private void Tick(long id, int index, bool on) { if (on) _unticked.Remove((id, index)); else _unticked.Add((id, index)); }
+    private List<int> Chosen(ObservrFinding f) => Enumerable.Range(0, f.Proposals.Count).Where(i => !_unticked.Contains((f.Id, i))).ToList();
+    [Parameter] public string Empty { get; set; } = "Nothing yet.";
+    /// <summary>Cards in a grid rather than blocks in a column.</summary>
+    [Parameter] public bool Grid { get; set; }
+    /// <summary>The dataset's name on each finding; off on a page about one dataset, where the
+    /// open button goes to the section instead.</summary>
+    [Parameter] public bool NameDataset { get; set; } = true;
+    /// <summary>An icon before the title, by the finding's kind, when the page wants one.</summary>
+    [Parameter] public Func<ObservrFinding, RenderFragment<int>>? KindIcon { get; set; }
+    /// <summary>With it, every finding has a Hide button for an editor: off the page for good.</summary>
+    [Parameter] public EventCallback<ObservrFinding> OnHide { get; set; }
+    /// <summary>With it, an open finding has a Discuss button: the Agent panel, with the finding.</summary>
+    [Parameter] public EventCallback<ObservrFinding> OnDiscuss { get; set; }
+    /// <summary>Only the proposals and the decision: for a finding shown under the answer that
+    /// made it (the Agent panel), where the text is already on the page.</summary>
+    [Parameter] public bool ProposalsOnly { get; set; }
+
+    // Decided ones in the chip colours the console uses elsewhere; an open one inverted (ink on
+    // the page's darkest or lightest level), so the eye finds what still wants a decision. Observr's
+    // own colour is not chosen yet (13 Oct 2026): monochrome until it is.
+    private static string StatusColor(string status) => status switch
+    {
+        "accepted" => "var(--CTeal)",
+        "declined" => "var(--CWarning)",
+        "open" or "unread" => "var(--lv7)",
+        _ => "var(--lv2)",
+    };
+    private static string StatusText(string status) => status switch
+    {
+        "open" or "unread" => "var(--lv0)",
+        "read" => "var(--lv6)",
+        _ => "#080809",
+    };
+}

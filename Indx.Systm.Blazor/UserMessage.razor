@@ -1,0 +1,10 @@
+@* Port of indx-systm UserMessage: what the person typed, right-aligned, on a raised tone. Line
+   breaks are kept. *@
+<div class="indx-chat-user-row">
+    <div class="indx-chat-user @Class">@ChildContent</div>
+</div>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+}

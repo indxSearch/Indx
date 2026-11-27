@@ -1,0 +1,23 @@
+@* A placeholder for content that is on its way, a port of @indxsearch/systm's Skeleton: a bar or
+   block that pulses slowly. Besides Spinner the one place systm moves, because the visitor is
+   waiting. It waits 0.15s before it shows, so a quick answer never flashes a skeleton, and with
+   reduced motion it holds a steady tone. Decorative (aria-hidden): mark the loading region with
+   aria-busy. *@
+
+<span aria-hidden="true"
+      class="indx-skeleton @(Level == 3 ? "indx-skeleton--level3" : "") @(Appear ? "indx-skeleton--appear" : "") @Class"
+      style="width: @Width; height: @Height; --skeleton-delay: @(Delay.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture))s;"></span>
+
+@code {
+    /// <summary>Any CSS length. Defaults to the full width.</summary>
+    [Parameter] public string Width { get; set; } = "100%";
+    /// <summary>Any CSS length. Defaults to 10px, a line of small text.</summary>
+    [Parameter] public string Height { get; set; } = "10px";
+    /// <summary>The tone: 2 on the page (lv0, lv1), 3 on a Base surface (lv2), so it stays darker than what it sits on.</summary>
+    [Parameter] public int Level { get; set; } = 2;
+    /// <summary>Seconds to hold this one back, to stagger a column of skeletons.</summary>
+    [Parameter] public double Delay { get; set; }
+    /// <summary>Fade in after a short wait. Turn it off when a parent fades the whole group in.</summary>
+    [Parameter] public bool Appear { get; set; } = true;
+    [Parameter] public string? Class { get; set; }
+}

@@ -1,0 +1,29 @@
+.indx-pagination { max-width: 100%; }
+
+.indx-pagination-list {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+/* Each button at least as wide as it is high, so one digit or an arrow sits in a square. */
+.indx-pagination-list ::deep .indx-btn {
+    justify-content: center;
+    font-variant-numeric: tabular-nums;
+}
+.indx-pagination-micro ::deep .indx-btn { min-width: 30px; padding-inline: 8px; }
+.indx-pagination-default ::deep .indx-btn { min-width: 40px; padding-inline: 12px; }
+
+.indx-pagination-gap {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 20px;
+    color: var(--lv5);
+}
+.indx-pagination-micro .indx-pagination-gap { height: 30px; font: var(--text-xs); }
+.indx-pagination-default .indx-pagination-gap { height: 40px; font: var(--text-sm); }

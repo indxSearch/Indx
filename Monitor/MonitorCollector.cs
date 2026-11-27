@@ -1,0 +1,361 @@
+using System.Collections.Concurrent;
+using IndxServer.Engine;
+using Indx.Api;
+using IndxServer.Models;
+
+namespace IndxServer.Monitor
+{
+    /// <summary>
+    /// Builds one <see cref="MonitorSnapshot"/> per tick, and raises an event whenever a dataset
+    /// changes phase between ticks.
+    ///
+    /// <para><b>It must never wake a dataset.</b> <c>GetState</c> and <c>ResolveEngine</c> auto-load
+    /// a hibernated timed/pinned dataset, so a monitor polling every dataset once a second through
+    /// them would defeat <c>DatasetIdleSweeper</c> and hold the whole corpus in memory. Every read
+    /// here is one of the three that only look at what is already in the registry:
+    /// <c>GetAllDataSets</c> (a SQLite row list), <c>FindSearchEngine</c> (creates an unloaded shell
+    /// at most, never loads — the same call the admin dataset list makes for the same reason), and
+    /// <c>GetKeepAliveInfo</c> / <c>GetProgressPercent</c> (pure dictionary reads).
+    /// <c>MonitorCollectorTests.CollectingDoesNotWakeAHibernatedDataset</c> pins it.</para>
+    ///
+    /// <para>The transition events exist because the engine registry logs to <b>NLog</b>, not
+    /// <c>ILogger</c>, so a ring buffer over the ASP.NET logging pipeline sees none of the dataset
+    /// lifecycle lines. Deriving them from the polling this class already does covers that without
+    /// touching the registry at all.</para>
+    /// </summary>
+    internal sealed class MonitorCollector(TeamNames? teamNames = null)
+    {
+        // Phase per dataset key as of the previous tick. Only this class touches it, and Collect
+        // is called from one timer, so no synchronisation is needed.
+        // Keyed by the team id, because a rename must not read as one dataset disappearing and
+        // another appearing. The label is carried alongside so a deleted dataset, which is no
+        // longer in the snapshot, can still be named by its team rather than by a GUID.
+        private readonly Dictionary<string, (string Phase, string Label)> _lastSeen = [];
+        private bool _first = true;
+
+        // Searches, accumulated rather than summed. SystemStatus.SearchCounter is per engine and
+        // restarts at zero when a dataset is evicted and reloaded, so summing it across datasets
+        // gives a total that falls. Adding deltas instead — and treating a fall as a restart —
+        // gives a number that only goes up, which is what a counter on screen has to do.
+        // The on-disk row count, asked for as rarely as it can be.
+        //
+        // It is SELECT COUNT(*) per dataset, and measured on this repo's own data it is 150-185 ms
+        // EACH, near enough regardless of size: idx_UserJson covers UserName alone, so counting
+        // one dataset scans every row its team owns. Twelve datasets is about 1.8 seconds of
+        // SQLite per pass, which a collector running once a second could never have kept up with.
+        //
+        // So it is asked for only when the answer can have changed: the first time a dataset is
+        // seen, and afterwards only when its phase moves. A dataset that is not loaded cannot gain
+        // or lose rows without waking first, and a loaded one reports its own DocumentCount, which
+        // is the truer number anyway. Steady state is no counting at all.
+        private readonly Dictionary<string, int> _recordCounts = [];
+
+        // And never on the collector's own pass (Nov 2026). The first pass sees every dataset for
+        // the first time, so it counted them all before the screen could draw: 7.5 s on a 10 GB
+        // store with many datasets asleep. A count is now queued and taken off the timer's thread,
+        // one dataset after another; the pass draws at once with what it knows, an unknown count
+        // as -1, and takes the results on the next tick. Only the counting task writes _counted,
+        // only Collect reads it into _recordCounts.
+        private readonly ConcurrentDictionary<string, int> _counted = new();
+        private readonly ConcurrentQueue<(string Key, string DataSet, string Team)> _toCount = new();
+        private readonly HashSet<string> _queued = [];
+        private Task _counting = Task.CompletedTask;
+
+        /// <summary>The counting under way, for a test to wait for before the next pass.</summary>
+        internal Task Counting => _counting;
+
+        // The engine state each dataset was last seen in, kept separately from _lastSeen because
+        // that one holds DatasetLine.Phase -- which says "Hibernated", a word derived from the row
+        // count we are deciding whether to fetch. Comparing against it would be circular, and
+        // would silently count every tick.
+        private readonly Dictionary<string, string> _lastEngineState = [];
+
+        private readonly Dictionary<string, int> _lastSearchCount = [];
+        private long _searchesTotal;
+        private readonly List<(DateTimeOffset At, long Total)> _rateSamples = [];
+        private static readonly TimeSpan RateWindow = TimeSpan.FromMinutes(1);
+
+        // The rate once a minute for the last hour, for a chart; and the previous CPU reading,
+        // for the share of the cores spent since it.
+        private readonly List<double> _rateHistory = [];
+        private DateTimeOffset? _rateHistoryAt;
+        private const int RateHistoryMax = 60;
+        private (DateTimeOffset At, TimeSpan Cpu)? _lastCpu;
+
+        internal MonitorSnapshot Collect(DateTimeOffset now)
+        {
+            List<(string DataSetName, string TeamId)> all;
+            try
+            {
+                all = IndxServerInternalApi.Manager.GetAllDataSets();
+            }
+            catch (InvalidOperationException)
+            {
+                // StartUpSystem has not run yet (or failed). Nothing to report, and the monitor
+                // must not be the thing that turns that into a crash.
+                return MonitorSnapshot.Empty(now);
+            }
+
+            // One identity-database read for the whole table, and usually not even that.
+            var names = teamNames?.Resolve(all.Select(r => r.TeamId), now)
+                        ?? new Dictionary<string, string>();
+
+            var lines = new List<DatasetLine>(all.Count);
+            foreach (var (dataSetName, teamId) in all)
+                lines.Add(ReadOne(dataSetName, teamId, names.GetValueOrDefault(teamId)));
+
+            if (_counting.IsCompleted && !_toCount.IsEmpty)
+                _counting = Task.Run(CountQueued);
+
+            lines.Sort((a, b) => string.CompareOrdinal(a.Key, b.Key));
+
+            return Build(lines, now);
+        }
+
+        private DatasetLine ReadOne(string dataSetName, string teamId, string? teamName)
+        {
+            var manager = IndxServerInternalApi.Manager;
+
+            // Never Status on a disposed engine: that throws ObjectDisposedException.
+            var engine = manager.FindSearchEngine(dataSetName, teamId);
+            var status = engine is { IsDisposed: false } ? engine.Status : null;
+
+            // Count only when the answer can have moved: a dataset not seen before, or one whose
+            // phase changed since the last pass. See _recordCounts. A count finished since the
+            // last pass is taken first.
+            string key = teamId + "/" + dataSetName;
+            if (_counted.TryRemove(key, out var fresh))
+            {
+                _recordCounts[key] = fresh;
+                _queued.Remove(key);
+            }
+            string engineState = status?.SystemState.ToString() ?? "Unloaded";
+            bool countNow = !_recordCounts.ContainsKey(key)
+                            || !_lastEngineState.TryGetValue(key, out var was)
+                            || was != engineState;
+            _lastEngineState[key] = engineState;
+
+            if (countNow && _queued.Add(key))
+                _toCount.Enqueue((key, dataSetName, teamId));
+
+            var keepAlive = manager.GetKeepAliveInfo(dataSetName, teamId, countRecordsOnDisk: false);
+            // The last count known, or -1 while the first is still being taken.
+            int recordsOnDisk = _recordCounts.TryGetValue(key, out var known) ? known : -1;
+
+            // Rows on disk with no live engine (or one still in Created) is what hibernation looks
+            // like from outside: the data is persisted, the engine is not loaded. Not yet counted
+            // reads as hibernated too: a dataset with no rows at all is the rare case, and calling
+            // the many sleeping ones "Unloaded" for a tick would report each as a transition.
+            // Except one warm-up has yet to reach: that one is queued, on its way up, and calling
+            // it hibernated at startup said the opposite of what was happening.
+            bool queued = manager.IsWarmUpPending(dataSetName, teamId);
+            bool hibernated = !queued && recordsOnDisk != 0
+                              && status?.SystemState is null or SystemState.Created;
+
+            return new DatasetLine(
+                DataSetName: dataSetName,
+                TeamId: teamId,
+                TeamName: teamName,
+                State: status?.SystemState,
+                Hibernated: hibernated,
+                DocumentCount: status?.DocumentCount ?? 0,
+                RecordsOnDisk: recordsOnDisk,
+                Ready: keepAlive.Ready,
+                LastUsedUtc: keepAlive.LastUsedUtc,
+                KeepAliveRemaining: keepAlive.Remaining,
+                KeepAliveHrs: keepAlive.KeepAliveTimeHrs,
+                ProgressPercent: manager.GetProgressPercent(dataSetName, teamId),
+                SearchCounter: status?.SearchCounter ?? 0,
+                IndexedTextTruncated: status?.IndexedTextTruncated ?? false,
+                ErrorMessage: string.IsNullOrWhiteSpace(status?.ErrorMessage) ? null : status!.ErrorMessage,
+                Queued: queued);
+        }
+
+        /// <summary>Takes the queued counts, one dataset at a time, off the timer's thread.</summary>
+        private void CountQueued()
+        {
+            while (_toCount.TryDequeue(out var item))
+            {
+                try
+                {
+                    var info = IndxServerInternalApi.Manager.GetKeepAliveInfo(item.DataSet, item.Team, countRecordsOnDisk: true);
+                    _counted[item.Key] = Math.Max(0, info.RecordCount);
+                }
+                catch (Exception)
+                {
+                    // A dataset deleted between the pass and the count, or the store busy: it is
+                    // counted again the next time its phase moves. The monitor must not crash.
+                    _counted[item.Key] = 0;
+                }
+            }
+        }
+
+        private List<MonitorEvent> DetectTransitions(List<DatasetLine> lines, DateTimeOffset now)
+        {
+            var events = new List<MonitorEvent>();
+            var seen = new HashSet<string>(lines.Count);
+
+            foreach (var line in lines)
+            {
+                seen.Add(line.Key);
+                bool known = _lastSeen.TryGetValue(line.Key, out var previous);
+                string label = $"{line.TeamLabel}/{line.DataSetName}";
+                _lastSeen[line.Key] = (line.Phase, label);
+
+                // The first tick establishes the baseline; reporting every dataset as "appeared"
+                // would fill the pane with noise at startup.
+                if (_first)
+                    continue;
+
+                if (!known)
+                    events.Add(new MonitorEvent(now, "system", $"{label} appeared ({line.Phase})"));
+                else if (previous.Phase != line.Phase)
+                    events.Add(new MonitorEvent(now, "system", $"{label} {previous.Phase} → {line.Phase}"));
+            }
+
+            foreach (var goneKey in _lastSeen.Keys.Where(k => !seen.Contains(k)).ToList())
+            {
+                string label = _lastSeen[goneKey].Label;
+                _lastSeen.Remove(goneKey);
+                _recordCounts.Remove(goneKey);
+                _counted.TryRemove(goneKey, out _);
+                _lastEngineState.Remove(goneKey);
+                _lastSearchCount.Remove(goneKey);
+                if (!_first)
+                    events.Add(new MonitorEvent(now, "system", $"{label} deleted"));
+            }
+
+            _first = false;
+            return events;
+        }
+
+        /// <summary>
+        /// What the rest of the server reported since the last tick: things no amount of polling
+        /// would find, because they leave the engine looking exactly as it did.
+        /// </summary>
+        private static List<MonitorEvent> DrainActivity(List<DatasetLine> lines, DateTimeOffset now)
+        {
+            var reported = MonitorActivity.Drain();
+            if (reported.Count == 0)
+                return [];
+
+            var events = new List<MonitorEvent>(reported.Count);
+            foreach (var entry in reported)
+            {
+                // Name the team the way the table does. A dataset reported and then deleted in the
+                // same tick falls back to the id, which is better than dropping the line.
+                var line = lines.FirstOrDefault(d => d.DataSetName == entry.DataSetName && d.TeamId == entry.TeamId);
+                string label = line is not null
+                    ? $"{line.TeamLabel}/{entry.DataSetName}"
+                    : $"{Shorten(entry.TeamId)}/{entry.DataSetName}";
+                events.Add(new MonitorEvent(entry.At, "fields", $"{label}: {entry.Text}"));
+            }
+            return events;
+        }
+
+        private static string Shorten(string teamId) => teamId.Length > 8 ? teamId[..8] : teamId;
+
+        /// <summary>
+        /// Adds what each dataset has served since the last tick. A dataset seen for the first time
+        /// contributes nothing: its counter may have been climbing long before the monitor started,
+        /// and counting it once as a spike would be a lie. A counter that went down means the
+        /// engine was reloaded, so everything it now reports is new.
+        /// </summary>
+        /// <summary>Everything a tick does once the registry has been read. Exposed for tests:
+        /// the transition and counting rules are where the thinking is, and neither can be
+        /// reached through <see cref="Collect"/> without a live registry.</summary>
+        internal MonitorSnapshot Build(IReadOnlyList<DatasetLine> lines, DateTimeOffset now)
+        {
+            var ordered = lines.ToList();
+            var events = DetectTransitions(ordered, now);
+            events.AddRange(DrainActivity(ordered, now));
+            CountSearches(ordered);
+            var rate = RatePerMinute(now);
+            RecordRate(now, rate);
+            return new MonitorSnapshot(now, ordered, ReadProcess(now), ReadFilters(), events,
+                                       _searchesTotal, rate, _rateHistory.ToArray());
+        }
+
+        private void CountSearches(List<DatasetLine> lines)
+        {
+            foreach (var line in lines)
+            {
+                if (!_lastSearchCount.TryGetValue(line.Key, out int previous))
+                {
+                    _lastSearchCount[line.Key] = line.SearchCounter;
+                    continue;
+                }
+
+                _lastSearchCount[line.Key] = line.SearchCounter;
+                _searchesTotal += line.SearchCounter >= previous
+                    ? line.SearchCounter - previous
+                    : line.SearchCounter;
+            }
+        }
+
+        /// <summary>Searches a minute over the last minute, from the oldest sample still inside the
+        /// window. A rate off one tick would swing wildly at a one-second poll.</summary>
+        private double RatePerMinute(DateTimeOffset now)
+        {
+            _rateSamples.Add((now, _searchesTotal));
+            while (_rateSamples.Count > 1 && now - _rateSamples[0].At > RateWindow)
+                _rateSamples.RemoveAt(0);
+
+            var oldest = _rateSamples[0];
+            double seconds = (now - oldest.At).TotalSeconds;
+            if (seconds < 1)
+                return 0;
+            return (_searchesTotal - oldest.Total) / seconds * 60.0;
+        }
+
+        private static FilterLine ReadFilters() => new(
+            SearchPathLoads: FilterLoadDiagnostics.SearchPathLoads,
+            KeyResolutionLoads: FilterLoadDiagnostics.KeyResolutionLoads,
+            RpnScanLoads: FilterLoadDiagnostics.RpnScanLoads,
+            RpnScanDocumentsVisited: FilterLoadDiagnostics.RpnScanDocumentsVisited,
+            FieldFilterUpdates: FilterUpdateDiagnostics.FieldFilterUpdates,
+            DerivedRecomputes: FilterUpdateDiagnostics.DerivedRecomputes,
+            DerivedRebuilds: FilterUpdateDiagnostics.DerivedRebuilds);
+
+        /// <summary>One reading a minute, the first at once so the line exists from the start, the
+        /// last hour kept.</summary>
+        private void RecordRate(DateTimeOffset now, double rate)
+        {
+            if (_rateHistoryAt is { } last && now - last < TimeSpan.FromMinutes(1)) return;
+            _rateHistoryAt = now;
+            _rateHistory.Add(rate);
+            if (_rateHistory.Count > RateHistoryMax) _rateHistory.RemoveAt(0);
+        }
+
+        private ProcessLine ReadProcess(DateTimeOffset now)
+        {
+            using var process = System.Diagnostics.Process.GetCurrentProcess();
+            // The process's share of all cores since the previous tick: CPU time spent over wall
+            // time elapsed, per core. The first tick has nothing to compare with and reads 0.
+            var cpu = process.TotalProcessorTime;
+            double cpuPercent = 0;
+            if (_lastCpu is { } last && now > last.At)
+            {
+                double wall = (now - last.At).TotalMilliseconds * Environment.ProcessorCount;
+                cpuPercent = Math.Clamp((cpu - last.Cpu).TotalMilliseconds / wall * 100, 0, 100);
+            }
+            _lastCpu = (now, cpu);
+            long availableMb = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes / 1024 / 1024;
+            var instance = InstanceMemory.Read();
+            return new ProcessLine(
+                GcHeapMb: GC.GetTotalMemory(false) / 1024 / 1024,
+                PrivateMb: process.PrivateMemorySize64 / 1024 / 1024,
+                WorkingSetMb: process.WorkingSet64 / 1024 / 1024,
+                Gen0: GC.CollectionCount(0),
+                Gen1: GC.CollectionCount(1),
+                Gen2: GC.CollectionCount(2),
+                NativeBlocks: Indx.Utilities.NativeMemoryDiagnostics.OutstandingBlocks,
+                NativePoolMb: Indx.Utilities.NativeMemoryDiagnostics.OutstandingPoolBytes / 1024 / 1024,
+                CpuPercent: cpuPercent,
+                AvailableMb: availableMb,
+                FootprintMb: (ProcessFootprint.Bytes(process) ?? 0) / 1024 / 1024,
+                InstanceMb: (instance?.TotalBytes ?? 0) / 1024 / 1024,
+                InstanceUsedMb: (instance?.UsedBytes ?? 0) / 1024 / 1024);
+        }
+    }
+}

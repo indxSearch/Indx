@@ -1,0 +1,702 @@
+# Changelog
+
+All notable changes to the Indx server. The top section is the release notes for the next
+GitHub release: copy it as-is.
+
+Versions: the server has its own line (2.x). It bundles the Indx core library (`IndxSearchLib`,
+5.x up to beta.3, 6.x from beta.4) and serves the HTTP API contract `v2.0-beta`, the name of its
+OpenAPI document (`/swagger/v2.0-beta/swagger.json`). A server patch can pick up a newer core
+without changing the HTTP contract.
+
+## [Unreleased]
+
+## [2.0.0-beta.9] - 2026-11-27
+
+A new licence, and Observr that knows a question from a failed search. Upgrading from beta 7 needs
+no change.
+
+### Changed
+
+- **Observr knows when a search was a question.** On a dataset with Search or ask, the digest sees
+  which searches the field offered to answer and how often visitors asked, so a question is no
+  longer reported as a search that found nothing useful. A dataset without Search or ask is told
+  when its visitors type questions it could answer.
+
+- **Licence.** The server's source is now under the PolyForm Shield License 1.0.0: you may use it,
+  change it and run it for any purpose, your business's own included, but not to make a product that
+  competes with Indx, such as selling it or a search service built from it. Releases up to 2.0.0-beta.7
+  were MIT.
+
+## [2.0.0-beta.7] - 2026-11-26
+
+Runs on IndxSearchLib 6.0.0-rc2 or later.
+
+A dataset's filters set in the console and served to any page, why each record is in the list,
+and searches by AI agents counted apart. Upgrading from beta 6 needs no change.
+
+### Changed
+
+- **Memory after a sleep no longer stops searches on a busy instance.** When a dataset is built or put
+  to sleep and others are serving, the memory comes back in the background first, and then in full at
+  once only if little is left in memory (`MemoryReturn__LittleLiveMB`, 300), else when no dataset has
+  been used for a minute (`MemoryReturn__IdleSeconds`, 60). A full collection stops every search while
+  it runs, about 200 ms for each GB left in memory, several times that on a small machine. With no other
+  dataset serving it runs at once, as before. The log line reads the runtime's own figures, also on macOS.
+
+### Added
+
+- **A dataset's filters, set in the console.** The new Filters tab (under Data) lists the fields a
+  search page offers as filters: rename them, put them in order, choose each one's panel (values,
+  buttons, a range, buckets, a toggle, a hierarchy) and whether it is shown. Until you change
+  anything, the filters follow the rules: a number with up to 20 values is a list, more is a range.
+  Any page reads the setup with `GET filter-setup` and its Search key, and `@indxsearch/intrface`'s
+  AutoFilters reads it by itself; `PUT filter-setup` (Full key) sets it, an empty list back to the
+  rules.
+
+- **Why each record is in the list, over HTTP**: `source` on every record of a search result, `Counted`,
+  `Fill`, `MostWords` or `Rest`. Records that are not counted can stand above counted ones when
+  `ranking.heaviestFieldFirst` is on, so read it rather than the place.
+- **`ranking.heaviestFieldFirst`** on a search, and among a dataset's query parameters over HTTP: a
+  misspelt title before words spread over the record (with `candidates.fillReach`). Off by default.
+- **Searches by AI agents, counted apart.** A search an AI agent makes for a visitor, a site's own
+  assistant or the visitor's agent in the browser, can say so with `actor=agent`. It counts as any
+  search does, and Statistics shows how many of the searches were agents' beside the total when
+  there are any. Nothing has to send it: a search without it is a person's, as before.
+  `@indxsearch/intrface` sends it for an agent-ready page with `<SearchAgent mark>`.
+
+## [2.0.0-beta.6] - 2026-11-24
+
+Runs on IndxSearchLib 6.0.0-rc1 or later.
+
+Keys as text, a limit on the memory a dataset's filters take, a sort you can see on a text search,
+and every field a word was found in. Upgrading from beta 5 needs no change: `documentKey` is still
+the number it was, and `key` comes beside it.
+
+### Added
+
+- **Keys as text.** A record's key may be any text, such as `sku-17` or `0042`, as well as a
+  number. The document routes take the key as text, a search result carries it as `key` beside
+  `documentKey`, `documents/lookup` takes keys as text or numbers, and the select and convert
+  events take `key`. MCP gives and takes keys as text. The Records section shows a key as written.
+  Numbers work as before on every route.
+- **The filter cache, under Memory.** A dataset's Options show what the filters kept between
+  searches take of their limit, 256 MB by default, and an admin can change it; Admin, Datasets
+  shows it for every dataset. Changing it rebuilds a loaded dataset in the background, as text
+  rules do. Over HTTP: `?filterCacheMB=` when a dataset is created, `PUT …/filter-cache?megabytes=`
+  later, and `filterCacheFilters`, `filterCacheBytes`, `filterCacheLimitBytes` in the status.
+- **Sorting in the search preview.** Sort by a sortable field from a button at the end of the
+  search box. A sort now shows on a text search: the best matches stay first, each band of them in
+  the sort's order.
+- **Every field a word was met in.** The search preview and the match report name all the fields
+  that met a query word, the one that counted first.
+- **Security updates in the console.** When an update fixes a security issue, every page of the
+  console says so until it is installed, and Managed installs are told too.
+
+### Changed
+
+- **Memory comes back after a build and a sleep.** After a dataset is built, the server returns
+  the memory the build took, in the background while other datasets are being searched. When a
+  dataset is put to sleep or deleted, it returns its memory at once, which pauses the instance's
+  searches for a moment. `MemoryReturn__IntervalSeconds` sets how often it looks, 0 turns it off.
+- **Common words are not required in a search**, and filling a short page from typos takes at most
+  one misspelt word in three (Query parameters, *Fill a short page from typos*).
+- **Faster filters.** New price ranges, filters on array fields and long chains of combined
+  filters cost far less, searching and writing.
+- **Observr's weekly summary** checks the searches it names against what they find now.
+
+### Removed
+
+- **Preloaded filters.** The field role and its column are gone: a filter is ready in well under
+  a millisecond when first used, and preloading slowed every insert. A saved configuration or a
+  request that carries `preloadFilters` is read without it.
+
+## [2.0.0-beta.5] - 2026-11-18
+
+Runs on IndxSearchLib 6.0.0-beta2 or later.
+
+A fix for records holding emoji, and the shortest word as a setting of the dataset. Nothing
+changes in the search API; upgrading from beta 4 needs no other change.
+
+### Added
+
+- **The shortest word.** Under Query parameters, Text sets how short a word may be and still be
+  looked up as a word: 1 makes single letters and digits words, for codes and sizes such as
+  "a 4", and 3 leaves two-letter words to pattern matching. Indx's own is 2. It is built into
+  the index, so saving rebuilds the dataset in the background, as text rules do.
+
+### Fixed
+
+- **Records holding emoji.** A character outside the basic set, such as an emoji, made every
+  value after it in the record read one character too early when the dataset was loaded from
+  its store, at a restart or a wake, and when records were added or updated. A key after one
+  stopped the dataset from loading, and a text was indexed with its last character missing. A
+  dataset that failed this way loads again after the upgrade; reload one that holds such records
+  to have them indexed as written.
+
+## [2.0.0-beta.4] - 2026-11-17
+
+Runs on IndxSearchLib 6.0.0-beta1 or later.
+
+This release moves the server to Indx 6: word indexing, more control over ranking, and faster
+searches. The fault tolerance and pattern matching Indx is known for are still there, chosen
+field by field.
+
+The search API changes with it, and result lists change by design. Read the
+[v5 to v6 migration guide](https://github.com/indxSearch/skill-indx-search/blob/v6/references/migration-v5-to-v6.md)
+before upgrading; section 7 covers the HTTP API. `@indxsearch/intrface` and
+`@indxsearch/indx-types` 4.0 are the clients for this server.
+
+### Main changes
+
+- **A new search core.** The server runs on Indx 6. A field's words are indexed as words, and a
+  query word is looked up as typed, then within one, two or three edits. How records are fetched
+  and whether they are reranked are separate choices.
+- **Records.** A new section on each dataset shows its records as a table: searched as you type,
+  filtered, ordered and paged, with resizable columns. A row opens in place and shows how each
+  word matched. A scan reads every record and reports, field by field, how many lack a value and
+  which have text cut at indexing; each list opens in the table, and a record fixed since is
+  marked.
+- **Journeys in Statistics.** A section of its own for the ways visitors go on from a search, a
+  facet value or a catalogue page, to a chosen result, a conversion or nothing. Browsing switches
+  between paths and filters, facet picks are recorded, and the Changes badge counts what is new
+  to you.
+- **Performance.** Searching and loading are faster and take less memory, most of all on datasets
+  with many searched fields or long texts. Facets over large result sets and filtered searches are
+  faster too.
+- **A better read of what a visitor is asking.** Search or ask (experimental) tells a question
+  from a search more surely. Its judge also says whether what is asked about is found in the
+  results, and the page dims a list that does not hold it. A catalogue's answer puts its own picks
+  on the page as the result list, each with why it was chosen. Automatic reads the records and
+  chooses what the judge is shown. The Ask phrases are removed.
+- **Observr does more.** It works with Indx 6: it reads a dataset's field profiles and its
+  records, proposes a profile where one fits, and makes a new profile when asked in the chat. It
+  proposes pattern matching only where the searches call for it. A Yes can still be undone for an
+  hour.
+- **Typo tolerance by levels.** A record holding the words as typed is never placed below one
+  holding a misspelling. The result says which level its hits are on (`countedTolerance`) and how
+  many there are on each (`toleranceCounts`).
+- **One set of records for count, facets and list.** `count` is the number of records that answer
+  the search. Facets are counted over all of them, not the returned rows, and a facet's number is
+  the number a filter on that value returns.
+- **Matching per field.** A field is matched by its words (`wordMatching`), inside its words
+  (`patternMatching`), or both, with its own typo tolerance (`tolerance`) and its own weight in the
+  ordering (`rerankWeight`). Field configuration in the console has a column for each, and the
+  weight is a slider.
+- **Field profiles.** A searched field's settings under one name. Five are built in (title, name,
+  category, code, text) and a dataset can keep its own. Choose and edit them in the field table or
+  the Profile manager, or over HTTP with `GET` and `PUT fields/profiles`.
+- **The query in three parts.** A search's settings live in `match` (what counts as a hit),
+  `candidates` (which records come in) and `ranking` (the order), beside `mode`, which is how
+  records are fetched. Every member is optional: one left out is the dataset's query parameter,
+  then the default. The Query parameters tab follows the same parts.
+- **Filter expressions.** `POST filters/expression`, and `filterExpression` on a search, take one
+  expression such as
+  `brand IN ["nike", "puma"] AND price BETWEEN 100 AND 2000 AND NOT category = "outlet"`. New
+  filters besides: one of a set of values (`POST filters/in`) and within a distance of a position
+  (`POST filters/position`). `POST filters/combine` takes a list of any length.
+- **Bury rules.** The counterpart of a boost rule: the records a rule matches are taken down, and
+  nothing else moves. They sit in the same list as the boost rules in the console, on one scale
+  from Bury high to Boost high, and over HTTP under `buries`.
+- **More in one search call.** `offset` for paging, `includeDocuments` for the records' JSON in
+  the answer, `collapseBy` for one record per value of a field, and `counts` for named counts
+  beside the list. Facets can be limited to the fields asked for, come with `facetStats` for
+  number fields, and can leave out their own selection (`facetSelections`, `facetRanges`), which is
+  what a page with OR facets needs.
+- **Several searches at once.** `POST search/multi` answers up to 20 searches in one call, and
+  `POST search/groups` answers one text in named sections, each with its own filter, rows and
+  count: the books, authors and events of one search box.
+- **Facet value search.** `POST facets/{field}/search` finds a facet's values with Indx's own
+  matching, for a search field inside a long facet.
+- **Codes and numbers.** A field can have text rules of its own (`textRules`), so a code is found
+  with hyphens, without them, or in part. A profile holds them as rows of From and To, each with
+  the original kept or not. A search for a long number no record holds can return nothing
+  (`candidates.noFallbackForNumbersFrom`).
+- **Text rules for the whole dataset.** Under Query parameters, Text sets strings to replace and
+  letters to read as other letters in every searched field, over what Indx does by itself. A fold
+  is one-way, where both letters are kept and "gra" finds grå, or both ways, where they are one
+  letter. Indx's own rules are listed beside them and can be switched off for the dataset, one
+  by one or a kind at a time: å, ø and æ taken out are kept apart from a and o. The group is under
+  Advanced, and saving rebuilds the index in the background.
+- **Match report.** With `enableMatchReport` each returned record says how every query word was
+  met and in which field. `measureFit` says how much of the text the best results explain.
+- **The search preview says how it found what it found:** strong, fuzzy, partial, pattern or
+  broad matches, with the count on each typo level. A facet value is a filter by a click, and a
+  number field is filtered by a range picked on its histogram.
+- **Cold storage.** Text kept beside a record and never searched or held in memory: a table of
+  contents, a review, stock notes. It is read by key when a page, a backend or an agent needs it,
+  with three levels of who may read. The routes are under `documents/{key}/cold`, and a sync can
+  send a batch to `PUT cold`.
+
+### Upgrading from beta 3
+
+The guide has the details; these are the changes a client or an owner meets.
+
+- **Turn on word matching.** A dataset from an earlier server is read as it was searched, which
+  for most fields is by pattern only. Until its fields have word matching, searches do not narrow
+  the list to the records that match, and counts and facets cover nearly the whole dataset. Turn
+  it on for the fields visitors type in (titles, names, codes); the dataset's pages say when no
+  field has it.
+- **Query parameters are set again.** A dataset's saved `coverageDepth` and `coverageSetup` are
+  read as none set. Set them again on the Query parameters tab, a coverage depth as
+  `candidates.maxCandidates`.
+- **The old search settings are ignored, not refused.** `enableCoverage`, `coverageDepth`,
+  `coverageSetup`, `enableBoost`, and `boosts` and `fieldBoosts` at the top level of a search bind
+  to nothing, so an older client keeps getting answers and loses those settings. Move each into
+  `match`, `candidates` or `ranking`.
+- **The result.** `truncationIndex` and `truncationScore` are gone; read `count`, `ranked` and
+  `isFallback`.
+- **Enums are written by name** in every answer: `"systemState": "Ready"`, `"boostStrength":
+  "Med"`. A number is still read in a request.
+- **Field roles.** `searchable` in a field configuration is read as `wordMatching` alone: send
+  `wordMatching` and `patternMatching` to search a field as before. `wordIndexing` and
+  `highResolution` are gone, with `GET fields/searchable` and `GET fields/word-indexing`; read the
+  roles from `GET fields/configuration`. A field's own `bm25k1` is no longer read, and a changed
+  value is refused.
+- **Saved boost and bury rules apply to every search,** with no flag in the body.
+- **Boosts.** A strength outside 1 to 3 is a `400 invalidArgument`, and
+  `Indx:BoostSaturationCeiling` is read as 1 to 255.
+- **`POST filters/combine`** takes `{ "filters": [ … ], "useAndOperation": true }` in place of
+  `{ "a", "b", "useAndOperation" }`.
+- **`removeDuplicates` is gone.** `collapseBy` gives one record per value.
+- **A field has one type.** A record whose value does not fit its field's type is left out at
+  load, and the status says so; an insert or update with one is refused. A number in a text field
+  is read as text.
+- **Vector and hybrid searches** change scores and order, as in the library.
+
+### Added
+
+- **Sign-in methods.** The account page lists the ways you sign in, and a Google or Microsoft
+  login can be added to the account or removed there.
+- **MCP.** `search` pages, names its facets, takes a filter expression and says the total beside
+  the hits returned. `search_many` runs several searches in one call, `get_cold` reads a record's
+  cold storage, and `describe_dataset` gives the owner's descriptions of the site and its fields.
+  Nine tools, all read-only.
+- **Display.** Light, dark or the system's, on the account page.
+- **Upload limit.** `Indx:MaxUploadBytes` sets the most one upload may hold, 2 GB by default.
+- **Admin > Datasets** has a hibernate button on each loaded dataset that is not pinned, and
+  **Admin > Teams** opens each team to its members, datasets and keys.
+- **The terminal monitor opens with the indx mark.** It turns while the datasets load at startup,
+  then lands as the monitor's logo as the monitor draws itself in. It names the dataset loading
+  and how far it has got, and shows the versions and the address. Any key skips it.
+- The terminal monitor shows a dataset waiting its turn in the startup load as **Queued**, where
+  it said Hibernated.
+
+### Changed
+
+- **Writes and rebuilds keep apart.** A document or synonym write while the dataset is rebuilding
+  answers `409`, and a webhook call waits for the rebuild. A write to a sleeping dataset is
+  refused: wake it first.
+- **Sign-in pauses** after five wrong passwords.
+- **Team pages open faster.** A dataset's record count is kept, not counted on every visit, and a
+  sleeping dataset keeps its count until it wakes.
+- **Dataset Options** shows one section at a time, with a menu of its own as Admin > Settings has.
+- **Memory in the monitors** is Indx's own first, with the machine's named as the machine's.
+- **Team key names are unique in the team,** and a deleted team's keys go with it.
+
+### Fixed
+
+- A dataset's settings follow it through a rename.
+- A range open at one end reads "100000000 or more" or "up to 50" in the statistics' paths.
+- The terminal monitor's event pane wraps long lines and keeps showing new events.
+- A Search or ask answer that fails on the server says so, in the console and to a visitor.
+
+## [2.0.0-beta.3] - 2026-11-10
+
+Runs on IndxSearchLib 5.0.6 or later.
+
+### Added
+
+- **Webhooks.** A shop, a CMS or a product feed can keep a dataset in sync by calling a webhook
+  with its changes, or fill a dataset from nothing with one full sync. Sanity and Contentful are
+  ready-made and need no code. A brake holds a call that would delete more than a set share of the
+  dataset within an hour, until a team admin applies or discards it. Team admins make webhooks
+  under the dataset's **Webhooks**; the [guide](https://docs.indx.co/howto/webhooks) has the rest.
+- **Jump to anything.** Cmd+K (Ctrl+K) opens a command palette over your teams, datasets, their
+  sections and the admin pages, searched with Indx, so "synonim" finds Synonyms.
+- **Invites to a team.** Inviting someone to a team adds them at once when they have an account,
+  and otherwise emails a link to register straight into that team and role, with no team of their
+  own. Pending invites can be resent or revoked. An invite works whatever the registration mode.
+- **Get started.** A short checklist in the side column for a new team, with a demo dataset of
+  films to try everything on. It leaves once every step is done.
+- **Support from the console.** Write to Indx support from the foot of the side column, read the
+  replies and mark a ticket solved; a reply shows in the bell and by email. Diagnostics are
+  offered, never sent unasked, and addresses and keys in them are masked.
+- **Browsing paths in Statistics:** the fields people filter by, in what order, and where they
+  went next.
+- **Search or ask.** Five modes set how forward the offer is, from strict to proactive. Needs in
+  its Statistics group the questions visitors asked in different words, across visits, with how
+  each ended. A catalogue's best answer streams. OpenAI is a provider of its own, each provider takes
+  one key, models come from the provider's list, and an admin can offer more answer models for the
+  owners to choose from.
+- **Observr's Agent** keeps whole conversations with a History, remembers a No per dataset, offers
+  Undo for an hour after a Yes, and can draft a support ticket for you to send.
+- **Search timing.** A search answers with a `Server-Timing` header that splits its time into
+  lookup, search and the rest. `Indx:ServerTiming` set to `false` switches it off.
+- **Days woken.** A dataset on a timed keep-alive shows on its Status tab, and in Admin > Datasets,
+  on which days something woke it.
+- **Categories.** A dataset with a category hierarchy, a Google-style `product_type` with
+  "Furniture > Chairs > Office chairs" or fields that each hold a level, gets a **Categories** tab:
+  the whole catalogue as a tree, every category with its product count, the chosen one with its
+  first products beside it and a step to boost it. Open to a level, zoom, filter by name, or read
+  it as a list; full screen when the tree is wide. A category no visitor has selected or bought
+  from in the last 90 days carries a quiet mark. A dataset that mixes kinds of records, books with
+  authors and series, can limit the tab to one kind, and its "No category" then lists the books
+  that have none.
+- **Statistics, in pictures.** The Overview now shows when people search as a week-by-hour grid
+  and as a clock of the day, where searches come from, which result gets chosen, which languages
+  visitors search in, how they type, and a profile of the window against the one before it:
+  clicked, with hits, covered, filtered, one word, first result. Search or ask has pictures of
+  its own, with a clock of when the day's budget tends to run out.
+- **Languages.** Send `?locale=` with a search, a BCP 47 tag such as `nb-NO`, and Statistics
+  counts the languages visitors search in; a browser's `Accept-Language` is read when the
+  parameter is left out. A language whose tag names a country, `nb-NO` or `pt-BR`, carries that
+  country's flag.
+- **Admin > Monitor** shows the process's CPU and memory against what the machine allows, the
+  native memory pool, searches a minute over the last hour and every dataset's state at a glance.
+  The terminal monitor has the same gauges.
+- **Update notices.** Once a day the server checks which Indx release is the latest and tells its
+  admins once when a newer one is out: a notification in the console and a line under the version in
+  the admin area, with how to get it. A security release says so and is emailed too; an ordinary one is
+  emailed only to admins who turn that on. The check is anonymous. `Updates:Check` set to `false`
+  switches it off.
+- **Websites, set in the console.** Admin > Settings now lists the websites whose pages may call
+  the API from the browser, such as a shop with a search box. A change applies at once, without a
+  restart, and `*.example.com` covers every subdomain. Until an admin saves a list,
+  `Cors:AllowedOrigins` applies as before.
+- **Download progress.** Downloading a dataset's data shows how far it has come, document by
+  document, and the browser shows the download as started at once.
+
+### Changed
+
+- **The statistics tiles sit with their pictures,** at the top of the Overview, so the other
+  sections start at their own content; every tile wears an icon, on the Status tab and the
+  monitor too. Conversions show only once the window holds one.
+- **Viewers can read** a dataset's boost rules, synonyms, query parameters and Search or ask
+  settings, without changing them. Before, these tabs were hidden from viewers.
+- **One name for a record everywhere:** its label field, else its Search or ask title, else its
+  heaviest searchable field. The search preview shows it first.
+- **A field's weight is a slider** in Field configuration, with the number beside it.
+- **Admin > Datasets can hide the hibernated datasets** with a switch at the top.
+- **Backups over the size limit** are removed oldest first, and each database always keeps its
+  newest copy.
+- **A sleeping dataset can be rescued.** Opening a dataset never loads it any more. One that is
+  hibernated or not loaded opens on Status with Wake up, and its Options are open: download the
+  data, change keep-alive, transfer or delete it, all without loading it into memory. That is the
+  way out when an instance ran out of memory loading a dataset. Before, opening a timed or
+  pinned dataset that was not loaded loaded it there and then, and the console waited.
+- **The console shows when it is working** on Refresh in Admin > Datasets and Admin > Users, on
+  saving keep-alive there, and while the Statistics lists reorder or show more.
+- **A smaller install.** The server no longer carries design-time tools and web libraries it never
+  used, about 45 MB less to download and deploy.
+
+### Fixed
+
+- **Statistics on a busy dataset.** The typing figures scanned the search events once per
+  search; on a shop with 300k searches in the window the tab never came back. It answers in a
+  second now, and the two per-text measures step aside above 50,000 searches.
+
+## [2.0.0-beta.2] - 2026-10-22
+
+Runs on IndxSearchLib 5.0.5 or later.
+
+### Added
+
+- **Search or ask (experimental).** One search field that also answers questions. On each pause
+  in typing a judge reads what was typed and the results, and offers to answer; the answer is
+  written from the dataset's own records and cites them. On a catalogue, a description such as
+  "funny space movies from the 80s" becomes filters on the list. Off by default behind three
+  switches, and it runs on your own model key (OpenRouter, Anthropic or any OpenAI-compatible
+  endpoint). The routes are under `…/search-or-ask`, intrface 3.13 has the front end, and the
+  [guide](https://docs.indx.co/guides/search-or-ask) covers the settings.
+- **Observr (early access).** For Pro and Enterprise subscriptions. Observr reads each watched
+  dataset's search statistics every morning and puts what deserves attention on the dataset's
+  Status page, each finding with the change that would fix it; a Yes carries it out through the
+  console's own paths. It also answers from buttons in the dataset's tabs and in the Agent panel.
+  Off until an admin switches it on; the [guide](https://docs.indx.co/guides/observr) lists
+  exactly what is sent.
+- **All data in one folder.** `Indx:DataDirectory` places every file the server keeps: the
+  databases, statistics, vector graphs, instance settings, licence, key file and backups. Point
+  it at a volume of its own (a container volume, an Azure Files share) and a new version of the
+  server can replace its own folder without touching your data. Unset, everything stays in
+  `./IndxData` as before; a connection string with an absolute path still places its database.
+- **A backup on request.** The server's own backup, a verified copy of each database taken
+  while it keeps running, now also runs within seconds of a file named `backup-now` appearing in
+  its backup folder, besides its daily schedule. Useful before an upgrade: ask, wait for the new
+  copies, then deploy.
+
+### Changed
+
+- **A new console layout.** A dataset's sections sit in a side column, with the page you are on
+  at the top and the team switcher beside your account. It works on a phone: the header folds to
+  one row and the dataset switcher opens there too. A sleeping dataset keeps its column, each
+  section greyed with the reason. Statistics show their outline while the numbers load, and the
+  first visit to a team without datasets is a short guide in three steps.
+- **Sharp icons on any screen.** Every icon is drawn at a size its pixels divide into, so they
+  stay crisp on a standard-resolution display instead of blurring between pixels.
+- **A visitor's typing counts once.** Search-as-you-type sends many searches while a visitor
+  types; the statistics fold them into the one they ended on, and now also across a backspace
+  and a pause. A page that searches something other than what was typed can send the typed text
+  as `?typed=` on the search, and the typing is counted once against it.
+- **A search on a sleeping dataset says so in plain words.** The `409 invalidState` detail reads
+  "The dataset is empty or hibernated. Load data into it or wake it up, then try again." instead
+  of a list of engine states, since a search box may show it to whoever searched. The state and
+  the allowed states stay in their own fields for clients that act on them.
+- **The licence file is never part of a build.** `dotnet publish` no longer copies a local
+  `.license` into the output, so a build handed on does not carry your licence with it.
+
+## [2.0.0-beta.1] - 2026-10-08
+
+Runs on IndxSearchLib 5.0.5 or later. First public release of the v2 server; v1 users should read
+the [v1 → v2 migration guide](https://github.com/indxSearch/skill-indx-search/blob/main/references/migration-v4-to-v5.md)
+in the AI skill.
+
+### Changed
+
+- **Searches starting with periods work.** A search such as `... og noen` answered `500` on a
+  dataset with a title that starts with an ellipsis. It now finds that title. A search of
+  punctuation only, such as `...`, returns no records with a `reason`, since it has no words to
+  search for.
+
+- **Large datasets load on Windows and IIS hosting.** `analyze`, `load` and `replace` take a whole
+  dataset in one request, and the server allows up to 2 GB. Under IIS, including Azure App Service
+  on Windows, two limits in front of it still stopped at about 28 MB: IIS refused larger bodies
+  with its own `413` page, and the in-process server had a 30 MB default of its own. A `web.config`
+  now raises the first and the server raises the second, so a catalogue of 80 MB or more loads and
+  replaces in one request there too. Kestrel, Docker and Linux hosting already allowed 2 GB.
+
+- **Field roles are written by one route, and it no longer waits for a rebuild.** The per-role
+  setters are removed: `PUT fields/searchable`, `fields/filterable`, `fields/facetable`,
+  `fields/sortable`, `fields/word-indexing` and `fields/embeddable` answer `405`. They set one
+  flag on the live engine with no rebuild, so a role that needs one (searchable, or a field's
+  first role) had no effect on search until the next index build. The lists stay readable with
+  `GET`, and `GET fields/embeddable` is new. Send roles to `PUT fields/configuration`, one object
+  per field with only the properties to change.
+  `PUT fields/configuration` checks the whole request first (a refused one is a `400` and
+  changes nothing), then answers `204` when the change is applied at once, or `202` with the
+  status when it has started a rebuild of a dataset that is Ready. It used to hold the request
+  for the whole rebuild, minutes on a large dataset. Poll `GET status` until
+  `shadowBuildInProgress` is false, then read `shadowBuildError`.
+- **`POST index` answers when the build is started**, as its `202` always said. It waited for
+  the build to finish. After a first build poll `GET status` until Ready; on a Ready dataset it
+  is a rebuild on a shadow engine, reported like a field configuration change.
+- **`GET status` says how the last rebuild ended**: `shadowBuildFinishedUtc`, and
+  `shadowBuildError` with the reason when it failed (the dataset then serves as it did). Also
+  in MCP `get_status`.
+- **A change while the dataset is loading, indexing or rebuilding is a `409`**, for
+  `PUT fields/configuration` as it already was for documents. Applied in the middle of a build
+  it was half in the build and half out of it.
+- **A vector field has no other role, in the console too.** The field table disables the boxes
+  the engine would refuse and says why: no other role on an embeddable field, and embeddable
+  only on an array of numbers.
+- **A dataset that sleeps keeps its vector graphs in a file**, and waking it reads them in
+  place of building them, which is the slow part of loading a dataset with vectors (41 to 25
+  seconds on 43 000 vectors of 1 536 numbers). One file per dataset in `embeddings` beside the
+  search database, about 3 KB a vector of that size. A cache only: a file that is missing or
+  out of date costs the time to build.
+- **A load that fails is not indexed, and a refused field configuration is shown.** The server
+  went on to index after a load from the store that had failed or timed out, which left the
+  dataset Ready on the documents read so far. It now indexes only after a load that succeeded.
+  In the console, a field configuration the engine refuses at Load is shown as the reason
+  instead of being lost.
+- **MCP is read-only.** `set_field_configuration` is gone from the MCP surface; configuration is
+  changed in the web console or over the HTTP API, where a person sees the change. It was the only
+  tool that wrote, and it forced a **Full** key on anyone who wanted it - a key that, over HTTP,
+  can also delete the dataset and replace its data. No MCP connection now needs a key that could
+  do either.
+- **An MCP session is shaped by its key.** `tools/list` offers only what the key can call, and the
+  instructions sent at connection describe that set. Previously every client was told to call
+  `describe_dataset` before searching and was offered every tool, while a Search key could do
+  neither. Calling a tool that was not offered still gives the refusal naming the level needed,
+  rather than "unknown tool".
+- **One log.** `IndxServer.log` is now a provider of the server's normal logging, beside the
+  console, the monitor and Application Insights. Before, the dataset registry and the search
+  engines wrote only to that file, and everything else only to the others, so Application
+  Insights never saw a failed load, index or search. The file is capped: it rolls over at 10 MB
+  and keeps 9 archives. It takes Indx categories from Information and the rest from Warning, set
+  under `Logging:NLog:LogLevel` in `appsettings.json`, and `Indx:LogFile` moves it (a container
+  volume, say). A failure is logged with its whole stack, inner exceptions included, everywhere
+  it used to be only a message or text glued into one: failed loads, replaces, wakes and
+  searches, and dataset creation in the console.
+
+### Added
+
+- **Query parameters per dataset.** A new tab on each dataset, and
+  `GET`/`PUT`/`DELETE …/query-parameters`, set the coverage values a search uses when it leaves
+  them out: typo tolerance, joined words, truncation, coverage depth and the rest. A value a
+  search sends still wins, one value at a time, so a search box that sets its own keeps it. A
+  search that used a dataset's value says which in the `Indx-Query-Parameters` response header.
+  Applies from the next search, without reindexing. Agents over MCP get the dataset's values too.
+  Sending the whole `coverageSetup` object, as intrface up to 3.10 does, overrides every value;
+  send only the ones a search needs to decide.
+
+- **Statistics for one search surface.** `overview`, `timeseries`, `queries`,
+  `queries/documents`, `documents` and `filters` take `?source=` and count only the searches sent
+  with it; a click or conversion counts for the surface of the search it names by `queryId`.
+  `GET statistics/sources` lists the surfaces with their searches. The `source` parameter was
+  accepted before and ignored, so every surface read as the dataset's totals. The console's
+  Statistics tab gets a surface selector.
+- **Statistics name documents, not only number them.** `documents`, `queries/documents` and
+  `subjects/{subject}` give each document a `label`, and the misspelled-query list a
+  `mostChosenLabel`: the first searchable field, or the field set as `labelField` with
+  `PUT statistics/settings` (also on the Options tab). That `PUT` now changes only what it is
+  sent, so setting one setting no longer resets the other. A sleeping dataset is not woken for
+  a label; it reads `null` until it is loaded.
+- **Statistics count in your time zone.** A day runs midnight to midnight in the dataset's
+  `timeZone` (`PUT statistics/settings`, or the Options tab), UTC unless set or unless the
+  operator sets a default with `Statistics:TimeZone`. Every read, the chart and the Statistics tab
+  follow it, so a late-evening search in Oslo lands on that evening's day. Changing it counts the
+  kept 90 days again.
+- **Delete part of the statistics.** `DELETE statistics?source=` and `?from=&to=` remove one
+  surface's searches or a span of days, with their clicks and conversions, so test traffic can
+  go without the real history. A bare `DELETE statistics` still erases everything.
+- **Monitor.** A live view of the instance: dataset states, document counts, idle-eviction
+  countdowns, process and native memory, filter-cache routing, and an event stream carrying state
+  changes, field configuration changes and anything the server logs.
+  - **In the console**, under **Admin → Monitor**. Admin only, since an event names the team whose
+    dataset changed. Events are held in memory and start again on restart. This is the one to use
+    on a hosted deployment, where there is no terminal.
+  - **In the terminal**, drawn automatically when the server is started from one. `Ctrl+Q`
+    detaches it and leaves the server running; `F10` shuts the server down after a confirmation;
+    `--no-monitor` turns it off.
+  - **Piped**, where stdout is redirected (Azure log stream, `docker logs`, systemd): a periodic
+    status block, opt-in via `Indx:Monitor:Enabled`.
+
+### Breaking
+
+- **Team-scoped routes.** Every dataset operation lives under
+  `/api/teams/{team}/datasets/{dataset}/…`. The 47 v1 route aliases are gone.
+- **Errors are RFC 9457 problem documents** (`application/problem+json`) with a machine-readable
+  `code`: `invalidArgument`, `unknownFilter`, `datasetNotFound`, `insufficientRole`, `insufficientKeyScope`,
+  `invalidState` (with `currentState`, `allowedStates`, `retryable` and a `Retry-After` header
+  while loading or indexing), `shadowBusy`. Switch on `code`, not the status.
+- **A filter token the server cannot honour is a 400 `unknownFilter`**, never a silently
+  unfiltered search. Filter tokens are opaque by contract; do not parse or construct them.
+- **A busy dataset answers 409, not 400**, from every state, not only Ready. And `POST
+  …/documents` on a dataset that is loaded but not indexed is a 409 `invalidState` saying to
+  index first; it used to hand back the engine's refusal as a 400 `invalidArgument`.
+- **The `?configuration=` query parameter on create is ignored.** There is one configuration.
+- **Renamed C# types** for callers using the NuGet's request shapes: `CloudQuery` → `QueryProxy`,
+  namespace `Indx.CloudApi` → `Indx.Http`, `ICloudSearchEngine` → `IServerSearchEngine`. The old
+  names were `[Obsolete]` aliases in the 5.0 betas and are removed in the release candidate; a
+  build against them fails with the rename in the message. JSON on the wire is unchanged.
+- **The shipped binary is `IndxServer.dll`** (was `IndxCloudApi.dll`); update run scripts.
+
+### Added
+
+- **Dashboard.** Team page with the datasets as cards → dataset page with Status, Field
+  configuration, Search preview, Boost rules, Synonyms and Options tabs. Breadcrumb with team
+  and dataset switchers, "New team…" / "New dataset…" from the switcher, remembered last team.
+  Manage team (members, rename, delete with typed confirmation). Rename a dataset. Field
+  config with weight sliders and type icons. Reconnect overlay. Full tab set visible from the
+  first upload, with not-yet tabs disabled.
+- **`GET …/fields/configuration` at Search level** (was Read). A filter panel needs each field's
+  type to send a selected value as a value filter or as a range with equal limits, and the name
+  lists it reads carry no type. Nothing new is revealed: a Search key can already search and read
+  documents. `PUT` stays Full.
+- **Waking a small dataset no longer takes as long as the team's largest.** The database had no
+  index a dataset lookup could use, so every wake, auto-reload and count walked the team's whole
+  table; where that table is large, loading a dataset of a hundred documents took on the order of a
+  second instead of being immediate. The server adds the index to an existing database at startup,
+  in a fraction of a second.
+- **`filters/value` on a numeric field, and `filters/range` on a text field, are `400`.** The
+  field's type decides the filter kind: a value filter compares text and is wrong on a number
+  (`129` is not `129.0`), a range filter needs numbers, and a number stored as a JSON string is
+  text. The message names the alternative - a range with equal limits for equality on a number,
+  storing the values as numbers for the other. A token of the refused kind answers
+  `400 unknownFilter`; re-create the filter. Boost rules and MCP conditions with a value on a
+  numeric field keep working: the server builds the range for them.
+- **`POST …/filters/not`**: the NOT of a filter, as a token like any other. Combines further,
+  survives eviction, and answers `400 unknownFilter` for a token it cannot honour, like its
+  siblings. Search key level.
+- **`isCaseSensitive` on `filters/value`**, optional and off by default. Set it when the value
+  comes from a facet: facets count distinct stored values with their casing, so only a
+  case-sensitive filter agrees with a facet count. `value` takes a string, number or boolean.
+- **Synonyms** per dataset: `GET`/`PUT …/synonyms`, a Synonyms tab (experimental), copy a
+  list onto another dataset. Expansion lowers coverage scores by design.
+- **Boost rules** per dataset with schedules; import/export as JSON; expired, scheduled and
+  disabled rules are visible; editors and admins are notified when a rule expires.
+- **Replace** a dataset's documents atomically with live step-by-step progress, cancellable
+  during transfer; reports lost field roles and a missing declared key field.
+- **API key access levels.** A new key is limited to one team, optionally to some of its datasets,
+  and to **Search only** (what a search front-end needs — safe in a browser), **Read only** or
+  **Full access**. A key never exceeds its owner's team role. Outside its team or datasets a key
+  gets the same `404` as a missing one; above its level, `403 insufficientKeyScope`. Keys created
+  earlier keep working unscoped and are labelled **Unscoped** — replace them, and use a Search only
+  key for anything that ships to a browser (including `@indxsearch/intrface`).
+- **Download a dataset:** `GET …/datasets/{dataset}/export` streams every document as one JSON
+  array ordered by key, and **Options → Download data** in the dashboard. Works on hibernated
+  datasets; needs Read access.
+- **MCP server** at `/mcp` for AI agents: search, browse, describe dataset, get synonyms. Tools
+  honour the API key's access level, and tool errors now tell the agent why.
+- **Export-envelope detection**: an upload that is one document wrapping the real array gets a
+  warning instead of a one-document dataset.
+- **Error-state datasets** get a recovery panel.
+- **Notifications** in-app and by email, with per-type preferences.
+
+### Changed
+
+- Product name is **Indx**; the dashboard is the Indx Dashboard. GitHub repo renamed to
+  `indxSearch/Indx`.
+- Dataset lists render immediately and fill in state per dataset off the request thread; the
+  admin datasets page no longer wakes hibernated datasets to list them.
+- Datasets warm in the background at startup (fixes the Azure boot loop).
+- Deleting a team deletes its datasets; deleting a dataset can no longer leave a stale engine
+  behind for a dataset re-created under the same name.
+- Lower-case kebab-case UI routes (`/account/api-key`, `/admin/settings`, `/teams/{team}`).
+- **Opening an existing dataset** (`PUT …/datasets/{dataset}`) needs only read access; creating one
+  still needs Editor or Admin. Search front-ends run on a Search only key and a Viewer's key.
+- A dataset's last refused operation shows under **Status → Last error**, with Clear, instead of a
+  banner that could not be dismissed.
+
+### Security
+
+- Seeded admin gets a generated initial password and must change it on first login.
+- Email confirmation enforced on `/api/login`; revoked API keys are evicted from the cache;
+  login tokens are retired on password change.
+- Cross-origin requests are denied in Production until CORS is configured.
+- `IndxData/settings.json` is runtime state and is no longer shipped.
+- **Rate limiting**, both limits answering `429` with `code: rateLimited`, `retryAfterSeconds` and
+  a `Retry-After` header: the anonymous auth endpoints per client IP (`RateLimits:Auth`, on by
+  default) and authenticated API traffic per API key (`RateLimits:Api`, off by default, on for
+  managed instances). A request with an invalid bearer token counts against the anonymous
+  window; a made-up `Authorization` header no longer escapes it.
+
+### Fixed
+
+- **`appsettings.Production.json` is read on Linux.** It was named `appsettings.production.json`;
+  ASP.NET looks for the environment name as spelled, and Linux file names are case-sensitive, so
+  the production overrides (closed registration, among others) were silently skipped there.
+- **On a Linux App Service the databases go under `/home`.** Without a configured connection
+  string the server used `d:/home/IndxData`, the Windows path, on every App Service plan; on
+  Linux that is a relative directory the container loses on restart. It now follows `HOME`, as
+  the log file does. Windows plans are unchanged.
+- **An upload cut off in the middle fails** (IndxSearchLib, next version) rather than loading the
+  records that arrived before the break and reporting success.
+- **Coverage ranking** (IndxSearchLib 5.0.0-RC240926): a search containing æ, ø, å or another
+  folded character fully matches documents with the same word; a query being typed ranks by its
+  whole text, so `knut h` puts Knut Hamsun above Knut Faldbakken; words in order anywhere in a
+  document count as in order; and a document's score no longer depends on which others the search
+  met first.
+- **Filters** (IndxSearchLib 5.0.0-RC250926): a combined filter used right after a reload or a first
+  field role no longer answers with the result from before it; a filtered search that overlapped a
+  filter load can no longer run unfiltered; a filter loaded while documents are inserted or updated
+  no longer misses documents or fails.
+- **Facet panel and Search preview** (IndxSearchLib 5.0.0-RC250926): counts follow inserts and
+  deletes at once, and deleted documents are no longer counted or listed.
+- **Search beside writes** (IndxSearchLib 5.0.0-RC250926): searches, facets and vector searches that
+  run while documents are inserted, updated or deleted no longer lose documents or hits.
+- **Filters after a reload** (IndxSearchLib 5.0.0-RC250926): after a dataset is loaded again in place,
+  case-sensitive and array filters see the new documents, and a field update reaches the filters.
+- **Search ranking** (IndxSearchLib 5.0.0-RC150926): common text fragments no longer push unrelated
+  documents to the top score — the cause of hundreds of ties and the real match buried, most
+  visible with long searchable text and natural-language queries; term frequency, field length
+  and `bM25b` now affect scores.
+- **Vector and hybrid search:** building an embedding index no longer runs out of memory (it grew
+  with the fourth power of the document count; now a fixed 12 MB cache plus the vectors).
+- A 500's underlying exception is logged.
+- The search preview finds nested fields by name.
+- In-flight searches are drained before hibernate or dispose.
+
+## [1.0.2]
+
+Last release of the v1 server. See the GitHub release notes.

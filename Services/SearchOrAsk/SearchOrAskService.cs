@@ -1,0 +1,1328 @@
+using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Text;
+using System.Text.Json.Nodes;
+using System.Text.RegularExpressions;
+using System.Threading.RateLimiting;
+using Indx.Api;
+using Indx.Http;
+using IndxServer.Engine;
+
+namespace IndxServer.Services.SearchOrAsk
+{
+    /// <summary>What an intent call came to. <see cref="Status"/> is Ok unless the call was refused
+    /// before the judge was asked; the controller maps the refusals to problems.</summary>
+    public sealed record IntentOutcome(IntentStatus Status, IntentResult? Result = null, int RetryAfterSeconds = 0);
+
+    public enum IntentStatus { Ok, Unavailable, Disabled, RateLimited, BudgetSpent }
+
+    /// <summary>
+    /// The intent response. <c>p</c> is the judge's probability that the visitor is asking for
+    /// something an answer would serve; <c>offer</c> is that probability read on its own against
+    /// the thresholds. A client that keeps what it has shown applies the thresholds itself (enter
+    /// at one value, leave below the lower), which is why they travel with every answer.
+    /// <c>reason</c> says why the judge was not asked or did not answer: identifier, timeout,
+    /// failed (with the provider's status). <c>found</c> is the judge's probability that what the
+    /// visitor asks about is among the results, so a page can tell a list worth showing under a
+    /// strong offer from one that only shares words with the question; null from a judge not asked it.
+    /// </summary>
+    /// <summary><c>Criteria</c>, for a catalogue: the probability the visitor describes what to list,
+    /// which the page turns into filters (POST filters) when it reaches the strong threshold.</summary>
+    public sealed record IntentResult(double P, double? Answerable, string Offer, SearchOrAskThresholds Thresholds,
+        bool Cached, long Ms, string? Reason = null, double? Criteria = null,
+        bool StrictCoverageWhileAsking = true, string FiltersWhileTyping = "off",
+        string Mode = SearchOrAskSettings.ModeSoft, double? Finished = null, double? Found = null,
+        long[]? Refocused = null, bool Refocus = false);
+
+    /// <summary>One source handed to the answer model, as the visitor's client sees it.</summary>
+    public sealed record AskSource(int N, long DocumentKey, string Title);
+
+    /// <summary>The instance's experimental switch for Search or ask (admin settings).</summary>
+    public interface ISearchOrAskSwitch
+    {
+        bool Shown { get; }
+
+        /// <summary>The model key set in the console, if any.</summary>
+        string? ModelKey { get; }
+
+        /// <summary>The console's provider settings, the key among them.</summary>
+        SearchOrAskProviderSettings Providers => new(ApiKey: ModelKey);
+    }
+
+    /// <summary>The switch and the console's provider settings, as the instance settings file holds them.</summary>
+    internal sealed class InstanceSearchOrAskSwitch(InstanceSettingsService settings) : ISearchOrAskSwitch
+    {
+        public bool Shown => settings.Load().SearchOrAskShown;
+        public string? ModelKey => settings.Load().SearchOrAskApiKey;
+        public SearchOrAskProviderSettings Providers => ProvidersOf(settings.Load());
+
+        /// <summary>The console's provider settings as a settings file holds them.</summary>
+        public static SearchOrAskProviderSettings ProvidersOf(InstanceSettings s) =>
+            new(s.SearchOrAskProvider, s.SearchOrAskApiKey, s.SearchOrAskBaseUrl, s.SearchOrAskEuRouting,
+                s.SearchOrAskJudgeProvider, s.SearchOrAskJudgeApiKey, s.SearchOrAskAnswerModel, s.SearchOrAskFastAnswerModel, s.SearchOrAskFilterModel,
+                s.SearchOrAskKeys, s.SearchOrAskAnswerSpeed, s.SearchOrAskMoreAnswerModels);
+    }
+
+    /// <summary>An earlier question and its answer in the same conversation, for a follow-up.</summary>
+    public sealed record AskTurn(string Question, string Answer, AskShown? Shown = null);
+
+    /// <summary>On a catalogue, the list a turn put on the page: its filters, words and order, or the
+    /// agent's picks. A follow-up ("which is the largest?") is about that list.</summary>
+    public sealed record AskShown(FilterSuggestion[]? Filters, string? Text, SortSuggestion? Sort, AskShownPick[]? Picks = null)
+    {
+        public override string ToString() =>
+            Picks is { Length: > 0 } picks
+                ? "my picks, in order: " + string.Join(", ", picks.Select(p => $"{p.Title} [{p.DocumentKey}]"))
+                : string.Join("; ", (Filters ?? []).Select(f => f.Value != null ? $"{f.Field} = {f.Value}"
+                    : $"{f.Field} {f.Min?.ToString() ?? ""}..{f.Max?.ToString() ?? ""}"))
+                  + (string.IsNullOrWhiteSpace(Text) ? "" : $"; words \"{Text}\"")
+                  + (Sort == null ? "" : $"; sorted by {Sort.Field} {(Sort.Descending ? "descending" : "ascending")}");
+    }
+
+    /// <summary>A pick an earlier turn put on the page.</summary>
+    public sealed record AskShownPick(long DocumentKey, string? Title);
+
+    /// <summary>Where a judgement or an ask came from, for the statistics, as a search names it:
+    /// the page's search behind it (<c>?queryId=</c>), its session, its surface, an optional
+    /// subject, and whether it counts. None (null) records nothing: the console's tester, which
+    /// would only ever be uncounted.</summary>
+    /// <summary><c>Proactive</c>: an answer the page started on its own, in the proactive mode,
+    /// not one the visitor asked for.</summary>
+    public sealed record SearchOrAskOrigin(string? QueryId, string? Session, string? Source, string? Subject, bool Counted,
+        bool Proactive = false);
+
+    /// <summary>
+    /// Search or ask on the request path: the intent judgement on a typing pause, and the answer
+    /// when the visitor asks. Every default here comes from measurements. Nothing in here decides whether a dataset
+    /// should have the feature: that is Observr's, outside the server.
+    /// </summary>
+    /// <summary>A provider's refusal of a model call: which call (<c>judge</c>, <c>answer</c> or
+    /// <c>filters</c>), its status, the provider's own words, when, and what to do about it where the
+    /// reason is one we know.</summary>
+    public sealed record ModelRefusal(string Call, int Status, string Reason, DateTime At, string? Advice, string? LimitSource = null);
+
+    /// <summary>One kind of model call on this instance (<c>judge</c>, <c>answer</c>, <c>filters</c>):
+    /// when it last succeeded, the refusal since then if any, and the refusals of the last 24 hours
+    /// by kind (<see cref="SearchOrAskService.RefusalKind"/>). Kept in memory: a restart starts it over.</summary>
+    public sealed record ModelCallHealth(string Call, DateTime? LastSuccess, ModelRefusal? Refusal, IReadOnlyDictionary<string, int> RefusedToday);
+
+    public sealed partial class SearchOrAskService : IDisposable
+    {
+        /// <summary>The latest refusal from a model provider on this instance, for the console to show
+        /// its owners: a visitor only reads "The answer could not be written", and the reason was in
+        /// the log alone (27 Oct 2026: EU routing on OpenRouter without a Business plan refused every
+        /// answer). A rate limit (429) is not one: it passes. The next call of the same kind that
+        /// succeeds clears it.</summary>
+        public ModelRefusal? LastRefusal { get; private set; }
+
+        private readonly ConcurrentDictionary<string, DateTime> _lastSuccess = new(StringComparer.Ordinal);
+        private readonly ConcurrentDictionary<string, ModelRefusal> _refusalSince = new(StringComparer.Ordinal);
+        private readonly ConcurrentQueue<(string Call, string Kind, DateTime At)> _refusals = new();
+
+        private void Refused(string call, Exception ex)
+        {
+            if (ex is SearchOrAskModelException { Status: 429 }) return;
+            var (status, reason, source) = ex is SearchOrAskModelException m ? (m.Status, m.Message, m.LimitSource) : (0, "The provider could not be reached.", null);
+            var refusal = new ModelRefusal(call, status, reason, DateTime.UtcNow, AdviceFor(reason, status, source), source);
+            LastRefusal = refusal;
+            _refusalSince[call] = refusal;
+            _refusals.Enqueue((call, RefusalKind(status, source), refusal.At));
+            while (_refusals.TryPeek(out var old) && refusal.At - old.At > TimeSpan.FromHours(24)) _refusals.TryDequeue(out _);
+            if (call == "answer") PauseOffers(status, source);
+        }
+
+        private void Succeeded(string call)
+        {
+            if (LastRefusal?.Call == call) LastRefusal = null;
+            _lastSuccess[call] = DateTime.UtcNow;
+            _refusalSince.TryRemove(call, out _);
+            if (call == "answer") ResumeOffers();
+        }
+
+        /// <summary>What a refusal was, in a word the console groups by: <c>credit</c> (the account
+        /// cannot pay), <c>keyLimit</c> (the key's cap is spent), <c>inFlight</c> (too much running at
+        /// once for what the provider holds back per call), <c>key</c> (the key is not accepted),
+        /// <c>refused</c> (another refusal of the call), <c>failed</c> (the provider failed or could not be reached).</summary>
+        public static string RefusalKind(int status, string? limitSource) => (status, limitSource) switch
+        {
+            (402, SearchOrAskLimits.InFlight) => "inFlight",
+            (402, SearchOrAskLimits.KeyLimit) => "keyLimit",
+            (402, _) => "credit",
+            (401, _) => "key",
+            (403, _) => "refused",
+            _ => "failed",
+        };
+
+        private (ProviderKeyLimit? Limit, DateTime At) _keyLimit;
+
+        /// <summary>The key's limit as last read, without reading it again.</summary>
+        public ProviderKeyLimit? CachedKeyLimit => _keyLimit.Limit;
+
+        /// <summary>What the provider says is left on its key (<see cref="ISearchOrAskModels.KeyLimitAsync"/>),
+        /// read at most every five minutes; null where the provider does not say.</summary>
+        public async Task<ProviderKeyLimit?> KeyLimitAsync(CancellationToken ct = default)
+        {
+            if (DateTime.UtcNow - _keyLimit.At < TimeSpan.FromMinutes(5)) return _keyLimit.Limit;
+            var limit = await _models.KeyLimitAsync(ct);
+            _keyLimit = (limit, DateTime.UtcNow);
+            return limit;
+        }
+
+        /// <summary>Each kind of model call, for Admin's view of the provider.</summary>
+        public IReadOnlyList<ModelCallHealth> CallHealth()
+        {
+            var since = DateTime.UtcNow.AddHours(-24);
+            var recent = _refusals.Where(r => r.At >= since).ToList();
+            return new[] { "judge", "answer", "filters" }.Select(call => new ModelCallHealth(call,
+                    _lastSuccess.TryGetValue(call, out var at) ? at : null, _refusalSince.GetValueOrDefault(call),
+                    recent.Where(r => r.Call == call).GroupBy(r => r.Kind).ToDictionary(g => g.Key, g => g.Count())))
+                .ToList();
+        }
+
+        // ── The offer pause ─────────────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// While the provider refuses answers in a way that does not pass by itself (out of credit, a
+        /// key's cap spent, a key refused or a call it will not make), no offer is shown: a visitor would
+        /// only click into "the answer could not be written", again and again (2 Nov 2026).
+        /// Search is untouched. The first refusal pauses for two minutes; offers then come back and the
+        /// next answer is the test, each refusal after doubling the pause up to half an hour. An answer
+        /// that succeeds ends it. Too much in flight at once and a rate limit pass on their own and
+        /// pause nothing.
+        /// </summary>
+        public DateTime? OffersPausedUntil { get; private set; }
+
+        /// <summary>The reason an intent gives while offers are paused.</summary>
+        public const string Paused = "paused";
+
+        private TimeSpan _pauseStep;
+        public static readonly TimeSpan FirstPause = TimeSpan.FromMinutes(2);
+        public static readonly TimeSpan LongestPause = TimeSpan.FromMinutes(30);
+
+        public bool OffersPaused => OffersPausedUntil is { } until && until > DateTime.UtcNow;
+
+        private void PauseOffers(int status, string? limitSource)
+        {
+            if (status is not (401 or 402 or 403) || limitSource == SearchOrAskLimits.InFlight) return;
+            _pauseStep = _pauseStep == TimeSpan.Zero ? FirstPause : TimeSpan.FromTicks(Math.Min(_pauseStep.Ticks * 2, LongestPause.Ticks));
+            OffersPausedUntil = DateTime.UtcNow + _pauseStep;
+            _logger.LogWarning("Search or ask offers paused until {Until:u}: the provider refused an answer ({Status})", OffersPausedUntil, status);
+        }
+
+        private void ResumeOffers()
+        {
+            _pauseStep = TimeSpan.Zero;
+            OffersPausedUntil = null;
+        }
+
+        /// <summary>What an owner can do about a refusal whose reason we have seen before. A 402 from
+        /// OpenRouter says which limit it hit, and each has its own remedy.</summary>
+        public static string? AdviceFor(string reason, int status, string? limitSource = null) =>
+            reason.Contains("Regional routing", StringComparison.OrdinalIgnoreCase)
+                ? "OpenRouter serves its EU endpoint only on a Business or Enterprise plan. Switch off Keep requests in the EU in Admin, Settings, or upgrade the OpenRouter plan."
+            : (status, limitSource) switch
+            {
+                (402, SearchOrAskLimits.InFlight) => "Too many answers were being written at once for what OpenRouter holds back for each call while it runs. It passes by itself. If it keeps happening, choose faster answer models, or raise the key's limit or the account's credit.",
+                (402, SearchOrAskLimits.KeyLimit) => "The key's spending limit is used up. Raise it, or wait for it to reset, in OpenRouter's Keys settings.",
+                (402, _) => "The provider's account is out of credit. Top it up in the provider's own console.",
+                (401, _) => "The provider does not accept the key. Check it in Admin, Settings.",
+                (403, _) => "The provider refused the call: a spent key budget, a plan that does not allow it, or a guardrail. Its own words are above.",
+                _ => null,
+            };
+
+        private readonly SearchOrAskStore _store;
+        private readonly ISearchOrAskModels _models;
+        private readonly SearchOrAskOptions _options;
+        private readonly ILogger<SearchOrAskService> _logger;
+        private readonly StatisticsService? _statistics;
+        private readonly ISearchOrAskSwitch? _instance;
+        private (bool Shown, long At) _shown;
+
+        private readonly PartitionedRateLimiter<string> _intentLimiter;
+        private readonly PartitionedRateLimiter<string> _askLimiter;
+
+        // The same text over the same dataset and settings gets the same judgement: backspacing and
+        // retyping cost nothing. Bounded crudely; a soft cache is all typing needs.
+        private readonly ConcurrentDictionary<string, JudgeAnswer> _cache = new();
+        private const int MaxCached = 5000;
+
+        // (teamId\0dataset) -> (UTC day, judge calls made that day).
+        private readonly ConcurrentDictionary<string, (DateOnly Day, int Calls)> _budget = new();
+        /// <summary>Answers written without being asked today, per dataset (<see cref="SearchOrAskSettings.DailyProactiveAnswers"/>).</summary>
+        private readonly ConcurrentDictionary<string, (DateOnly Day, int Answers)> _proactive = new();
+
+        public const int MaxText = 300;
+        public const int MaxQuestion = 1000;
+        private const int ResultsForJudge = 5;
+        private const int SnippetChars = 240;
+        private const int SourcesForAnswer = 8;
+        private const int SourceChars = 3000;
+
+        public SearchOrAskService(SearchOrAskStore store, ISearchOrAskModels models,
+            SearchOrAskOptions options, ILogger<SearchOrAskService> logger, StatisticsService? statistics = null,
+            ISearchOrAskSwitch? instance = null, SearchOrAskSetupProvider? setup = null)
+        {
+            _instance = instance;
+            _setup = setup ?? new SearchOrAskSetupProvider(options, instance);
+            _statistics = statistics;
+            _store = store;
+            _models = models;
+            _options = options;
+            _logger = logger;
+            _intentLimiter = PerAddress(options.IntentPerMinute);
+            _askLimiter = PerAddress(options.AskPerMinute);
+        }
+
+        private static PartitionedRateLimiter<string> PerAddress(int perMinute) =>
+            PartitionedRateLimiter.Create<string, string>(address => RateLimitPartition.GetFixedWindowLimiter(address,
+                _ => new FixedWindowRateLimiterOptions { PermitLimit = Math.Max(1, perMinute), Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+
+        private readonly SearchOrAskSetupProvider _setup;
+
+        /// <summary>Where each call goes and with which key: the
+        /// configuration's values win over the console's. The clients read the same object.</summary>
+        public SearchOrAskSetup Setup => _setup.Current;
+
+        /// <summary>Whether this instance can run Search or ask: the answer provider has a key and so
+        /// has the judge's door, from the configuration (which wins) or from the console. The judge
+        /// is the feature; an answer without it is retrieval and a model, which is nobody's product
+        /// (decided 14 Oct 2026), so a missing judge key makes the whole thing unavailable.</summary>
+        public bool Available => Setup.AnswersAvailable && Setup.JudgeAvailable;
+
+        /// <summary>Whether the judge can be asked: Jev's door has a key.</summary>
+        public bool JudgeAvailable => Setup.JudgeAvailable;
+
+        /// <summary>One line per door, for the admin's "Check the keys": what the judge and the
+        /// answer model say to a trivial call, in the provider's own words when they refuse. Only
+        /// a failure's reason tells a spent key budget from a moderation flag from a wrong key
+        /// (19 Oct 2026: a 403 with nothing else to go on).</summary>
+        public async Task<(string Judge, string Answers)> CheckKeysAsync(CancellationToken ct)
+        {
+            var s = Setup;
+            async Task<string> Try(string what, bool available, Func<Task<string>> call)
+            {
+                if (!available) return $"{what}: no key.";
+                try { return $"{what}: OK, {await call()}."; }
+                catch (SearchOrAskModelException ex) { return $"{what}: {ex.Message}"; }
+                catch (OperationCanceledException) { return $"{what}: no answer in time."; }
+                catch (Exception ex) { return $"{what}: unreachable ({ex.Message})."; }
+            }
+            var judge = Try($"The judge ({s.JudgeModel})", s.JudgeAvailable, async () =>
+            {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeout.CancelAfter(TimeSpan.FromSeconds(15));
+                var state = State("A site that explains itself.", "how do I reset my password", new SearchSummary(0, false, []));
+                var questions = SearchOrAskRecipes.Questions(SearchOrAskRecipes.Documentation, s.JudgeProvider)
+                    .Where(q => q.Key == SearchOrAskRecipes.Asking).ToDictionary(q => q.Key, q => q.Value);
+                var answer = await _models.JudgeAsync(state, questions, timeout.Token);
+                return $"it answered{(answer.Cost is { } c ? $" for ${c:0.0000}" : "")}";
+            });
+            // The answer model as the answers call it: streamed, at the chosen speed, so a tier or a
+            // model the endpoint refuses shows here and not on a visitor's first question.
+            var answers = Try($"The answers ({s.AnswerModel}{(s.AnswerSpeed is { } tier ? ", " + tier : "")})", s.AnswersAvailable, async () =>
+            {
+                using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                timeout.CancelAfter(TimeSpan.FromSeconds(30));
+                var usage = new AnswerUsage();
+                var text = new System.Text.StringBuilder();
+                await foreach (var delta in _models.AnswerAsync(s.AnswerModel, "Reply with the one word OK.", "Ready?", [], usage, timeout.Token))
+                    text.Append(delta);
+                return $"\"{text.ToString().Trim()}\"{(usage.Cost is { } c ? $" for ${c:0.0000}" : "")}";
+            });
+            return (await judge, await answers);
+        }
+
+        /// <summary>Where the answer provider's key comes from, for the console: "configuration",
+        /// "console" or null.</summary>
+        public string? ModelKeySource =>
+            ConfiguredKeyHolders.Contains(Setup.Provider) ? "configuration" : ModelKey != null ? "console" : null;
+
+        /// <summary>The providers whose key the configuration holds: the console shows those as set
+        /// there, and keeps the rest editable.</summary>
+        public IReadOnlySet<string> ConfiguredKeyHolders => SearchOrAskSetup.ConfiguredKeys(_options).Keys.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        /// <summary>The choices the configuration makes, which the console then shows and cannot change.</summary>
+        public bool ProviderConfigured => !string.IsNullOrWhiteSpace(_options.Provider);
+        public bool JudgeProviderConfigured => !string.IsNullOrWhiteSpace(_options.JudgeProvider);
+        public bool EuRoutingConfigured => _options.EuRouting != null;
+        public bool AnswerSpeedConfigured => !string.IsNullOrWhiteSpace(_options.AnswerSpeed);
+
+        /// <summary>The answer provider's key in use.</summary>
+        public string? ModelKey => Setup.AnswerKey;
+
+        /// <summary>Whether the instance shows Search or ask at all: the experimental switch in the
+        /// admin settings. Read from settings.json at most every five seconds, since the judge asks on
+        /// every typing pause. Without an instance settings service (some tests), shown.</summary>
+        public bool Shown
+        {
+            get
+            {
+                if (_instance == null) return true;
+                var now = Environment.TickCount64;
+                var cached = _shown;
+                if (cached.At != 0 && now - cached.At < 5000) return cached.Shown;
+                var shown = _instance.Shown;
+                _shown = (shown, now);
+                return shown;
+            }
+        }
+
+        /// <summary>Whether a dataset has Search or ask: the instance shows it, and a team admin
+        /// switched it on in the dataset's Options tab. Without an instance switch (component tests,
+        /// which have no settings database either), shown, as <see cref="Shown"/> is.</summary>
+        public bool ShownFor(string teamId, string dataSetName) =>
+            _instance == null || (Shown && (_store.Load(teamId, dataSetName)?.Shown ?? false));
+
+        /// <summary>Forgets the cached switch, so a change in the admin settings applies at once.</summary>
+        public void InstanceSettingsChanged() { _shown = default; _setup.Changed(); }
+
+        /// <summary>The dataset's saved settings, or the defaults (off) when none are saved.</summary>
+        public SearchOrAskSettings Settings(string teamId, string dataSetName) =>
+            _store.Load(teamId, dataSetName) ?? new SearchOrAskSettings();
+
+        /// <summary>What the judge reads about the site: the setting, else a plain sentence naming the
+        /// dataset. Not the dataset's description (11 Nov 2026): that is written for agents over MCP,
+        /// and Search or ask, switched on per dataset, keeps texts of its own.</summary>
+        public string SiteDescription(string teamId, string dataSetName, SearchOrAskSettings settings) =>
+            !string.IsNullOrWhiteSpace(settings.SiteDescription)
+                ? settings.SiteDescription.Trim()
+                : $"A search over the records of the dataset \"{dataSetName}\".";
+
+        /// <summary>The fields the judge sees, from the settings where set and otherwise Automatic's
+        /// (<see cref="SearchOrAskAutomatic"/>), read from the records once per field configuration.
+        /// Every caller with a dataset goes through here, so the console shows what the judge reads.</summary>
+        public SearchOrAskFields FieldsFor(string teamId, string dataSetName, SearchOrAskSettings settings, IServerSearchEngine? engine)
+        {
+            var fields = engine?.DocumentFields == null ? null : engine.GetFieldList();
+            bool automatic = settings.TitleField == null || settings.SectionFields == null || settings.SnippetFields is not { Count: > 0 };
+            return Fields(settings, fields, automatic && fields != null ? Automatic(teamId, dataSetName, fields, engine!.Status.DocumentCount) : null);
+        }
+
+        /// <summary>The fields the judge sees, from the settings where set and otherwise from
+        /// <paramref name="automatic"/>. Without it (no records read): the highest-weighted searchable
+        /// field is the title, the next two the snippet, and no section.</summary>
+        public static SearchOrAskFields Fields(SearchOrAskSettings settings, IReadOnlyList<Field>? fields, SearchOrAskAutomatic.Picks? automatic = null)
+        {
+            var searchable = (fields ?? []).Where(f => f.WordMatching || f.PatternMatching != null).OrderByDescending(f => f.Weight).Select(f => f.Name).ToList();
+            var title = settings.TitleField ?? automatic?.Title ?? searchable.FirstOrDefault();
+            var snippet = settings.SnippetFields is { Count: > 0 } s ? s
+                : automatic != null ? automatic.Snippet.Where(n => n != title).ToList()
+                : searchable.Where(n => n != title).Take(2).ToList();
+            var section = settings.SectionFields ?? automatic?.Section.Where(n => n != title && !snippet.Contains(n)).ToList() ?? [];
+            return new SearchOrAskFields(title, section, snippet);
+        }
+
+        private readonly ConcurrentDictionary<string, (string Fingerprint, SearchOrAskAutomatic.Picks? Picks)> _automatic = new(StringComparer.Ordinal);
+
+        /// <summary>The records Automatic reads; the tests' seam.</summary>
+        internal Func<string, string, IReadOnlyList<JsonNode>> SampleRecords { get; set; } = ReadSample;
+
+        /// <summary>Automatic's picks for a dataset, chosen again when a field's type or role changes
+        /// or the record count doubles or halves. Null when no records could be read: then the
+        /// fields are chosen from the configuration alone.</summary>
+        private SearchOrAskAutomatic.Picks? Automatic(string teamId, string dataSetName, IReadOnlyList<Field> fields, long count)
+        {
+            var fingerprint = string.Join(';', fields.Select(f =>
+                $"{f.Name}:{f.Type}:{f.IsArray}:{f.WordMatching}:{f.PatternMatching != null}:{f.Filterable}:{f.Facetable}:{f.Weight}"))
+                + "|" + (int)Math.Log2(count + 1);
+            var key = teamId + "\0" + dataSetName;
+            if (_automatic.TryGetValue(key, out var known) && known.Fingerprint == fingerprint) return known.Picks;
+            SearchOrAskAutomatic.Picks? picks = null;
+            try
+            {
+                var sample = SampleRecords(teamId, dataSetName);
+                if (sample.Count > 0) picks = SearchOrAskAutomatic.Choose(fields, sample);
+            }
+            catch (Exception e) when (e is Microsoft.Data.Sqlite.SqliteException or InvalidOperationException)
+            {
+                _logger.LogWarning(e, "Search or ask could not read records of {DataSet} to choose its fields", dataSetName);
+            }
+            _automatic[key] = (fingerprint, picks);
+            return picks;
+        }
+
+        /// <summary>Up to <see cref="SearchOrAskAutomatic.SampleSize"/> records spread evenly over the
+        /// dataset in the order they were stored, read from the store (as the records scan reads
+        /// them), so it works whatever the engine is doing.</summary>
+        private static IReadOnlyList<JsonNode> ReadSample(string teamId, string dataSetName)
+        {
+            using var conn = new Microsoft.Data.Sqlite.SqliteConnection($"Data Source={IndxServerInternalApi.SearchDbConnectionString};Mode=ReadOnly");
+            conn.Open();
+            long total;
+            using (var count = conn.CreateCommand())
+            {
+                count.CommandText = "SELECT COUNT(*) FROM JsonData WHERE UserName = $t AND Name = $d";
+                count.Parameters.AddWithValue("$t", teamId);
+                count.Parameters.AddWithValue("$d", dataSetName);
+                total = Convert.ToInt64(count.ExecuteScalar());
+            }
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = "SELECT RawText FROM JsonData WHERE UserName = $t AND Name = $d AND rowid % $m = 0 LIMIT $n";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSetName);
+            cmd.Parameters.AddWithValue("$m", Math.Max(1, total / SearchOrAskAutomatic.SampleSize));
+            cmd.Parameters.AddWithValue("$n", SearchOrAskAutomatic.SampleSize);
+            var sample = new List<JsonNode>();
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                try { if (JsonNode.Parse(reader.GetString(0)) is { } node) sample.Add(node); }
+                catch (System.Text.Json.JsonException) { }
+            }
+            return sample;
+        }
+
+        // ── Intent ──────────────────────────────────────────────────────────────────────────
+
+        // Digits and separators (ISBN, SKU), a dotted member, camel or Pascal case, a code with a
+        // digit. The same rule as the docs prototype and JevProbe's replay: these are lookups, and
+        // the judge is not asked.
+        [GeneratedRegex(@"^[\d\s\-_.:/]+$|^\w+\.\w+|^[A-Za-z]*[a-z][A-Z]\w*$|^[A-Za-z]+[-_]?\d[\w-]*$")]
+        private static partial Regex IdentifierShape();
+
+        private StatisticsWriter? Writer => _statistics is { Enabled: true } s ? s.Writer : null;
+
+        private static string? Blank(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+
+        public static bool IsIdentifier(string text)
+        {
+            var t = text.Trim();
+            return t.Length > 0 && !t.Contains(' ') && IdentifierShape().IsMatch(t);
+        }
+
+        private static string Normalise(string text) => string.Join(' ', text.Trim().ToLowerInvariant().Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+
+        /// <summary>Judges one pause. <c>trial</c> is the console's tester: settings not yet saved,
+        /// judged as if on, still limited and counted against the budget, since it costs the same.
+        /// <c>onState</c> receives the state the judge is sent, for the tester to show.
+        /// <c>prefetch</c> is a judgement asked while the visitor still types, ahead of the pause
+        /// (27 Oct 2026): it fills the cache, so the pause's own call answers at once, and is not a
+        /// judgement in the statistics, since the visitor may type on before it is shown. It has a
+        /// rate limit of its own beside the pause's, and leaves the day's last fifth of the budget
+        /// to the pauses.</summary>
+        public async Task<IntentOutcome> IntentAsync(string teamId, string dataSetName, IServerSearchEngine engine,
+            string text, string clientAddress, CancellationToken ct,
+            SearchOrAskSettings? trial = null, Action<JsonObject>? onState = null, SearchOrAskOrigin? origin = null,
+            bool prefetch = false)
+        {
+            if (!JudgeAvailable) return new IntentOutcome(IntentStatus.Unavailable);
+            var settings = trial ?? Settings(teamId, dataSetName);
+            if (trial == null && !settings.Enabled) return new IntentOutcome(IntentStatus.Disabled);
+            // The judge decides the wording it is asked with and the thresholds its score is read
+            // against, both measured for it.
+            var judge = Setup.JudgeProvider;
+
+            var started = Stopwatch.GetTimestamp();
+            long Ms() => (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            // The judge reads the results of the text as typed, and with whole words only where the
+            // page searches so while asking: the list it says found of is the list under the offer.
+            // Replayed 5 Nov 2026 on 1,944 generated texts, both lists: the offers moved on a handful
+            // either way, and the whole-words list held the right record more often on all four sets.
+            var searched = text;
+            var wholeWords = settings.StrictCoverageWhileAsking;
+            IntentResult Result(double p, double? answerable, bool cached, string? reason = null, double? cost = null, double? criteria = null,
+                double? finished = null, double? found = null)
+            {
+                // Refocused only on the judge's word, a question or a description of what to list
+                // reaching the line: a failing judge (p = 0, a reason) leaves the list alone.
+                // refocus: the page searches with ?refocus=true from here, until a judgement says
+                // otherwise; refocused: this text's list so ordered, when it falls back (the tester's).
+                var line = settings.Thresholds.Refocus;
+                var refocus = reason == null && line > 0 && (p >= line || criteria >= line);
+                var refocused = refocus ? Refocused(dataSetName, teamId, searched, wholeWords) : null;
+                var result = new IntentResult(p, answerable, settings.OfferFor(judge, p, criteria, finished), settings.Thresholds.Resolved(settings.Kind, judge), cached, Ms(), reason, criteria,
+                    settings.StrictCoverageWhileAsking, settings.FiltersWhileTyping,
+                    EffectiveMode(teamId, dataSetName, settings), finished, found, refocused, refocus);
+                // A judgement is recorded once the judge or its cache answered for it, a failing
+                // judge included (its reason says so); an identifier never reaches here. A prefetch
+                // is not: the pause that follows is recorded, from the cache it filled.
+                if (prefetch && cost is { } spent)
+                    RecordCost(teamId, dataSetName, settings.DailyCallBudget, spent);
+                if (!prefetch && reason is not ("identifier" or Paused) && origin != null && Writer is { } w)
+                    w.RecordAskIntent(new AskIntentEventRow(teamId, dataSetName, Blank(origin.QueryId), p, answerable,
+                        result.Offer, cached, reason, cost, Blank(origin.Subject), Blank(origin.Session), origin.Source,
+                        DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), origin.Counted, found));
+                return result;
+            }
+
+            // On the text as typed: lowercasing first would hide the camel case the rule looks for.
+            if (IsIdentifier(text))
+                return new IntentOutcome(IntentStatus.Ok, Result(0, null, false, "identifier"));
+            // An offer whose answer the provider would refuse is no offer (OffersPausedUntil): the page
+            // gets "none" as from a judge that was not sure, and no call is made or recorded. The
+            // console's tester (a trial) still judges, so a paused instance can be looked into.
+            if (trial == null && OffersPaused)
+                return new IntentOutcome(IntentStatus.Ok, Result(0, null, false, Paused));
+
+            var site = SiteDescription(teamId, dataSetName, settings);
+            var fields = FieldsFor(teamId, dataSetName, settings, engine);
+            var cacheKey = string.Join('\0', teamId, dataSetName, settings.Kind, judge, site, fields.TitleField,
+                string.Join(',', fields.SectionFields), string.Join(',', fields.SnippetFields), wholeWords ? "whole" : "", Normalise(text));
+            if (_cache.TryGetValue(cacheKey, out var hit))
+            {
+                // Only the console's tester asks for the state; a cached answer used to come back
+                // without one, and "What the judge was sent" was empty for a text tried before.
+                // The search only when someone reads it: the tester's state.
+                if (onState != null)
+                    onState(State(site, text, Search(engine, dataSetName, teamId, searched, fields, wholeWords: wholeWords)));
+                return new IntentOutcome(IntentStatus.Ok, Result(hit[SearchOrAskRecipes.Asking] ?? 0, hit[SearchOrAskRecipes.Answerable], true,
+                    criteria: hit[SearchOrAskRecipes.Criteria], finished: hit[SearchOrAskRecipes.Finished], found: hit[SearchOrAskRecipes.Found]));
+            }
+
+            using (var lease = _intentLimiter.AttemptAcquire(prefetch ? clientAddress + "\0prefetch" : clientAddress))
+                if (!lease.IsAcquired)
+                    return new IntentOutcome(IntentStatus.RateLimited, RetryAfterSeconds: RetryAfter(lease));
+            if (!TryTakeBudget(teamId, dataSetName, settings.DailyCallBudget, prefetch ? settings.DailyCallBudget / 5 * 4 : null))
+                return new IntentOutcome(IntentStatus.BudgetSpent, RetryAfterSeconds: SecondsToUtcMidnight());
+
+            var searchedFor = Search(engine, dataSetName, teamId, searched, fields, wholeWords: wholeWords);
+            var state = State(site, text, searchedFor);
+            var questions = SearchOrAskRecipes.Questions(settings.Kind, judge);
+            onState?.Invoke(state);
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(_options.JudgeTimeoutMs);
+            try
+            {
+                var answer = await _models.JudgeAsync(state, questions, timeout.Token);
+                if (_cache.Count > MaxCached) _cache.Clear();
+                _cache[cacheKey] = answer;
+                Succeeded("judge");
+                return new IntentOutcome(IntentStatus.Ok, Result(answer[SearchOrAskRecipes.Asking] ?? 0, answer[SearchOrAskRecipes.Answerable], false,
+                    cost: answer.Cost, criteria: answer[SearchOrAskRecipes.Criteria], finished: answer[SearchOrAskRecipes.Finished], found: answer[SearchOrAskRecipes.Found]));
+            }
+            // A judge that is slow, out of credit or down means no offer, never a failed search:
+            // p = 0 with the reason, and the search the visitor already has is untouched.
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                return new IntentOutcome(IntentStatus.Ok, Result(0, null, false, "timeout"));
+            }
+            catch (SearchOrAskModelException ex)
+            {
+                _logger.LogWarning("Search or ask judge failed for {Team}/{Dataset}: {Message}", teamId, dataSetName, ex.Message);
+                Refused("judge", ex);
+                return new IntentOutcome(IntentStatus.Ok, Result(0, null, false, $"failed:{ex.Status}"));
+            }
+            catch (HttpRequestException ex)
+            {
+                _logger.LogWarning(ex, "Search or ask judge unreachable for {Team}/{Dataset}", teamId, dataSetName);
+                Refused("judge", ex);
+                return new IntentOutcome(IntentStatus.Ok, Result(0, null, false, "failed:unreachable"));
+            }
+        }
+
+        /// <summary>How many records a refocused list holds: the page's first rows.</summary>
+        private const int RefocusedRows = 20;
+
+        /// <summary>The page's search for a question or a description, refocused (thresholds.refocus): when no record
+        /// holds every word (a fallback), its records in BM25F's order, keys only, for the page to show
+        /// in place of its own; null when a record holds every word, and the page's list stands. The
+        /// page's own search as the judge reads it (the dataset's mode and query parameters, whole
+        /// words where the page searches so), then the same in Bm25f: two searches, about a
+        /// millisecond each. Until 10 Nov 2026 a dataset query parameter (focusing) did this on every
+        /// search that fell back, unasked, and moved lookups and descriptions too.</summary>
+        private static long[]? Refocused(string dataSetName, string teamId, string text, bool wholeWords)
+        {
+            QueryProxy Query(SearchMode? mode) => new()
+            {
+                Text = text,
+                MaxNumberOfRecordsToReturn = RefocusedRows,
+                Mode = mode,
+                Match = wholeWords ? new MatchProxy { Tolerance = Tolerance.Exact, TypingPrefixFrom = 0, JoinedWords = false } : null,
+            };
+            var page = IndxServerInternalApi.Manager.Search(Query(null), dataSetName, teamId);
+            if (!page.IsFallback || page.Records.Length == 0) return null;
+            var ordered = IndxServerInternalApi.Manager.Search(Query(SearchMode.Bm25f), dataSetName, teamId);
+            return ordered.Records.Length == 0 ? null : [.. ordered.Records.Select(r => r.DocumentKey)];
+        }
+
+        /// <summary>What the search found, reduced to what the judge reads.</summary>
+        /// <param name="Hits">How many records the search returned.</param>
+        /// <param name="CloseMatch">Whether the list holds a record the search counted, not only
+        /// records from a fallback or a fill.</param>
+        /// <param name="Top">The first records the judge reads: key, title, section and snippet.</param>
+        /// <param name="Count">Result.Count: the records the search counted, not the ten listed. Null
+        /// where a summary is built from keys (a catalogue's filtered list): then <see cref="Hits"/>.</param>
+        /// <param name="Match">The kind of match (SearchExplanation.MatchKind): strong, fuzzy, partial,
+        /// pattern or broad.</param>
+        /// <param name="Levels">Records holding every word per typo level, cumulative; null with no
+        /// word lookup.</param>
+        /// <param name="Met">Per listed record, by key: how the reranker met each query word, and in
+        /// which field (Result.MatchReport).</param>
+        public sealed record SearchSummary(int Hits, bool CloseMatch, IReadOnlyList<(long Key, string Title, string Section, string Snippet)> Top,
+            int? Count = null, string? Match = null, ToleranceCounts? Levels = null,
+            IReadOnlyDictionary<long, IReadOnlyList<IndxServer.Components.Datasets.SearchExplanation.Word>>? Met = null);
+
+        /// <summary>What the search finds for a text, as the judge reads it, for the console's
+        /// tester: the hits by title, section and snippet. No model call, so it costs nothing.</summary>
+        /// <summary>The page's results in the refocused order (IntentResult.Refocused), for the console's
+        /// tester: the same count, the records read as the judge reads them.</summary>
+        public SearchSummary RefocusedResults(string teamId, string dataSetName, IServerSearchEngine engine, IReadOnlyList<long> keys, SearchSummary page, SearchOrAskSettings settings)
+        {
+            var fields = FieldsFor(teamId, dataSetName, settings, engine);
+            return page with { Top = [.. keys.Take(ResultsForJudge).Select(k => Describe(engine, k, fields, SnippetChars, forAnswer: false))], Met = null };
+        }
+
+        public SearchSummary Results(string teamId, string dataSetName, IServerSearchEngine engine, string text, SearchOrAskSettings settings) =>
+            Search(engine, dataSetName, teamId, text, FieldsFor(teamId, dataSetName, settings, engine), wholeWords: settings.StrictCoverageWhileAsking);
+
+        /// <summary>Runs the search the visitor's client already ran, here, so the judge sees the
+        /// same results without the client sending results it could forge. Through the manager
+        /// directly: not a visitor's search, so it never reaches the statistics.</summary>
+        /// <remarks>An ask passes <paramref name="truncate"/> false: a whole question has many words,
+        /// coverage cuts the list to the records that hold most of them, and the record that answers
+        /// can be ranked below that cut ("is there a limit on how many documents I can index for free"
+        /// kept one record on the docs, and not Licensing). The answer model reads the sources and
+        /// decides what is relevant, so it gets the best ranked eight either way.</remarks>
+        private static SearchSummary Search(IServerSearchEngine engine, string dataSetName, string teamId, string text,
+            SearchOrAskFields fields, int top = ResultsForJudge, bool truncate = true, bool wholeWords = false)
+        {
+            var result = IndxServerInternalApi.Manager.Search(new QueryProxy
+            {
+                Text = text,
+                MaxNumberOfRecordsToReturn = 10,
+                // The judge's search (truncate) is the visitor's: the dataset's mode and the text as
+                // being typed. An answer's searches are the server's own, on finished texts (the
+                // question, its keywords, the context), EditDistance as measured, and no word met as
+                // the start of a longer one (6 Nov 2026; until then the judge forced EditDistance and
+                // every text kept its last word open).
+                Mode = truncate ? null : SearchMode.EditDistance,
+                // The page's matching while asking (intrface's STRICT_MATCH): no typo, prefix or joined words.
+                Match = wholeWords ? new MatchProxy { Tolerance = Tolerance.Exact, TypingPrefixFrom = 0, JoinedWords = false }
+                    : truncate ? null : new MatchProxy { CursorAt = 0 },
+                // Not truncated: the rest below the counted (6.0; until then Truncate off).
+                Candidates = truncate ? null : new CandidateProxy { Rest = true },
+                // How each listed record's words were met, for the judge (Nov 2026): it reads the ten
+                // returned once more, which costs little.
+                EnableMatchReport = true,
+            }, dataSetName, teamId);
+            var records = result.Records ?? [];
+            var hits = records.Take(top).Select(r => Describe(engine, r.DocumentKey, fields, SnippetChars, forAnswer: false)).ToList();
+            var met = records.Take(top)
+                .Select(r => (r.DocumentKey, Words: IndxServer.Components.Datasets.SearchExplanation.For(result, r.DocumentKey)))
+                .Where(m => m.Words != null)
+                .ToDictionary(m => m.DocumentKey, m => m.Words!);
+            return new SearchSummary(records.Length, result.CountedInList() > 0, hits,
+                result.Count, IndxServer.Components.Datasets.SearchExplanation.MatchKind(result), result.ToleranceCounts, met);
+        }
+
+        /// <summary>A record as the models read it: key, title, sections and text. For the judge the
+        /// text is one line of all snippet fields, cut at <paramref name="chars"/>. For an answer each
+        /// field keeps its line breaks and gets <paramref name="chars"/> of its own, separated by a
+        /// blank line: a page's code (its own field on the docs) must arrive whole and formatted, not
+        /// flattened, and not crowded out by the prose before it.</summary>
+        private static (long, string, string, string) Describe(IServerSearchEngine engine, long key, SearchOrAskFields fields, int chars, bool forAnswer)
+        {
+            JsonNode? doc = null;
+            try { doc = JsonNode.Parse(engine.GetJsonDataOfKey(key) ?? ""); }
+            catch (System.Text.Json.JsonException) { }
+            // A true/false field is its name when true and nothing when false: the judge reads values
+            // without field names, so "False; True" told it nothing, and "ErPrivatskole" told it as
+            // much as a list of readable categories (13 Nov 2026, JevProbe/search-or-ask/fields).
+            string Read(IEnumerable<string> names, string separator) => doc == null ? "" :
+                string.Join(separator, names.Select(n => FieldAt(doc, n) switch
+                {
+                    JsonArray a => string.Join(", ", a.Select(x => x?.ToString())),
+                    JsonValue v when v.GetValueKind() is System.Text.Json.JsonValueKind.True => n[(n.LastIndexOf('.') + 1)..],
+                    JsonValue v when v.GetValueKind() is System.Text.Json.JsonValueKind.False => "",
+                    JsonNode v => v.ToString(),
+                    null => "",
+                }).Where(s => s.Length > 0));
+            string Cut(string s) => s.Length > chars ? s[..chars] + "…" : s;
+            var snippet = forAnswer
+                ? string.Join("\n\n", fields.SnippetFields.Select(f => Cut(Read([f], " ").Trim())).Where(s => s.Length > 0))
+                : Cut(Read(fields.SnippetFields, " ").ReplaceLineEndings(" "));
+            return (key, fields.TitleField == null ? "" : Read([fields.TitleField], ""), Read(fields.SectionFields, "; "), snippet);
+        }
+
+        /// <summary>A record's field by the engine's name for it, which for a nested field is a dotted
+        /// path ("Kommune.Navn").</summary>
+        private static JsonNode? FieldAt(JsonNode doc, string path)
+        {
+            JsonNode? n = doc;
+            foreach (var part in path.Split('.')) n = n is JsonObject o ? o[part] : null;
+            return n;
+        }
+
+        /// <summary>A record's field as text, for tests and the console: null when it is absent.</summary>
+        public static string? ReadField(JsonNode doc, string path) => FieldAt(doc, path)?.ToString();
+
+        /// <summary>
+        /// The state the judge reads (JevProbe's v2, Nov 2026): the count, the kind of match, the
+        /// typo levels, closeMatch, and per result how each query word was met. Until then it was
+        /// hits (the ten listed, not the count), closeMatch and the results only. Measured against the
+        /// labelled sets before it went in: docs 33 of 36 questions answered against 31, recognised at
+        /// 21% of their length against 23%; TMDB 30 of 30 against 29; no false answer on a lookup in
+        /// either (JevProbe/search-or-ask/runs, tmdb/runs).
+        /// </summary>
+        public static JsonObject State(string site, string text, SearchSummary search)
+        {
+            var levels = search.Levels is { } c
+                ? new JsonObject { ["exact"] = c.Exact, ["oneEdit"] = c.OneEdit, ["twoEdits"] = c.TwoEdits, ["threeEdits"] = c.ThreeEdits }
+                : null;
+            var searchState = new JsonObject
+            {
+                ["count"] = search.Count ?? search.Hits,
+                ["match"] = search.Match,
+                ["levels"] = levels,
+                ["closeMatch"] = search.CloseMatch,
+                ["results"] = new JsonArray(search.Top.Select(h => (JsonNode)new JsonObject
+                {
+                    ["title"] = h.Title,
+                    ["section"] = h.Section,
+                    ["snippet"] = h.Snippet,
+                    ["met"] = search.Met?.TryGetValue(h.Key, out var words) == true
+                        ? new JsonArray(words.Select(w => (JsonNode)new JsonObject { ["word"] = w.Text, ["how"] = w.Found ? w.How : "not found", ["field"] = w.Field }).ToArray())
+                        : null,
+                }).ToArray()),
+            };
+            return new JsonObject { ["site"] = site, ["request"] = text, ["search"] = searchState };
+        }
+
+        /// <summary>One call off the day's budget. <paramref name="ceiling"/> stops short of it (a
+        /// prefetch, which leaves the rest to the pauses), and a call it turns away is no refusal in
+        /// the statistics: the budget has not run out.</summary>
+        private bool TryTakeBudget(string teamId, string dataSetName, int budget, int? ceiling = null)
+        {
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var key = $"{teamId}\0{dataSetName}";
+            while (true)
+            {
+                // The first call since the server started reads the day so far from the statistics,
+                // so a restart does not start the day over and let it run past its budget.
+                var current = _budget.GetOrAdd(key, _ => (today, CallsRecorded(teamId, dataSetName, today)));
+                var calls = current.Day == today ? current.Calls : 0;
+                if (calls >= (ceiling ?? budget))
+                {
+                    if (ceiling == null) RecordBudget(teamId, dataSetName, today, budget, refused: true);
+                    return false;
+                }
+                if (_budget.TryUpdate(key, (today, calls + 1), current)) { RecordBudget(teamId, dataSetName, today, budget, refused: false); return true; }
+            }
+        }
+
+        private static long BudgetDay(DateOnly day) => day.DayNumber - new DateOnly(1970, 1, 1).DayNumber;
+
+        /// <summary>The mode a judgement reports: proactive falls back to inviting once the day's
+        /// proactive answers are spent, so the page stops starting answers without being told why.</summary>
+        public string EffectiveMode(string teamId, string dataSetName, SearchOrAskSettings settings) =>
+            settings.Mode == SearchOrAskSettings.ModeProactive && ProactiveToday(teamId, dataSetName).Answers >= settings.DailyProactiveAnswers
+                ? SearchOrAskSettings.ModeInviting : settings.Mode;
+
+        /// <summary>Answers written without a click today (UTC), for the console.</summary>
+        public int ProactiveAnswersToday(string teamId, string dataSetName) => ProactiveToday(teamId, dataSetName).Answers;
+
+        private (DateOnly Day, int Answers) ProactiveToday(string teamId, string dataSetName)
+        {
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            var current = _proactive.GetOrAdd($"{teamId}\0{dataSetName}", _ => (today, ProactiveRecorded(teamId, dataSetName, today)));
+            return current.Day == today ? current : (today, 0);
+        }
+
+        private bool TryTakeProactive(string teamId, string dataSetName, int cap)
+        {
+            var key = $"{teamId}\0{dataSetName}";
+            while (true)
+            {
+                var today = DateOnly.FromDateTime(DateTime.UtcNow);
+                var current = _proactive.GetOrAdd(key, _ => (today, ProactiveRecorded(teamId, dataSetName, today)));
+                var answers = current.Day == today ? current.Answers : 0;
+                if (answers >= cap) return false;
+                if (_proactive.TryUpdate(key, (today, answers + 1), current)) return true;
+            }
+        }
+
+        private int ProactiveRecorded(string teamId, string dataSetName, DateOnly day)
+        {
+            try
+            {
+                var from = new DateTimeOffset(day.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero).ToUnixTimeMilliseconds();
+                return _statistics is { Enabled: true, Store: { } s } ? (int)s.ProactiveAnswersSince(teamId, dataSetName, from) : 0;
+            }
+            catch (Exception ex) { _logger.LogWarning(ex, "Could not read today's proactive answers"); return 0; }
+        }
+
+        private int CallsRecorded(string teamId, string dataSetName, DateOnly day)
+        {
+            try { return _statistics is { Enabled: true, Store: { } s } ? (int)s.BudgetCalls(teamId, dataSetName, BudgetDay(day)) : 0; }
+            catch (Exception ex) { _logger.LogWarning(ex, "Could not read today's Search or ask calls"); return 0; }
+        }
+
+        /// <summary>Every call against the budget, taken or turned away, for the statistics.</summary>
+        private void RecordBudget(string teamId, string dataSetName, DateOnly day, int budget, bool refused) =>
+            Writer?.RecordBudget(new AskBudgetRow(teamId, dataSetName, BudgetDay(day), budget, refused,
+                DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()));
+
+        /// <summary>The cost of a call with no statistics row of its own, on today's budget day.</summary>
+        private void RecordCost(string teamId, string dataSetName, int budget, double cost) =>
+            Writer?.RecordBudget(new AskBudgetRow(teamId, dataSetName, BudgetDay(DateOnly.FromDateTime(DateTime.UtcNow)), budget,
+                Refused: false, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), Call: false, Cost: cost));
+
+        /// <summary>Calls made today against a dataset's budget, for the console: the count in
+        /// memory, or before the first call since a restart, the statistics' record of the day.</summary>
+        public int CallsToday(string teamId, string dataSetName)
+        {
+            var today = DateOnly.FromDateTime(DateTime.UtcNow);
+            if (_budget.TryGetValue($"{teamId}\0{dataSetName}", out var b)) return b.Day == today ? b.Calls : 0;
+            return CallsRecorded(teamId, dataSetName, today);
+        }
+
+        private static int SecondsToUtcMidnight() =>
+            (int)Math.Ceiling((DateTime.UtcNow.Date.AddDays(1) - DateTime.UtcNow).TotalSeconds);
+
+        private static int RetryAfter(RateLimitLease lease) =>
+            lease.TryGetMetadata(MetadataName.RetryAfter, out var ra) ? Math.Max(1, (int)Math.Ceiling(ra.TotalSeconds)) : 60;
+
+        // ── Ask ─────────────────────────────────────────────────────────────────────────────
+
+        /// <summary>Whether an ask may proceed: the same gates as intent, against the ask limit.
+        /// Ask counts against the daily budget too: it is the expensive call.
+        /// <c>proactive</c> is an answer the page starts on its own: only in the proactive mode, and
+        /// within the day's <see cref="SearchOrAskSettings.DailyProactiveAnswers"/>.</summary>
+        public IntentOutcome CanAsk(string teamId, string dataSetName, string clientAddress, SearchOrAskSettings? trial = null,
+            bool proactive = false)
+        {
+            if (!Available) return new IntentOutcome(IntentStatus.Unavailable);
+            var settings = trial ?? Settings(teamId, dataSetName);
+            if (trial == null && !settings.Enabled) return new IntentOutcome(IntentStatus.Disabled);
+            if (proactive && settings.Mode != SearchOrAskSettings.ModeProactive)
+                return new IntentOutcome(IntentStatus.BudgetSpent, RetryAfterSeconds: SecondsToUtcMidnight());
+            using (var lease = _askLimiter.AttemptAcquire(clientAddress))
+                if (!lease.IsAcquired)
+                    return new IntentOutcome(IntentStatus.RateLimited, RetryAfterSeconds: RetryAfter(lease));
+            // The proactive answer is taken once the address may ask, so a rate-limited start does not
+            // use one up; a spent budget after it leaves nothing to answer today anyway.
+            if (proactive && !TryTakeProactive(teamId, dataSetName, settings.DailyProactiveAnswers))
+                return new IntentOutcome(IntentStatus.BudgetSpent, RetryAfterSeconds: SecondsToUtcMidnight());
+            if (!TryTakeBudget(teamId, dataSetName, settings.DailyCallBudget))
+                return new IntentOutcome(IntentStatus.BudgetSpent, RetryAfterSeconds: SecondsToUtcMidnight());
+            return new IntentOutcome(IntentStatus.Ok);
+        }
+
+        private static readonly HashSet<string> QuestionWords = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "how", "what", "whats", "why", "where", "which", "who", "when", "is", "are", "does", "do", "did", "can",
+            "could", "should", "would", "will", "the", "a", "an", "about", "of", "to", "i", "me", "my", "it", "there",
+            // Filler that a whole question carries and a lookup does not: "how many documents" ranked
+            // pages about indexing above the one about the document limit.
+            "many", "much", "on", "in", "for", "with", "and", "or", "be", "this", "that", "any", "some",
+            "hvordan", "hva", "hvorfor", "hvor", "hvilken", "hvilke", "hvilket", "hvem", "når", "kan", "skal", "må",
+            "bør", "er", "går", "det", "jeg", "den", "en", "et", "om", "på", "til", "seg", "man",
+            "mange", "mye", "noen", "med", "og", "eller", "av", "min", "mitt", "mine",
+        };
+
+        /// <summary>The question without its question words, which match titles and push the record
+        /// asked about out of the top results: "what is ronin about" finds What About Bob?, "ronin"
+        /// finds Ronin (measured on tmdb23k). Null when nothing is left or nothing was removed.</summary>
+        public static string? KeywordsOf(string question)
+        {
+            var words = Regex.Split(question.ToLowerInvariant().Replace("'s", "").Replace("’s", ""), @"[^\p{L}\p{N}]+")
+                .Where(w => w.Length > 0).ToList();
+            var kept = words.Where(w => !QuestionWords.Contains(w)).ToList();
+            return kept.Count == 0 || kept.Count == words.Count ? null : string.Join(' ', kept);
+        }
+
+        /// <summary>
+        /// Answers a question from the dataset's records, as events through <paramref name="send"/>:
+        /// <c>sources</c> (the records handed to the model, numbered), <c>text</c> deltas, then
+        /// <c>done</c>, or <c>error</c>. Two searches, the question as typed and its keywords,
+        /// interleaved so each contributes its best; then the model, held to the sources.
+        /// </summary>
+        public async Task AskAsync(string teamId, string dataSetName, IServerSearchEngine engine, string question,
+            Func<string, object, Task> send, CancellationToken ct, SearchOrAskSettings? trial = null,
+            string? askId = null, SearchOrAskOrigin? origin = null, IReadOnlyList<AskTurn>? history = null)
+        {
+            history = Conversation(history);
+            var started = Stopwatch.GetTimestamp();
+            long Ms() => (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            var settings = trial ?? Settings(teamId, dataSetName);
+            var fields = FieldsFor(teamId, dataSetName, settings, engine);
+            var model = Setup.ModelFor(settings);
+            var outcome = "stopped";
+            long? firstText = null;
+            var usage = new AnswerUsage();
+            List<long> merged = [];
+            Task<JudgeAnswer?>? answerability = null;
+            // A catalogue's answer puts its list on the page; whether that list could answer the
+            // question is its score, asked after the answer is out, for the statistics only.
+            // ("the oldest movie" is sorted by year, so a good list holds it; a low score is an
+            // answer that missed.) Until Oct 2026 a catalogue's answers had no score at all.
+            Task<JudgeAnswer?>? ListAnswerability(List<long> keys) =>
+                origin != null && Writer != null && keys.Count > 0
+                    ? AnswerabilityAsync(SiteDescription(teamId, dataSetName, settings), question,
+                        new SearchSummary(keys.Count, true, keys.Take(ResultsForJudge)
+                            .Select(key => Describe(engine, key, fields, SnippetChars, forAnswer: false)).ToList()), settings.Kind)
+                    : null;
+            try
+            {
+                // A catalogue's description is answered with what it finds; a question about one item
+                // (no filter asked for) goes on to the ordinary answer below.
+                // With searches: several, a catalogue's question goes to the agent, which searches until it has
+                // the answer and puts the list on the page; it falls back to the quick summary below.
+                if (settings.Kind == SearchOrAskRecipes.Catalogue
+                    && settings.SearchesResolved() == SearchOrAskSettings.SeveralSearches
+                    && await AgentAnswerAsync(teamId, dataSetName, engine, settings, fields, question, history, model, askId, send, started, ct)
+                        is { } agent)
+                {
+                    outcome = agent.Outcome;
+                    merged = agent.Keys;
+                    firstText = agent.FirstTextMs;
+                    usage.Cost = agent.Cost;
+                    answerability = ListAnswerability(merged);
+                    return;
+                }
+                if (settings.Kind == SearchOrAskRecipes.Catalogue)
+                {
+                    CatalogueOutcome? catalogue;
+                    try
+                    {
+                        catalogue = await CatalogueAnswerAsync(teamId, dataSetName, engine, settings, fields, question, history, model, askId, send, started, ct);
+                    }
+                    catch (Exception ex) when (ex is SearchOrAskModelException or HttpRequestException)
+                    {
+                        outcome = "failed";
+                        _logger.LogWarning("Search or ask catalogue answer failed for {Team}/{Dataset}: {Error}", teamId, dataSetName, ex.Message);
+                        Refused("answer", ex);
+                        await send("error", new { code = ex is SearchOrAskModelException { Status: 429 } ? "upstreamBusy" : "failed", message = "The answer could not be written." });
+                        return;
+                    }
+                    if (catalogue != null)
+                    {
+                        outcome = catalogue.Outcome;
+                        merged = catalogue.Keys;
+                        firstText = catalogue.FirstTextMs;
+                        usage.Cost = catalogue.Cost;
+                        answerability = ListAnswerability(merged);
+                        return;
+                    }
+                }
+
+                (var typedSearch, merged) = AnswerSources(engine, dataSetName, teamId, question, fields, history);
+                if (merged.Count == 0)
+                {
+                    outcome = "nothingFound";
+                    await send("error", new { code = "nothingFound", message = "The search found nothing to answer from." });
+                    return;
+                }
+
+                // Whether these sources could answer the question, asked of the judge beside the
+                // answer (one more call, about $0.00004): a low score is a question the content
+                // does not cover, which is what the statistics list first. Only when recorded.
+                // On the sources the answer is written from, in their order, not on the typed
+                // search: "is there a limit on how many documents I can index for free" found
+                // Licensing through its keywords only, and judged on the typed search scored 0.13
+                // for a question the answer then answered in full.
+                if (origin != null && Writer != null)
+                    answerability = AnswerabilityAsync(SiteDescription(teamId, dataSetName, settings), question,
+                        typedSearch with
+                        {
+                            Top = merged.Take(ResultsForJudge).Select(key => Describe(engine, key, fields, SnippetChars, forAnswer: false)).ToList(),
+                        }, settings.Kind);
+
+                // The sources in full (up to a ceiling), not the judge's snippets: the answer is written from them.
+                var sources = merged.Select((key, i) => (N: i + 1, Doc: Describe(engine, key, fields, SourceChars, forAnswer: true))).ToList();
+                await send("sources", sources.Select(s => new AskSource(s.N, s.Doc.Item1, s.Doc.Item2)).ToArray());
+
+                // A catalogue's records are made of fields, not prose: each source also carries its facts
+                // on the filter fields (pupils, staff, grades, type), or a question about one item could
+                // only be answered from whatever the snippet fields happen to be.
+                var factSchema = settings.Kind == SearchOrAskRecipes.Catalogue ? FilterFields(teamId, dataSetName, engine) : null;
+                var facts = factSchema?.Fields;
+                var user = new StringBuilder();
+                foreach (var (n, doc) in sources)
+                {
+                    user.Append($"[{n}] {doc.Item2}");
+                    if (doc.Item3.Length > 0) user.Append($" ({doc.Item3})");
+                    user.Append('\n').Append(doc.Item4);
+                    if (facts is { Count: > 0 } && Facts(Parse(engine.GetJsonDataOfKey(doc.Item1)), facts, factSchema!.Readable) is { Length: > 0 } f)
+                        user.Append(doc.Item4.Length > 0 ? "\n" : "").Append("Facts: ").Append(f);
+                    user.Append("\n\n");
+                }
+                user.Append("Question: ").Append(question);
+                // Said again last, next to the question: from the system prompt alone, a site description
+                // naming its readers' languages still won 1 time in 10 (11 Oct 2026); with this, 0 in 10.
+                user.Append("\n\n").Append(SearchOrAskRecipes.LanguageReminder(settings));
+
+                try
+                {
+                    await foreach (var delta in _models.AnswerAsync(model, SearchOrAskRecipes.AnswerSystemPrompt(SiteDescription(teamId, dataSetName, settings), settings),
+                                       user.ToString(), history, usage, ct))
+                    {
+                        firstText ??= Ms();
+                        await send("text", new { delta });
+                    }
+                    outcome = "answered";
+                    Succeeded("answer");
+                    await send("done", new { model, askId, latencyMs = Ms() });
+                }
+                catch (SearchOrAskModelException ex)
+                {
+                    outcome = "failed";
+                    _logger.LogWarning("Search or ask answer failed for {Team}/{Dataset}: {Message}", teamId, dataSetName, ex.Message);
+                    Refused("answer", ex);
+                    await send("error", new { code = ex.Status == 429 ? "upstreamBusy" : "failed", message = "The answer could not be written." });
+                }
+                catch (HttpRequestException ex)
+                {
+                    outcome = "failed";
+                    _logger.LogWarning(ex, "Search or ask answer model unreachable for {Team}/{Dataset}", teamId, dataSetName);
+                    Refused("answer", ex);
+                    await send("error", new { code = "failed", message = "The answer could not be written." });
+                }
+                // Anything else is ours, not the provider's (a tool call's arguments read unguarded, a
+                // reply that was not JSON: gdagency, 11 Nov 2026). Until then it escaped: the console's
+                // circuit ended with the answer left loading, and a visitor's stream broke off with no
+                // error event. Logged as an error, said to the page as the provider's failures are.
+                catch (Exception ex) when (ex is not OperationCanceledException)
+                {
+                    outcome = "failed";
+                    _logger.LogError(ex, "Search or ask answer failed for {Team}/{Dataset}", teamId, dataSetName);
+                    await send("error", new { code = "failed", message = "The answer could not be written." });
+                }
+            }
+            finally
+            {
+                // Recorded however it ended, a visitor who went away included ("stopped").
+                if (origin != null && Writer is { } w)
+                {
+                    var judged = answerability == null ? null : await answerability;
+                    w.RecordAsk(new AskEventRow(askId ?? Guid.NewGuid().ToString("N"), teamId, dataSetName, Blank(origin.QueryId),
+                        question, model, string.Join(',', merged), outcome, firstText, Ms(),
+                        Sum(usage.Cost, judged?.Cost), judged?[SearchOrAskRecipes.Answerable],
+                        Blank(origin.Subject), Blank(origin.Session), origin.Source,
+                        DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), origin.Counted, FollowUp: history.Count > 0, Proactive: origin.Proactive));
+                    if (askId != null && outcome != "stopped")
+                        CompareWithLastAsk(teamId, dataSetName, settings, askId, question, history.Count > 0, origin);
+                    if (askId != null && outcome != "stopped" && origin.Counted && history.Count == 0)
+                        CompareWithEarlierNeeds(teamId, dataSetName, settings, question);
+                }
+            }
+        }
+
+        public const int MaxHistoryTurns = 3;
+        public const int MaxHistoryAnswer = 4000;
+
+        /// <summary>The conversation as the models get it: the last three turns, blank ones dropped,
+        /// each answer cut to 4,000 characters and stripped of its [n] marks, which named the
+        /// sources of that turn and would point at the wrong records in this one.</summary>
+        public static IReadOnlyList<AskTurn> Conversation(IReadOnlyList<AskTurn>? history) =>
+            (history ?? [])
+                .Where(t => !string.IsNullOrWhiteSpace(t.Question) && !string.IsNullOrWhiteSpace(t.Answer))
+                .TakeLast(MaxHistoryTurns)
+                .Select(t => new AskTurn(Clip(t.Question.Trim(), MaxQuestion),
+                    Clip(Regex.Replace(t.Answer, @"\s*\[\d+\]", "").Trim(), MaxHistoryAnswer), t.Shown))
+                .ToList();
+
+        private static string Clip(string s, int max) => s.Length <= max ? s : s[..max];
+
+        /// <summary>The search behind a follow-up: the words of the question before it and of this one,
+        /// within what a search may be sent.</summary>
+        public static string ContextSearch(string previous, string question)
+        {
+            var text = $"{KeywordsOf(previous) ?? previous} {KeywordsOf(question) ?? question}".Trim();
+            return text.Length <= MaxText ? text : text[..MaxText];
+        }
+
+        private static double? Sum(double? a, double? b) => a == null && b == null ? null : (a ?? 0) + (b ?? 0);
+
+        /// <summary>The records an answer is written from: the question as typed, its keywords and,
+        /// in a conversation, the previous question's words with this one's, interleaved so each
+        /// contributes its best. The typed search comes back too, for its hit count.</summary>
+        private static (SearchSummary Typed, List<long> Keys) AnswerSources(IServerSearchEngine engine, string dataSetName, string teamId,
+            string question, SearchOrAskFields fields, IReadOnlyList<AskTurn> history)
+        {
+            var typedSearch = Search(engine, dataSetName, teamId, question, fields, SourcesForAnswer, truncate: false);
+            var keywords = KeywordsOf(question) is { } k ? Search(engine, dataSetName, teamId, k, fields, SourcesForAnswer, truncate: false).Top : [];
+            // A follow-up ("and over HTTP?") names too little to search on alone: the previous
+            // question's words and this one's together find what the conversation is about.
+            var context = history.Count > 0
+                ? Search(engine, dataSetName, teamId, ContextSearch(history[^1].Question, question), fields, SourcesForAnswer, truncate: false).Top
+                : [];
+            List<long> merged = [];
+            var lists = new[] { context, keywords, typedSearch.Top };
+            for (int i = 0; merged.Count < SourcesForAnswer && lists.Any(l => i < l.Count); i++)
+                foreach (var list in lists)
+                    if (merged.Count < SourcesForAnswer && i < list.Count && !merged.Contains(list[i].Key)) merged.Add(list[i].Key);
+            return (typedSearch, merged);
+        }
+
+        /// <summary>The last question each visit asked, for the next one to be compared with: by team,
+        /// dataset and session, with its ask id and when. Kept in memory; a restart only means the
+        /// first question after it is not compared.</summary>
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<(string, string, string), (string AskId, string Question, long At)> _lastAsk = new();
+
+        /// <summary>
+        /// After a question is recorded: when the same visit asked another within five minutes, and
+        /// this one is no follow-up and not the same text again (a double submit, not a miss), the
+        /// judge is asked whether it is the same request in other words. Off the visitor's path, once
+        /// per pair, against the daily budget; the probability lands on this ask's row.
+        /// </summary>
+        private void CompareWithLastAsk(string teamId, string dataSetName, SearchOrAskSettings settings, string askId, string question,
+            bool followUp, SearchOrAskOrigin origin)
+        {
+            if (Blank(origin.Session) is not { } session || !origin.Counted) return;
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var key = (teamId, dataSetName, session);
+            var had = _lastAsk.TryGetValue(key, out var last);
+            _lastAsk[key] = (askId, question, now);
+            if (_lastAsk.Count > 20_000)
+                foreach (var stale in _lastAsk.Where(e => now - e.Value.At > SearchOrAskRephrasing.Window.TotalMilliseconds).Select(e => e.Key).ToList())
+                    _lastAsk.TryRemove(stale, out _);
+            if (!had || followUp || now - last.At > SearchOrAskRephrasing.Window.TotalMilliseconds) return;
+            if (SearchOrAskRephrasing.Normalise(last.Question) == SearchOrAskRephrasing.Normalise(question)) return;
+            if (!JudgeAvailable || Writer is not { } w) return;
+            var site = SiteDescription(teamId, dataSetName, settings);
+            _ = Task.Run(async () =>
+            {
+                if (!TryTakeBudget(teamId, dataSetName, settings.DailyCallBudget)) return;
+                if (await RephrasedAsync(site, last.Question, question) is { } p)
+                    w.RecordAskRephrase(new AskRephraseRow(askId, teamId, dataSetName, last.AskId, p));
+            });
+        }
+
+        /// <summary>The datasets whose question texts are being compared, so one comparison runs at a time.</summary>
+        private readonly ConcurrentDictionary<(string, string), byte> _comparingNeeds = new();
+
+        /// <summary>The texts each dataset was asked lately, by when: a run reads the texts from the
+        /// statistics, where the writer's queue may not have put the latest yet.</summary>
+        private readonly ConcurrentDictionary<(string, string), ConcurrentDictionary<string, long>> _recentNeedTexts = new();
+
+        /// <summary>How many earlier texts a new one is put to the judge against: the closest Indx finds.</summary>
+        public const int SameNeedCandidates = 3;
+
+        /// <summary>Texts compared per run, so a dataset with a backlog catches up a little per question.</summary>
+        public const int SameNeedTextsPerRun = 20;
+
+        /// <summary>The texts a run searches among, the most recently asked.</summary>
+        public const int SameNeedTextsSearched = 5000;
+
+        /// <summary>
+        /// After a question is recorded: each question text not yet compared (this one first, then any
+        /// left from before, oldest first) is put to the judge against the texts Indx finds closest,
+        /// whether the two ask for the same thing (<see cref="SearchOrAskRecipes.SameNeed"/>); the needs
+        /// join on its word. Off the visitor's path, once per pair, with no more than half the day's
+        /// budget, which stays for the visitors. A text is marked compared only when all its pairs were
+        /// judged, so one the budget or a failing judge cut short is taken up again next time. One run
+        /// per dataset at a time; a question asked during it makes it go round again.
+        /// </summary>
+        private void CompareWithEarlierNeeds(string teamId, string dataSetName, SearchOrAskSettings settings, string question)
+        {
+            if (!JudgeAvailable || _statistics?.Store is not { } store) return;
+            var key = (teamId, dataSetName);
+            var now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+            var recent = _recentNeedTexts.GetOrAdd(key, _ => new(StringComparer.Ordinal));
+            var asked = SearchOrAskRephrasing.Normalise(question);
+            if (asked.Length > 0) recent[asked] = now;
+            foreach (var old in recent.Where(e => now - e.Value > 60_000).Select(e => e.Key).ToList()) recent.TryRemove(old, out _);
+            if (!_comparingNeeds.TryAdd(key, 0)) return;
+            var site = SiteDescription(teamId, dataSetName, settings);
+            _ = Task.Run(async () =>
+            {
+                while (true)
+                {
+                    var started = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    try
+                    {
+                        await CompareNeedsOnceAsync(store, teamId, dataSetName, settings, site, recent);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogWarning(ex, "Comparing Search or ask's questions failed for {Team}/{Dataset}", teamId, dataSetName);
+                    }
+                    _comparingNeeds.TryRemove(key, out _);
+                    if (!recent.Values.Any(at => at >= started) || !_comparingNeeds.TryAdd(key, 0)) return;
+                }
+            });
+        }
+
+        private async Task CompareNeedsOnceAsync(StatisticsStore store, string teamId, string dataSetName, SearchOrAskSettings settings,
+            string site, ConcurrentDictionary<string, long> recent)
+        {
+            var texts = store.AskTexts(teamId, dataSetName, SameNeedTextsSearched);
+            var latest = recent.OrderByDescending(e => e.Value).Select(e => e.Key).ToList();
+            foreach (var text in latest.Where(t => !texts.Contains(t)).Reverse()) texts.Insert(0, text);
+            var compared = store.SameNeedCompared(teamId, dataSetName);
+            // What was asked lately first, then what is left from before, oldest first.
+            var pending = texts.Where(t => !compared.Contains(t)).Reverse()
+                .OrderBy(t => latest.Contains(t) ? 0 : 1).Take(SameNeedTextsPerRun).ToList();
+            if (pending.Count == 0) return;
+            if (texts.Count < 2)
+            {
+                foreach (var text in pending) store.MarkSameNeedCompared(teamId, dataSetName, text);
+                return;
+            }
+            using var engine = IndxServer.Components.Shared.MicroIndex.Build(texts);
+            foreach (var text in pending)
+            {
+                bool whole = true;
+                // BM25F alone, no word count and no reranking: it keeps the texts that hold the words,
+                // and a paraphrase may hold few.
+                var found = engine.Search(new Query { Text = text, MaxNumberOfRecordsToReturn = SameNeedCandidates + 1, Mode = SearchMode.Bm25f, Ranking = { Rerank = false } });
+                var candidates = found.Records.Where(r => r.Score > 0 && r.DocumentKey >= 0 && r.DocumentKey < texts.Count)
+                    .Select(r => texts[(int)r.DocumentKey]).Where(c => c != text).Take(SameNeedCandidates).ToList();
+                foreach (var other in candidates)
+                {
+                    if (store.SameNeedJudged(teamId, dataSetName, text, other)) continue;
+                    if (!TryTakeBudget(teamId, dataSetName, settings.DailyCallBudget, settings.DailyCallBudget / 2)) return;
+                    if (await SameNeedAsync(site, other, text) is { } p) store.SaveSameNeed(teamId, dataSetName, text, other, p);
+                    else whole = false;
+                }
+                if (whole) store.MarkSameNeedCompared(teamId, dataSetName, text);
+            }
+        }
+
+        /// <summary>The judge's word on two questions from different visits: the probability they ask
+        /// for the same thing, or null when the judge failed or took too long.</summary>
+        public async Task<double?> SameNeedAsync(string site, string first, string second)
+        {
+            using var timeout = new CancellationTokenSource(_options.JudgeTimeoutMs * 2);
+            try
+            {
+                var state = new JsonObject { ["site"] = site, ["first"] = first, ["second"] = second };
+                return (await _models.JudgeAsync(state, SearchOrAskRecipes.SameNeedQuestions(), timeout.Token))[SearchOrAskRecipes.SameNeed];
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or SearchOrAskModelException or HttpRequestException)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>The judge's word on two questions in a row: the probability the second asks the
+        /// first again, or null when the judge failed or took too long.</summary>
+        public async Task<double?> RephrasedAsync(string site, string first, string second)
+        {
+            using var timeout = new CancellationTokenSource(_options.JudgeTimeoutMs * 2);
+            try
+            {
+                var state = new JsonObject { ["site"] = site, ["first"] = first, ["second"] = second };
+                return (await _models.JudgeAsync(state, SearchOrAskRecipes.RephraseQuestions(), timeout.Token))[SearchOrAskRecipes.Rephrased];
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or SearchOrAskModelException or HttpRequestException)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>The judge's answerable question alone, on the question and what its search
+        /// found. Never throws: no score is the outcome of a judge that fails, within its timeout.</summary>
+        private async Task<JudgeAnswer?> AnswerabilityAsync(string site, string question, SearchSummary search, string kind)
+        {
+            using var timeout = new CancellationTokenSource(_options.JudgeTimeoutMs);
+            try
+            {
+                var questions = SearchOrAskRecipes.Questions(kind, Setup.JudgeProvider)
+                    .Where(q => q.Key == SearchOrAskRecipes.Answerable).ToDictionary(q => q.Key, q => q.Value);
+                return await _models.JudgeAsync(State(site, question, search), questions, timeout.Token);
+            }
+            catch (Exception ex) when (ex is OperationCanceledException or SearchOrAskModelException or HttpRequestException)
+            {
+                return null;
+            }
+        }
+
+        public void Dispose()
+        {
+            _intentLimiter.Dispose();
+            _askLimiter.Dispose();
+        }
+    }
+}

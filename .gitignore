@@ -1,0 +1,174 @@
+# .NET Core build artifacts
+bin/
+obj/
+out/
+
+# User-specific files
+*.rsuser
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Visual Studio Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.sln.docstates
+
+# Rider
+.idea/
+*.sln.iml
+
+# Claude Code
+.claude/
+
+# User secrets
+secrets.json
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# SQLite databases (optional - uncomment to track database files)
+*.db
+*.db-shm
+*.db-wal
+# If you want to track empty database schema, you can whitelist specific files:
+# !schema.db
+
+# NuGet Packages
+*.nupkg
+*.snupkg
+**/packages/*
+!**/packages/build/
+*.nuget.props
+*.nuget.targets
+
+# Cake
+tools/**
+!tools/packages.config
+
+# JetBrains Rider
+.idea/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# Publish profiles
+*.pubxml
+*.publishsettings
+
+# Azure
+*.azurePubxml
+*.pubxml.user
+
+# Test results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+*.VisualState.xml
+TestResult.xml
+[Dd]ebugPS/
+[Rr]eleasePS/
+
+# Code coverage
+*.coverage
+*.coveragexml
+coverage/
+
+# NCrunch
+_NCrunch_*
+.*crunch*.local.xml
+nCrunchTemp_*
+
+# ReSharper
+_ReSharper*/
+*.[Rr]e[Ss]harper
+*.DotSettings.user
+
+# Backup files
+*.bak
+*.tmp
+*~
+
+# Logs
+logs/
+Logs/
+*.log
+
+# Node modules (if using npm for frontend assets)
+node_modules/
+npm-debug.log*
+
+# Static files that may be generated
+wwwroot/lib/
+
+# Blazor specific
+**/*.blazor.server.log
+
+# Indx speficig
+*.license
+
+# Runtime instance state, written by the app (InstanceSettingsService). Contains
+# SetupComplete, registration policy, and potentially the license portal token —
+# never commit: a committed copy skips first-run onboarding on fresh installs
+# and can leak the token.
+IndxData/settings.json
+
+# A dataset's vector indexes, written beside the databases at runtime. One was committed by
+# mistake on 22 Oct 2026 (a 17 MB .indxvec); they are instance data, never source.
+IndxData/embeddings/
+*.indxvec
+
+# Secret/key material — never commit to the public repo.
+# (The root monorepo .gitignore covers these too, but it does NOT travel with the
+#  git-subtree split, so the rules must be repeated here.) jwt.key is the JWT
+#  token-signing secret auto-generated into IndxData/ on first run.
+*.key
+*.pfx
+*.pem
+
+# Generated at build (Swagger reads it from the build output, not the repo).
+IndxServer.xml
+
+# IDE/tooling caches
+*.lscache
+
+# Visual Studio publish-wizard artifacts (internal Azure resource names; regenerated on demand)
+Properties/ServiceDependencies/
+Properties/serviceDependencies*.json

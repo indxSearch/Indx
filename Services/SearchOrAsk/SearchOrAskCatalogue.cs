@@ -1,0 +1,244 @@
+using System.Diagnostics;
+using System.Globalization;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
+using Indx.Api;
+using Indx.Http;
+using IndxServer.Engine;
+
+namespace IndxServer.Services.SearchOrAsk
+{
+    /// <summary>
+    /// A catalogue's answer to a description ("private videregående skoler i trondheim"): the
+    /// description becomes filters, the search runs with them, and the answer model summarises
+    /// what was found: how many, what they share, what stands out, a few by name with citations,
+    /// and one way to narrow it. The filters go to the page first (event <c>filters</c>), so its
+    /// result list shows the same set the answer is about.
+    /// </summary>
+    public sealed partial class SearchOrAskService
+    {
+        /// <summary>The most records the summary counts and reads facts from.</summary>
+        private const int CatalogueFound = 200;
+        /// <summary>The records the model sees one by one, and may cite.</summary>
+        private const int CatalogueShown = 25;
+
+        private sealed record CatalogueOutcome(string Outcome, List<long> Keys, long? FirstTextMs, double? Cost);
+
+        /// <summary>Answers a description with a summary of what it finds, or returns null when the
+        /// text asks for no filter (a question about one item): the ordinary answer then follows.</summary>
+        private async Task<CatalogueOutcome?> CatalogueAnswerAsync(string teamId, string dataSetName, IServerSearchEngine engine,
+            SearchOrAskSettings settings, SearchOrAskFields fields, string question, IReadOnlyList<AskTurn> history, string model,
+            string? askId, Func<string, object, Task> send, long started, CancellationToken ct)
+        {
+            // A follow-up is read with the request before it and the list that put on the page, so
+            // "which is the largest?" after "skoler i bærum" becomes Bærum, sorted by size.
+            var earlier = history.Count > 0 ? history[^1] : null;
+            var described = earlier == null ? question
+                : $"Earlier the visitor asked: {earlier.Question}" +
+                  (earlier.Shown is { } was ? $" (the list shown: {was})" : "") + $"\nNow they ask: {question}";
+            long Ms() => (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            var schema = FilterFields(teamId, dataSetName, engine);
+            if (schema.Count == 0) return null;
+            var filterFields = schema.Fields;
+            var (suggested, left, sort, filterCost) = await SuggestFiltersAsync(teamId, dataSetName, settings, schema, described, ct);
+            if (suggested.Length == 0) return null;
+
+            var (used, keys) = RunFiltered(engine, teamId, dataSetName, suggested, left, sort, CatalogueFound);
+            if (used.Count == 0) return null;
+            // Nothing matches all of it: try fewer conditions here, as the message used to tell the
+            // visitor to ("bøker for sykepleiere" on a catalogue of books ended in that message,
+            // 19 Oct 2026). The leftover words go first, since a word the search holds nothing of
+            // under the filter is the usual cause; then each filter alone, the one finding most
+            // kept. Still nothing: the ordinary answer, from the plain search.
+            if (keys.Count == 0 && left.Length > 0)
+            {
+                var (u, k) = RunFiltered(engine, teamId, dataSetName, used, "", sort, CatalogueFound);
+                if (k.Count > 0) { used = u; keys = k; left = ""; }
+            }
+            if (keys.Count == 0 && used.Count > 1)
+            {
+                foreach (var one in used)
+                {
+                    var (u, k) = RunFiltered(engine, teamId, dataSetName, [one], "", sort, CatalogueFound);
+                    if (k.Count > keys.Count) { used = u; keys = k; left = ""; }
+                }
+            }
+            if (keys.Count == 0) return null;
+            await send("filters", new { filters = used, text = left, sort, found = keys.Count, more = keys.Count >= CatalogueFound });
+
+            // Facts from the fields a visitor can filter by: what a summary of a set is made of.
+            var docs = keys.Select(k => (Key: k, Doc: Parse(engine.GetJsonDataOfKey(k)))).ToList();
+            var shown = docs.Take(CatalogueShown).Select((d, i) => (N: i + 1, d.Key, d.Doc)).ToList();
+            var titleOf = (JsonNode? doc) => doc != null && fields.TitleField != null ? ReadField(doc, fields.TitleField) ?? "" : "";
+            await send("sources", shown.Select(s => new AskSource(s.N, s.Key, titleOf(s.Doc))).ToArray());
+
+            var user = new StringBuilder();
+            if (earlier != null) user.AppendLine($"Earlier the visitor asked: {earlier.Question}");
+            user.AppendLine($"The visitor typed: {question}");
+            user.AppendLine($"Searched with: {string.Join("; ", used.Select(Describe))}{(left.Length > 0 ? $"; and the words \"{left}\"" : "")}");
+            if (sort != null) user.AppendLine($"Sorted by {sort.Field}, {(sort.Descending ? "largest" : "smallest")} first; the page's list below shows them in that order.");
+            user.AppendLine(keys.Count >= CatalogueFound
+                ? $"Found: {CatalogueFound} or more; the summary below covers the first {CatalogueFound}."
+                : $"Found: {keys.Count}.");
+            user.AppendLine();
+            user.AppendLine("Summary of everything found:");
+            foreach (var line in Summary(docs.Select(d => d.Doc).ToList(), filterFields)) user.AppendLine($"- {line}");
+            user.AppendLine();
+            user.AppendLine(keys.Count > CatalogueShown ? $"The first {CatalogueShown}, numbered:" : "Each one, numbered:");
+            foreach (var s in shown)
+                user.AppendLine($"[{s.N}] {titleOf(s.Doc)}: {Facts(s.Doc, filterFields, schema.Readable)}");
+            user.AppendLine().Append(SearchOrAskRecipes.LanguageReminder(settings));
+
+            var usage = new AnswerUsage();
+            long? firstText = null;
+            await foreach (var delta in _models.AnswerAsync(model,
+                               SearchOrAskRecipes.CatalogueAnswerSystemPrompt(SiteDescription(teamId, dataSetName, settings), settings),
+                               user.ToString(), [], usage, ct))
+            {
+                firstText ??= Ms();
+                await send("text", new { delta });
+            }
+            Succeeded("answer");
+            await send("done", new { model, askId, latencyMs = Ms() });
+            return new CatalogueOutcome("answered", shown.Select(s => s.Key).ToList(), firstText,
+                usage.Cost == null && filterCost == null ? null : (usage.Cost ?? 0) + (filterCost ?? 0));
+        }
+
+        /// <summary>The search a description asks for: its filters as the engine builds them (one it
+        /// refuses is left out, never widened to all), the words left, an order. Returns the filters used
+        /// and the keys found, up to <paramref name="cap"/>.</summary>
+        private static (List<FilterSuggestion> Used, List<long> Keys) RunFiltered(IServerSearchEngine engine, string teamId,
+            string dataSetName, IEnumerable<FilterSuggestion> filters, string text, SortSuggestion? sort, int cap)
+        {
+            var (used, _, result) = RunSearch(engine, teamId, dataSetName, filters, null, text, sort, cap, broaden: false);
+            return (used, KeysOf(result));
+        }
+
+        private static List<long> KeysOf(Result? result) => (result?.Records ?? []).Select(r => r.DocumentKey).ToList();
+
+        /// <summary><see cref="RunFiltered"/> for the agent: also a filter expression (OR, NOT, IN, open
+        /// ranges), ANDed with the filters, and <paramref name="broaden"/>, the nearest records when none
+        /// holds every word. Returns the engine's result, which says how the records matched, or null
+        /// with nothing to search for; an expression that makes no filter is the errors, not a search.</summary>
+        private static (List<FilterSuggestion> Used, string? ExpressionError, Result? Result) RunSearch(IServerSearchEngine engine,
+            string teamId, string dataSetName, IEnumerable<FilterSuggestion> filters, string? expression, string text,
+            SortSuggestion? sort, int cap, bool broaden)
+        {
+            Filter? combined = null;
+            var used = new List<FilterSuggestion>();
+            foreach (var f in filters)
+            {
+                if (FilterConditionBuilder.Build(engine, f.Field, f.Value, f.Min, f.Max) is not { } built) continue;
+                combined = combined == null ? built : combined & built;
+                used.Add(f);
+            }
+            // Compiled here, as MCP's search does, so every error comes back with its place.
+            if (!string.IsNullOrWhiteSpace(expression))
+            {
+                if (engine.CreateFilter(expression, out var errors) is not { } byExpression)
+                    return (used, string.Join(" ", errors.Select(e => $"At position {e.Start}: {e.Message}")), null);
+                combined = combined == null ? byExpression : combined & byExpression;
+            }
+            if (combined == null && string.IsNullOrWhiteSpace(text)) return (used, null, null);
+            var result = IndxServerInternalApi.Manager.Search(new QueryProxy
+            {
+                Text = text,
+                Filter = combined == null ? null : new FilterProxy(combined.SerializedKey),
+                MaxNumberOfRecordsToReturn = cap,
+                EnableFacets = true,
+                Mode = text.Length > 0 ? SearchMode.EditDistance : SearchMode.Bm25f,
+                // Words narrow the list to the records holding them all, finished words: nothing
+                // holding them all is an empty list, not the fallback's nearest, so the summary's
+                // retries with fewer conditions run and the agent is not told near records "match"
+                // (6 Nov 2026; with the fallback on by default the list was never empty). Broaden,
+                // the agent's choice after such an empty list, takes the nearest, said as such.
+                Match = text.Length > 0 ? new MatchProxy { CursorAt = 0 } : null,
+                Candidates = text.Length > 0 ? new CandidateProxy { Fallback = broaden, Rest = broaden } : null,
+                // An order asked for ("the largest") puts those first: what is read first is what leads.
+                SortBy = sort?.Field ?? string.Empty,
+                SortAscending = sort is { Descending: false },
+            }, dataSetName, teamId);
+            return (used, null, result);
+        }
+
+        private static JsonNode? Parse(string? json)
+        {
+            try { return string.IsNullOrEmpty(json) ? null : JsonNode.Parse(json); }
+            catch (JsonException) { return null; }
+        }
+
+        private static string Describe(FilterSuggestion f) =>
+            f.Value != null ? $"{f.Field} = {f.Value}"
+            : $"{f.Field} {(f.Min != null ? $"from {Num(f.Min.Value)}" : "")}{(f.Min != null && f.Max != null ? " " : "")}{(f.Max != null ? $"to {Num(f.Max.Value)}" : "")}";
+
+        private static string Num(double d) => d.ToString("0.##", CultureInfo.InvariantCulture);
+
+        /// <summary>One record's facts on the filter fields: a yes/no only when yes, absent ones left out.</summary>
+        /// <summary>A record's facts as the models read them: each filter field, then each field read
+        /// though not filtered on. A list (genres, actors) is written out, its first
+        /// <see cref="ListValues"/> and how many more; it used to be left out.</summary>
+        private static string Facts(JsonNode? doc, List<FilterField> fields, IReadOnlyList<string>? readable = null)
+        {
+            if (doc == null) return "";
+            var parts = new List<string>();
+            foreach (var f in fields)
+            {
+                var v = FieldAt(doc, f.Name);
+                if (v is JsonArray list) { if (ListText(list) is { } t) parts.Add($"{f.Name} {t}"); continue; }
+                if (v is not JsonValue value) continue;
+                if (f.Type == "true/false")
+                {
+                    if (value.GetValueKind() == JsonValueKind.True) parts.Add(f.Name);
+                }
+                else parts.Add($"{f.Name} {value}");
+            }
+            foreach (var name in readable ?? [])
+            {
+                var v = FieldAt(doc, name);
+                var text = v is JsonArray list ? ListText(list) : v is JsonValue value && value.ToString() is { Length: > 0 } s ? s : null;
+                if (text != null) parts.Add($"{name} {text}");
+            }
+            return string.Join("; ", parts);
+        }
+
+        private const int ListValues = 6;
+
+        private static string? ListText(JsonArray list)
+        {
+            var values = list.OfType<JsonValue>().Select(x => x.ToString()).Where(x => x.Length > 0).ToList();
+            if (values.Count == 0) return null;
+            var shown = string.Join(", ", values.Take(ListValues));
+            return values.Count > ListValues ? $"{shown} and {values.Count - ListValues} more" : shown;
+        }
+
+        /// <summary>The set as a whole: each number's range and median, each text field's most common
+        /// values, each yes/no's count, over every record found.</summary>
+        private static List<string> Summary(List<JsonNode?> docs, List<FilterField> fields)
+        {
+            var lines = new List<string>();
+            foreach (var f in fields)
+            {
+                var values = docs.Select(d => d == null ? null : FieldAt(d, f.Name)).OfType<JsonValue>().ToList();
+                if (values.Count == 0) continue;
+                switch (f.Type)
+                {
+                    case "number":
+                        var n = values.Select(v => v.TryGetValue<double>(out var d) ? d : (double?)null).Where(d => d != null).Select(d => d!.Value).Order().ToList();
+                        if (n.Count > 0) lines.Add($"{f.Name}: {Num(n[0])} to {Num(n[^1])}, median {Num(n[n.Count / 2])} ({n.Count} with a value)");
+                        break;
+                    case "true/false":
+                        var yes = values.Count(v => v.GetValueKind() == JsonValueKind.True);
+                        if (yes > 0 && yes < docs.Count) lines.Add($"{f.Name}: {yes} of {docs.Count}");
+                        break;
+                    default:
+                        var top = values.GroupBy(v => v.ToString()).OrderByDescending(g => g.Count()).Take(5).ToList();
+                        if (top.Count > 1 || top.Count == 1 && top[0].Count() < docs.Count)
+                            lines.Add($"{f.Name}: {string.Join(", ", top.Select(g => $"{g.Key} {g.Count()}"))}");
+                        break;
+                }
+            }
+            return lines;
+        }
+    }
+}

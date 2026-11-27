@@ -1,0 +1,108 @@
+@* Port of indx-systm NavigationMenu (a Radix navigation-menu wrapper in React). Compose with
+   NavigationMenuList, NavigationMenuItem, NavigationMenuTrigger, NavigationMenuContent and
+   NavigationMenuLink. One item is open at a time and every item's content renders into the
+   single shared viewport below the list, like Radix's. Click-driven: hover intent and the
+   viewport height animation of the React version are not reproduced. *@
+
+@implements IDisposable
+@inject NavigationManager Navigation
+
+<nav aria-label="@AriaLabel" class="indx-navmenu indx-navmenu-@Size @(Align == "end" ? "indx-navmenu-align-end" : null) @Class"
+     data-orientation="@Orientation" style="@_style" @onkeydown="OnKeyDown">
+    <CascadingValue Value="this" IsFixed="true">
+        @ChildContent
+        @* The panel is rendered here, not where its Content sits, so it needs the cascade too. *@
+        @if (_openId != null && _contents.TryGetValue(_openId, out var content))
+        {
+            <div class="indx-navmenu-backdrop" @onclick="Close"></div>
+            <div class="indx-navmenu-viewport-position">
+                <div class="indx-navmenu-viewport" data-state="open">
+                    <div class="indx-navmenu-content">@content</div>
+                </div>
+            </div>
+        }
+    </CascadingValue>
+</nav>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+
+    /// <summary>"micro" | "default" | "large" — control height, padding and font. "large"
+    /// matches Button Size="large", with 21px icons.</summary>
+    [Parameter] public string Size { get; set; } = "default";
+
+    /// <summary>"start" | "end". "end" pins the list and the shared panel to the end edge, for a
+    /// menu at the right of a header so the panel stays on screen. In vertical orientation it
+    /// also aligns the items.</summary>
+    [Parameter] public string Align { get; set; } = "start";
+
+    /// <summary>"horizontal" | "vertical". Vertical stacks the items, each control filling the
+    /// row, for a mobile menu.</summary>
+    [Parameter] public string Orientation { get; set; } = "horizontal";
+
+    /// <summary>Width of the shared panel as a CSS length. Defaults to 560px, capped at the
+    /// menu's width.</summary>
+    [Parameter] public string? PanelWidth { get; set; }
+
+    /// <summary>Icon size for triggers and navigation links at the current Size, matching Button.</summary>
+    internal int IconSize => Size == "large" ? 21 : 14;
+
+    private string? _style => PanelWidth == null ? null : $"--panel-width: {PanelWidth}";
+
+    [Parameter] public string? Class { get; set; }
+
+    [Parameter] public string AriaLabel { get; set; } = "Main navigation";
+
+    private string? _openId;
+    private readonly Dictionary<string, RenderFragment> _contents = new();
+
+    internal bool IsOpen(string id) => _openId == id;
+
+    internal void Toggle(string id)
+    {
+        _openId = _openId == id ? null : id;
+        StateHasChanged();
+    }
+
+    internal void Close()
+    {
+        if (_openId == null) return;
+        _openId = null;
+        StateHasChanged();
+    }
+
+    internal void Register(string id, RenderFragment content) => _contents[id] = content;
+    internal void Unregister(string id) => _contents.Remove(id);
+
+    /// <summary>Whether <paramref name="href"/> is the current page — the React version's
+    /// <c>active</c> prop, resolved automatically here.</summary>
+    internal bool IsCurrent(string? href)
+    {
+        if (string.IsNullOrEmpty(href)) return false;
+        var current = Navigation.ToBaseRelativePath(Navigation.Uri).TrimEnd('/');
+        return current.Equals(href.TrimStart('/').TrimEnd('/'), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape") Close();
+    }
+
+    protected override void OnInitialized() => Navigation.LocationChanged += OnLocationChanged;
+
+    // Always re-render, not only when a panel was open: the links resolve "current page" from the
+    // address when they render, so a persistent layout kept marking the old page until then.
+    private async void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        try
+        {
+            await InvokeAsync(() => { _openId = null; StateHasChanged(); });
+        }
+        catch (Exception ex)
+        {
+            await DispatchExceptionAsync(ex);
+        }
+    }
+
+    public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
+}

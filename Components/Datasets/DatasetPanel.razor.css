@@ -1,0 +1,12 @@
+.indx-dataset-card {
+    margin-top: 0;
+}
+
+.indx-dataset-card-inner {
+    position: relative;
+}
+
+/* The note above a tab a viewer reads but cannot change (ReadOnlyArea). */
+.indx-readonly-note {
+    margin-bottom: 16px;
+}

@@ -1,0 +1,4 @@
+/* In the last column of the Observr datasets table: the button, and what came of it under it, both
+   to the right, the answer wrapping rather than running past the column (20 Nov 2026). */
+.opt-row { display: inline-flex; flex-direction: column; align-items: flex-end; gap: 4px; max-width: 100%; }
+.opt-muted { font: var(--text-xs); color: var(--lv5); white-space: normal; text-align: right; }

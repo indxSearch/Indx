@@ -1,0 +1,21 @@
+/* One line across the window under the header, in inverted ink. */
+.security-strip {
+    flex: none;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 12px;
+    padding: 8px 12px 8px 16px;
+    background: var(--lv8);
+    color: var(--lv0);
+    font: var(--text-sm);
+}
+.security-strip-text { flex: 1 1 320px; min-width: 0; }
+.security-strip-muted { opacity: 0.75; margin-left: 4px; }
+.security-strip-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+/* The buttons inverted for the dark strip: the main action as a light fill with dark text, the
+   others light text that hovers to a step lighter than the strip. The selectors repeat the
+   systm's :hover:not(...) chain so they outrank it rather than tie. */
+.security-strip-actions ::deep .indx-btn-primary { background: var(--lv1); color: var(--lv8); }
+.security-strip-actions ::deep .indx-btn-ghost { color: var(--lv1); }
+.security-strip-actions ::deep .indx-btn-ghost:hover:not(:disabled):not([aria-disabled="true"]) { background: var(--lv7); color: var(--lv0); }

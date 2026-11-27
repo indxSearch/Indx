@@ -1,0 +1,8 @@
+@* Port of indx-systm TableIcon: a 14px icon slot inside a cell. Decorative unless given an
+   AriaLabel. The fragment receives the size. *@
+<span class="indx-table-icon" aria-hidden="@(AriaLabel == null ? "true" : null)" aria-label="@AriaLabel">@ChildContent(14)</span>
+
+@code {
+    [Parameter, EditorRequired] public RenderFragment<int> ChildContent { get; set; } = default!;
+    [Parameter] public string? AriaLabel { get; set; }
+}

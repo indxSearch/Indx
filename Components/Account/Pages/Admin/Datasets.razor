@@ -1,0 +1,511 @@
+@page "/admin/datasets"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@using IndxServer.Data
+@using IndxServer.Models
+@using IndxServer.Engine
+@using Indx.Api
+@attribute [Authorize(Roles = "Admin")]
+@inject UserManager<ApplicationUser> UserManager
+@inject IndxServer.Services.TeamService TeamService
+@inject ILogger<Datasets> Logger
+@inject IndxServer.Services.StatisticsService Stats
+
+<PageTitle>Admin — Datasets</PageTitle>
+
+
+
+<div style="display: flex; align-items: center; gap: 16px; margin-bottom: 40px;">
+    <div>
+        <h2 style="margin-bottom: 4px;">Datasets</h2>
+        <p style="color: var(--lv5);">All datasets across all teams.</p>
+    </div>
+    <Button Variant="ghost" Size="micro" IconLeft="_iconRefresh" style="margin-left: auto;" Loading="@_loading" @onclick="() => Load(recount: true)">Refresh</Button>
+</div>
+
+@if (!string.IsNullOrEmpty(_message))
+{
+    <div style="padding: 14px 18px; border: 1px solid var(--CTeal); border-radius: var(--radius); background: rgba(114,245,198,0.08); margin-bottom: 24px;">
+        @_message
+    </div>
+}
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div style="padding: 14px 18px; border: 1px solid var(--CSignal); border-radius: var(--radius); background: rgba(255,66,56,0.08); margin-bottom: 24px;">
+        @_errorMessage
+    </div>
+}
+
+@if (_rows == null)
+{
+    <p style="display:flex; align-items:center; gap:8px; color:var(--lv5);"><Spinner Size="14" /> Loading datasets…</p>
+}
+else if (_rows.Count == 0)
+{
+    <EmptyState Size="compact" Icon="DatasetIcons.Disk" Title="No datasets yet">The instance's datasets are listed here, every team's, once one is made.</EmptyState>
+}
+else
+{
+    @* Documents by dataset, the largest four and the rest: what the instance holds, read from the
+       store, so a hibernated dataset counts too. Moved here from Monitor on 25 Oct 2026: it is
+       about the datasets, not about how the instance is doing right now. *@
+    @if (_rows.Any(r => r.RecordCount > 0))
+    {
+        <div class="admin-datasets-docs">
+            @* The whole first, as a stat card states it: the bar shows the shares of it. *@
+            <div class="admin-datasets-docs-head">
+                <span class="admin-datasets-docs-title">Documents by dataset</span>
+                <span class="admin-datasets-docs-total">@_rows.Sum(r => (long)r.RecordCount).ToString("N0") documents</span>
+            </div>
+            <BarMeter Segments="DocumentsByDataset()" Labels="legend" Format="@(v => v.ToString("N0"))" />
+        </div>
+    }
+
+    @* systm Table: seven columns do not fit a phone, so the table scrolls inside its own frame
+       with the dataset name pinned, and reaches the right edge of the screen while it does. *@
+    @* Carries the scope attribute that Datasets.razor.css's ::deep rules need above the table;
+   systm Table's own wrapper does not have it, so without this the stylesheet matches nothing. *@
+<div class="admin-datasets-table-wrap">
+<Table Scrollable StickyFirstColumn BleedEnd="var(--page-gutter)" AriaLabel="All datasets" Class="admin-datasets-table">
+        <thead>
+            <tr>
+                <th scope="col">Dataset</th>
+                <th scope="col">Team</th>
+                <th scope="col">State</th>
+                <th scope="col" style="text-align: right;">Documents</th>
+                <th scope="col">Last indexed</th>
+                <th scope="col">Keep-alive</th>
+                <th scope="col">Filter cache</th>
+                <th scope="col">Woken</th>
+                <th scope="col" aria-label="Actions"></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var row in _rows)
+            {
+                <tr>
+                    <td style="color: var(--lv6); font-family: var(--font-mono);">@row.DataSetName</td>
+                    <td style="color: var(--lv5);">@(row.TeamName ?? row.TeamId)</td>
+                    <td>
+                        @if (row.Unknown)
+                        {
+                            <span style="color: var(--lv4);">—</span>
+                        }
+                        else if (row.Hibernated)
+                        {
+                            var chip = DatasetStateChip.Hibernated;
+                            <Chip Size="large" Color="@chip.Color" TextColor="@chip.TextColor" Icon="@chip.Icon">Hibernated</Chip>
+                        }
+                        else
+                        {
+                            var chip = DatasetStateChip.For(row.State!.Value);
+                            <Chip Size="large" Color="@chip.Color" TextColor="@chip.TextColor" Icon="@chip.Icon">@row.State.Value.ToString()</Chip>
+                        }
+                    </td>
+                    <td style="text-align: right; color: var(--lv5); font-variant-numeric: tabular-nums;">
+                        @(row.Unknown ? "—" : row.DisplayCount.ToString("N0"))
+                    </td>
+                    <td style="color: var(--lv5);">
+                        <TimeAgo Value="row.LastIndexed" TooltipPosition="left" />
+                    </td>
+                    <td style="color: var(--lv5);">
+                        @if (_editKey == row.Key)
+                        {
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <div style="width: 190px;">
+                                    <SelectField @bind-Value="_editMode" Options="_keepAliveModes" />
+                                </div>
+                                @if (_editMode == "timed")
+                                {
+                                    <div style="width: 72px;">
+                                        <InputField @bind-Value="_editHours" placeholder="hours" />
+                                    </div>
+                                }
+                                <Button Variant="primary" Size="micro" Loading="@_saving" @onclick="() => SaveKeepAlive(row.DataSetName, row.TeamId)">Save</Button>
+                                <Button Variant="ghost" Size="micro" Disabled="@_saving" @onclick="() => _editKey = null">Cancel</Button>
+                            </div>
+                        }
+                        else
+                        {
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-variant-numeric: tabular-nums;">@KeepAliveLabel(row.KeepAliveTimeHrs)</span>
+                                <span style="color: var(--lv4); font-size: 12px;">@RemainingLabel(row)</span>
+                                <Button Variant="ghost" Size="micro" @onclick="() => BeginEdit(row)">Edit</Button>
+                            </div>
+                        }
+                    </td>
+                    @* The filter cache (24 Nov 2026): what it holds of its limit while the dataset is
+                       loaded, the limit alone while not. A new limit rebuilds a loaded dataset. *@
+                    <td style="color: var(--lv5);">
+                        @if (_cacheEditKey == row.Key)
+                        {
+                            <div style="display: flex; align-items: center; gap: 6px;">
+                                <div style="width: 80px;">
+                                    <InputField @bind-Value="_cacheEdit" placeholder="MB" />
+                                </div>
+                                <span style="color: var(--lv4); font-size: 12px;">MB</span>
+                                <Button Variant="primary" Size="micro" Loading="@_saving" @onclick="() => SaveFilterCache(row)">Save</Button>
+                                <Button Variant="ghost" Size="micro" Disabled="@_saving" @onclick="() => _cacheEditKey = null">Cancel</Button>
+                            </div>
+                        }
+                        else
+                        {
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-variant-numeric: tabular-nums; white-space: nowrap;">@FilterCacheLabel(row)</span>
+                                @if (_rebuilding.Contains(row.Key))
+                                {
+                                    <Spinner Size="14" />
+                                }
+                                else
+                                {
+                                    <Button Variant="ghost" Size="micro" @onclick="() => BeginEditFilterCache(row)">Edit</Button>
+                                }
+                            </div>
+                        }
+                    </td>
+                    @* The days a timed dataset was woken in the last 16 weeks, a cell a day: at a glance
+                       which ones are woken for nothing, and which never. From the statistics change
+                       log, as the Status tab's calendar. Always-on and client-managed never wake. *@
+                    <td>
+                        @if (row.Woken is { } woken)
+                        {
+                            <div class="admin-datasets-woken" title="@(row.WokenDays == 0 ? "Not woken in the last 16 weeks" : $"Woken on {row.WokenDays} of the last 112 days")">
+                                <Heatmap Values="woken.Values" Rows="7" Cell="4" Max="2" AriaLabel="@($"{row.DataSetName}: days woken, last 16 weeks")"
+                                         Format="@((v, i) => woken.Dates[i] is { } d ? $"{d:d MMM yyyy}: {(v == 0 ? "not woken" : v == 1 ? "woken once" : $"woken {v:0} times")}" : "")" />
+                            </div>
+                        }
+                        else
+                        {
+                            <span style="color: var(--lv4);">—</span>
+                        }
+                    </td>
+                    <td style="text-align: right; white-space: nowrap;">
+                        @* Hibernate now (6 Nov 2026): frees the memory of a loaded dataset that is not
+                           pinned. A pinned one is kept loaded on purpose; a timed one wakes again on
+                           its next search, so the tooltip says which. *@
+                        @if (row.State == SystemState.Ready && row.KeepAliveTimeHrs != int.MaxValue)
+                        {
+                            <Tooltip Content="@(row.KeepAliveTimeHrs == 0
+                                ? "Hibernate: unload it from memory now. The data stays on disk; it stays asleep until someone wakes it."
+                                : "Hibernate: unload it from memory now. The data stays on disk; it wakes again on its next search.")">
+                                <Button Variant="ghost" Size="micro" IconLeft="_iconHibernate" aria-label="@($"Hibernate {row.DataSetName}")"
+                                        Loading="@(_hibernating == row.Key)" Disabled="@(_hibernating != null)" @onclick="() => HibernateRow(row)" />
+                            </Tooltip>
+                        }
+                        <Button Variant="ghost" Size="micro" IconLeft="_iconDelete" title="Delete dataset" @onclick="() => { _deleting = row; _deleteOpen = true; }" />
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </Table>
+</div>
+}
+
+<ConfirmModal @bind-Open="_deleteOpen" Title="@($"Delete {_deleting?.DataSetName}?")" Consequences="DeleteLines"
+              TypeToConfirm="@_deleting?.DataSetName" ConfirmLabel="Delete dataset" ConfirmIcon="_iconDelete" OnConfirm="ConfirmDeleteDataset" />
+
+@code {
+    private RenderFragment<int> _iconDelete  => size => @<Delete Size="size" />;
+    private RenderFragment<int> _iconHibernate => size => @<Indx.Systm.Blazor.Icons.Hibernate Size="size" />;
+    private RenderFragment<int> _iconRefresh => size => @<Refresh Size="size" />;
+
+    private record DatasetRow(
+        string DataSetName, string TeamId, string? TeamName,
+        SystemState? State, int DocumentCount, DateTime? LastIndexed,
+        int KeepAliveTimeHrs, bool Loaded, TimeSpan? Remaining, int RecordCount,
+        Heatmap.Calendar? Woken = null, int WokenDays = 0,
+        int FilterCacheMB = SearchEngine.DefaultFilterCacheMB, long FilterCacheBytes = 0, int FilterCacheFilters = 0)
+    {
+        public string Key => $"{TeamId}/{DataSetName}";
+
+        /// <summary>
+        /// What the admin should see. The raw engine state says "Created" (or the engine
+        /// is not instantiated at all) for a dataset whose documents live in indx.db with
+        /// no index in memory - which is hibernation, not an empty dataset. The one shared
+        /// sentence: Created (or no instance) with records on disk means hibernated.
+        /// </summary>
+        public bool Hibernated => (State is null or SystemState.Created) && RecordCount > 0;
+
+        /// <summary>Nothing to show: no engine and nothing persisted either.</summary>
+        public bool Unknown => State is null && !Hibernated;
+
+        /// <summary>In-memory count when serving; persisted count when hibernated.</summary>
+        public int DisplayCount => Hibernated ? RecordCount : DocumentCount;
+    }
+
+    private static string KeepAliveLabel(int hrs) => hrs switch
+    {
+        int.MaxValue => "∞ pinned",
+        0 => "Off (manual)",
+        _ => $"{hrs} h",
+    };
+
+    private static string RemainingLabel(DatasetRow row)
+    {
+        if (row.KeepAliveTimeHrs is int.MaxValue or 0)
+            return "";
+        if (!row.Loaded)
+            return "(not loaded)";
+        if (row.Remaining is { } rem)
+            return rem.TotalHours >= 1 ? $"~{(int)rem.TotalHours}h {rem.Minutes}m left" : $"~{rem.Minutes}m left";
+        return "";
+    }
+
+    private List<DatasetRow>? _rows;
+    private string? _message;
+    private string? _errorMessage;
+    private bool _deleteOpen;
+    private DatasetRow? _deleting;
+
+    private IReadOnlyList<string> DeleteLines => _deleting is not { } row ? [] :
+    [
+        row.DisplayCount > 0
+            ? $"Its {row.DisplayCount.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)} documents are deleted, with its field configuration, boost rules and synonyms."
+            : "It is deleted, with its field configuration, boost rules and synonyms.",
+        $"It belongs to {row.TeamName ?? "a team"}. Its members lose it, and websites and apps that search it get errors.",
+        "API keys limited to this dataset no longer reach anything.",
+        "This can't be undone.",
+    ];
+
+    /// <summary>Null on success, else the reason, shown in the modal.</summary>
+    private async Task<string?> ConfirmDeleteDataset()
+    {
+        if (_deleting == null) return null;
+        await DeleteDataset(_deleting.DataSetName, _deleting.TeamId);
+        var error = _errorMessage;
+        _errorMessage = null;
+        return error;
+    }
+    private string? _cacheEditKey;
+    private string _cacheEdit = "";
+    private readonly HashSet<string> _rebuilding = [];
+
+    private static string FilterCacheLabel(DatasetRow row) =>
+        row.FilterCacheMB == 0 ? "Off"
+        : row.State == SystemState.Ready ? $"{IndxServer.Components.Datasets.DatasetContext.FormatBytes(row.FilterCacheBytes)} of {row.FilterCacheMB:N0} MB"
+        : $"{row.FilterCacheMB:N0} MB";
+
+    private void BeginEditFilterCache(DatasetRow row)
+    {
+        _errorMessage = null;
+        _cacheEdit = row.FilterCacheMB.ToString();
+        _cacheEditKey = row.Key;
+    }
+
+    /// <summary>A new limit is saved; a loaded dataset is rebuilt with it in the background, and its
+    /// row read again when the rebuild is done.</summary>
+    private async Task SaveFilterCache(DatasetRow row)
+    {
+        _message = _errorMessage = null;
+        if (!int.TryParse((_cacheEdit ?? "").Trim(), out int megabytes) || megabytes < 0)
+        {
+            _errorMessage = $"\"{_cacheEdit}\" is not a number of megabytes. Enter a whole number, 0 for none.";
+            return;
+        }
+        _saving = true;
+        string? refused = null;
+        bool rebuilding = false;
+        try { await Task.Run(() => refused = IndxServerInternalApi.Manager.SetFilterCacheMB(row.DataSetName, row.TeamId, megabytes, out rebuilding)); }
+        finally { _saving = false; }
+        if (refused != null) { _errorMessage = $"{row.DataSetName}: {refused}"; return; }
+        _cacheEditKey = null;
+        if (!rebuilding) { await Load(); return; }
+
+        _rebuilding.Add(row.Key);
+        _message = $"{row.DataSetName} is being rebuilt with a filter cache of {megabytes:N0} MB. Searches go on meanwhile.";
+        StateHasChanged();
+        var manager = IndxServerInternalApi.Manager;
+        while (manager.IsShadowBuildInProgress(row.DataSetName, row.TeamId))
+            await Task.Delay(1000);
+        _rebuilding.Remove(row.Key);
+        if (manager.ShadowBuildError(row.DataSetName, row.TeamId) is { Length: > 0 } failed)
+            _errorMessage = $"{row.DataSetName}: the rebuild failed, and the limit is as it was: {failed}";
+        else
+            _message = $"{row.DataSetName} has a filter cache of {megabytes:N0} MB.";
+        await Load();
+    }
+
+    private string? _editKey;
+    private string _editMode = "max";   // "max" (∞ pinned) | "0" (manual) | "timed"
+    private string _editHours = "24";
+
+    private static readonly IEnumerable<SelectField.SelectOption> _keepAliveModes =
+    [
+        new("∞ Pinned — always loaded", "max"),
+        new("Off — client-managed", "0"),
+        new("Timed — idle eviction", "timed"),
+    ];
+
+    protected override async Task OnInitializedAsync() => await Load();
+
+    // Refresh keeps the rows it has and shows the work on its button: the list only says
+    // "Loading datasets…" the first time, and a reload is a COUNT(*) per dataset.
+    private bool _loading, _saving;
+
+    /// <summary><paramref name="recount"/> counts sleeping datasets' records again instead of using
+    /// the counts kept (<see cref="IndxServer.Services.DatasetRecordCounts"/>): Refresh does.</summary>
+    private async Task Load(bool recount = false)
+    {
+        _loading = true;
+        try { await LoadRows(recount); }
+        finally { _loading = false; }
+    }
+
+    private async Task LoadRows(bool recount)
+    {
+        // Owner keys are team ids; map them to team names for display.
+        var teamMap = (await TeamService.GetAllAsync())
+            .ToDictionary(t => t.Id.ToString(), t => t.Name);
+
+        var all = IndxServerInternalApi.Manager.GetAllDataSets();
+        // Off the circuit thread: the record count is a COUNT(*) per sleeping dataset not counted in
+        // the last ten minutes (DatasetRecordCounts), and this page must
+        // never call GetState — that goes through ResolveEngine, which auto-loads a hibernated
+        // timed/pinned dataset, so listing the admin page used to load and index every dataset
+        // on disk before it could render. FindSearchEngine reads what is in memory only.
+        var store = Stats.Enabled ? Stats.Store : null;
+        var rows = await Task.Run(() => all.Select(r =>
+        {
+            var engine = IndxServerInternalApi.Manager.FindSearchEngine(r.DataSetName, r.TeamId);
+            var status = engine is { IsDisposed: false } ? engine.Status : null;
+            var ka = IndxServerInternalApi.Manager.GetKeepAliveInfo(r.DataSetName, r.TeamId, countRecordsOnDisk: false);
+            var (woken, wokenDays) = ka.KeepAliveTimeHrs is > 0 and not int.MaxValue && store != null
+                ? Woken(store, r.TeamId, r.DataSetName) : (null, 0);
+            return new DatasetRow(
+                r.DataSetName, r.TeamId, teamMap.GetValueOrDefault(r.TeamId),
+                status?.SystemState, status?.DocumentCount ?? 0, status?.TimeOfLastIndexBuild,
+                ka.KeepAliveTimeHrs, ka.Ready, ka.Remaining, IndxServer.Services.DatasetRecordCounts.Get(r.DataSetName, r.TeamId, recount), woken, wokenDays,
+                IndxServerInternalApi.FilterCacheMBFor(r.DataSetName, r.TeamId), status?.FilterCacheBytes ?? 0, status?.FilterCacheFilters ?? 0);
+        }).ToList());
+        _rows = [.. rows.OrderBy(r => r.TeamName ?? r.TeamId).ThenBy(r => r.DataSetName)];
+    }
+
+    private const int WokenWeeks = 16;
+
+    /// <summary>The wakes of the last 16 weeks per local day of the dataset's statistics zone, as the
+    /// cells of a calendar, and the days with any: the Status tab's read, one query a dataset.</summary>
+    private static (Heatmap.Calendar Calendar, int Days) Woken(IndxServer.Services.StatisticsStore store, string team, string ds)
+    {
+        var tz = store.ZoneOf(team, ds);
+        long toDay = IndxServer.Services.StatisticsDays.Today(tz);
+        long fromDay = toDay - WokenWeeks * 7 + 1;
+        var perDay = new Dictionary<long, int>();
+        foreach (var c in store.Changes(team, ds, fromDay, toDay))
+            if (c.Kind == IndxServer.Services.DatasetChangeKind.Wake)
+            {
+                long day = IndxServer.Services.StatisticsDays.DayOf(tz, c.Timestamp);
+                perDay[day] = perDay.GetValueOrDefault(day) + 1;
+            }
+        int epoch = DateOnly.Parse("1970-01-01").DayNumber;
+        var calendar = Heatmap.CalendarCells(DateOnly.FromDayNumber((int)fromDay + epoch), DateOnly.FromDayNumber((int)toDay + epoch),
+            d => perDay.GetValueOrDefault(d.DayNumber - epoch));
+        return (calendar, perDay.Count);
+    }
+
+    /// <summary>The largest four datasets by stored documents, the rest as one segment. A name may
+    /// recur in another team, so a repeated one says whose it is. The four take the data-viz
+    /// colours in order, the rest the grey every chart gives Other.</summary>
+    private List<BarMeter.Segment> DocumentsByDataset()
+    {
+        var rows = _rows!.Where(r => r.RecordCount > 0).OrderByDescending(r => r.RecordCount).ToList();
+        var repeated = rows.GroupBy(r => r.DataSetName).Where(g => g.Count() > 1).Select(g => g.Key).ToHashSet();
+        var top = rows.Take(4).Select((r, i) => new BarMeter.Segment(
+            repeated.Contains(r.DataSetName) ? $"{r.DataSetName} ({r.TeamName ?? r.TeamId})" : r.DataSetName, r.RecordCount,
+            $"var(--viz{i + 1})")).ToList();
+        var rest = rows.Skip(4).Sum(r => (double)r.RecordCount);
+        if (rest > 0) top.Add(new("Others", rest, "var(--lv4)"));
+        return top;
+    }
+
+    private void BeginEdit(DatasetRow row)
+    {
+        _message = null; _errorMessage = null;
+        _editKey = row.Key;
+        (_editMode, _editHours) = row.KeepAliveTimeHrs switch
+        {
+            int.MaxValue => ("max", "24"),
+            0 => ("0", "24"),
+            var h => ("timed", h.ToString()),
+        };
+    }
+
+    private async Task SaveKeepAlive(string dataSetName, string teamId)
+    {
+        _message = null; _errorMessage = null;
+
+        int hrs;
+        switch (_editMode)
+        {
+            case "max": hrs = int.MaxValue; break;
+            case "0": hrs = 0; break;
+            default:
+                if (!int.TryParse((_editHours ?? "").Trim(), out hrs) || hrs < 1)
+                {
+                    _errorMessage = $"\"{_editHours}\" is not a valid number of hours — enter a whole number of 1 or more.";
+                    return;
+                }
+                break;
+        }
+
+        _saving = true;
+        try
+        {
+            var ok = await Task.Run(() => IndxServerInternalApi.Manager.SetKeepAliveHrs(dataSetName, teamId, hrs));
+            if (ok)
+            {
+                Logger.LogInformation("Admin set KeepAliveTimeHrs={Hrs} for dataset {DataSetName} team {TeamId}", hrs, dataSetName, teamId);
+                _message = $"Keep-alive for \"{dataSetName}\" set to {KeepAliveLabel(hrs)}.";
+                await Load();
+                _editKey = null;
+            }
+            else
+            {
+                _errorMessage = $"Could not update keep-alive for \"{dataSetName}\".";
+            }
+        }
+        finally { _saving = false; }
+    }
+
+    /// <summary>The row being put to sleep, so its button spins and the others wait.</summary>
+    private string? _hibernating;
+
+    private async Task HibernateRow(DatasetRow row)
+    {
+        _message = null; _errorMessage = null;
+        _hibernating = row.Key;
+        try
+        {
+            // Unloading takes a moment on a large dataset; off the circuit, so the spinner paints.
+            await Task.Run(() => IndxServerInternalApi.Manager.SleepDataSetInstance(row.DataSetName, row.TeamId));
+            IndxServerInternalApi.Manager.ReportChange(row.DataSetName, row.TeamId, IndxServer.Services.DatasetChangeKind.Hibernate, new { reason = "admin" });
+            Logger.LogInformation("Admin hibernated dataset {DataSetName} of team {Team}", row.DataSetName, row.TeamName ?? row.TeamId);
+            _message = $"Dataset \"{row.DataSetName}\" hibernated.";
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Admin hibernate of {DataSetName} failed", row.DataSetName);
+            _errorMessage = $"Could not hibernate \"{row.DataSetName}\": {ex.Message}";
+        }
+        finally { _hibernating = null; }
+        await Load();
+    }
+
+    private async Task DeleteDataset(string dataSetName, string teamId)
+    {
+        _message = null; _errorMessage = null;
+        // Engine disposal can take seconds; off the circuit, or the spinner cannot paint.
+        var deleted = await Task.Run(() => IndxServerInternalApi.Manager.DeleteDataSet(dataSetName, teamId));
+        if (deleted)
+        {
+            Logger.LogInformation("Admin deleted dataset {DataSetName} of team {Team}", dataSetName,
+                _rows?.FirstOrDefault(r => r.TeamId == teamId)?.TeamName ?? "an unknown team");
+            _message = $"Dataset \"{dataSetName}\" deleted.";
+            await Load();
+        }
+        else
+        {
+            _errorMessage = $"Could not delete \"{dataSetName}\" — it may have already been removed.";
+        }
+    }
+}

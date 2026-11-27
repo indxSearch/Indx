@@ -1,0 +1,34 @@
+@* The team page: the team's datasets as a grid. The [team ▾] trail is in the header
+   (HeaderState). Hosted by Pages/ConsolePage. *@
+
+<PageTitle>@TeamName</PageTitle>
+
+@inject HeaderState Header
+@inject NavigationManager NavigationManager
+@implements IDisposable
+
+@* Observr, the team's API keys and Manage team are the side column's (ConsoleSideMenu), beside
+   the datasets, since the column became the systm Sidebar; they were buttons here. *@
+<GetStartedWelcome TeamName="@TeamName" Role="@Role" />
+<DatasetList TeamId="@TeamId" TeamName="@TeamName" Role="@Role" />
+
+@code {
+    [Parameter, EditorRequired] public string TeamName { get; set; } = "";
+    [Parameter, EditorRequired] public string TeamId { get; set; } = "";
+    [Parameter] public string? Role { get; set; }
+
+    // The trail lives in the header; this page owns it while mounted.
+    protected override void OnParametersSet() => Header.Set(this, b =>
+    {
+        b.OpenComponent<ConsoleBreadcrumb>(0);
+        // Keyed by trail shape. NavMenu renders whichever fragment is set at the same position,
+        // and both views open a ConsoleBreadcrumb there, so without a key Blazor keeps the instance
+        // the dataset page created and only writes the parameters this fragment supplies. Omitted
+        // parameters are not reset, so Dataset, Siblings and the state chip survived the hop back
+        // to the team page. A different key disposes that instance and builds a clean one.
+        b.SetKey("team:" + TeamName);
+        b.AddAttribute(1, "TeamName", TeamName);
+        b.CloseComponent();
+    });
+    public void Dispose() => Header.Clear(this, keepIf: NavigationManager.ToBaseRelativePath(NavigationManager.Uri).StartsWith("teams/", StringComparison.OrdinalIgnoreCase));
+}

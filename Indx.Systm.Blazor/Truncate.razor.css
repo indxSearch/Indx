@@ -1,0 +1,17 @@
+/* Port of indx-systm Truncate.module.css. */
+.indx-truncate {
+    display: inline-block;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
+
+/* Right-to-left layout moves the overflow to the left edge; text-align keeps short text where
+   it would have been. */
+.indx-truncate-start {
+    direction: rtl;
+    text-align: left;
+}

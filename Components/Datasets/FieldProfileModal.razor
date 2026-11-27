@@ -1,0 +1,308 @@
+@* The profile editor (Nov 2026): one modal for a new profile, an existing one, and a field whose
+   values are its own (Custom). Edits a copy; Save hands it back, and the field tab writes it onto
+   the fields that have the profile, in the working copy Save sends to the engine. Every label that
+   needs explaining carries its examples in a tooltip on the label itself, as the console's hinted
+   labels do. The fields' own text rules (17 Nov 2026, FieldProxy.TextRules) are rows of From, an
+   arrow and To under Advanced: built into the index, so a change rebuilds it. CaseSensitive is
+   not offered yet. *@
+@using System.Globalization
+@using Indx.Api
+
+<Modal Open="@Open" OpenChanged="OpenChanged" Title="@Title" Description="@Description">
+    <div class="indx-modal-form fp-form">
+        <InputField Label="@(CustomField != null ? "Name, to save as a profile (optional)" : "Name")" @bind-Value="_name" Immediate
+                    disabled="@(!Editable || _draft.BuiltIn)" />
+        <InputField Label="Description" @bind-Value="_about" Immediate disabled="@(!Editable)" />
+
+        <div class="fp-group">
+            <span class="fp-legend">@Hinted("Tolerance", ToleranceHelp)</span>
+            @* The edits as a step slider, the name of each step under its stop (8 Nov 2026: a
+               three-column grid put ThreeEdits on a row of its own). *@
+            <Slider Min="0" Max="@(Tolerances.Length - 1)" Step="1" Value="@((int)_draft.Tolerance)" Disabled="@(!Editable)" AriaLabel="Tolerance"
+                    ValueChanged="@(v => Set(_draft with { Tolerance = (Tolerance)(int)Math.Round(v) }))" />
+            <div class="fp-steps">
+                @for (int i = 0; i < Tolerances.Length; i++)
+                {
+                    var t = Tolerances[i];
+                    <span class="@(t == _draft.Tolerance ? "fp-step-on" : null)" style="--at: @((i / (double)(Tolerances.Length - 1)).ToString(System.Globalization.CultureInfo.InvariantCulture))">@DatasetIcons.ForTolerance(t)(14) @t</span>
+                }
+            </div>
+            <p class="fp-hint">@ToleranceAbout(_draft.Tolerance)</p>
+            <p class="fp-hint">@BeyondTypos</p>
+        </div>
+
+        @* The start of a word later than the search (6 Nov 2026, Field.TypingPrefixFrom): an override
+           that can only make it later, off on every profile until switched on, the number shown
+           only then. *@
+        <div class="fp-group">
+            <span class="fp-legend">@Hinted("TypingPrefixFrom", StartsHelp)</span>
+            <ToggleSwitch Label="Start of a word later than the search" Checked="@(_draft.TypingPrefixFrom != null)" CheckedChanged="SetStarts" Disabled="@(!Editable)" />
+            @if (_draft.TypingPrefixFrom is { } from)
+            {
+                <ScrubSlider AriaLabel="TypingPrefixFrom" Min="0" Max="64" Step="1" Value="@from" Disabled="@(!Editable)" Marks="NeverMark"
+                             ValueChanged="@(v => Set(_draft with { TypingPrefixFrom = (int)Math.Round(v) }))" />
+                <p class="fp-hint">@StartsAbout(from)</p>
+            }
+        </div>
+
+        <div class="fp-group">
+            <span class="fp-legend">@Hinted("RerankWeight", RerankWeightHelp)</span>
+            <p class="fp-hint">How much a match here counts when the results are reordered, against the heaviest field.</p>
+            @* No maximum, as in the library: the weight counts against the heaviest field's, so only
+               the ratios matter, and the scrub slider has no end either. *@
+            <ScrubSlider AriaLabel="RerankWeight" Min="0" Step="0.1" Value="@_draft.RerankWeight" Disabled="@(!Editable)" Marks="ZeroMark"
+                         ValueChanged="@(v => Set(_draft with { RerankWeight = (float)Math.Round(v, 1) }))" />
+            @if (_draft.RerankWeight == 0)
+            {
+                <p class="fp-warning">@DatasetIcons.Warning(14)<span>At 0 these fields confirm no words: a word found only here is no match, and the fields count through BM25F alone.</span></p>
+            }
+        </div>
+
+        <Disclosure DefaultOpen="@AdvancedDiffers">
+            <Summary>Advanced</Summary>
+            <ChildContent>
+                <div class="fp-advanced">
+                    <div class="fp-group">
+                        <span class="fp-legend">@Hinted("PatternMatchingSetup", PatternHelp)</span>
+                        <div class="fp-row">
+                            <span class="fp-label">@Hinted("IndexSizes", IndexSizesHelp)</span>
+                            <SegmentedControl AriaLabel="IndexSizes" Disabled="@(!Editable)" Value="@string.Join(",", _draft.IndexSizes)"
+                                              Items="IndexSizeItems" ValueChanged="@(v => Set(_draft with { IndexSizes = v.Split(',').Select(int.Parse).ToArray() }))" />
+                        </div>
+                        <div class="fp-row">
+                            <span class="fp-label">@Hinted("NumberOfStartCharacters", StartHelp)</span>
+                            <SegmentedControl AriaLabel="NumberOfStartCharacters" Disabled="@(!Editable)" Value="@_draft.NumberOfStartCharacters.ToString(CultureInfo.InvariantCulture)"
+                                              Items="StartItems" ValueChanged="@(v => Set(_draft with { NumberOfStartCharacters = int.Parse(v, CultureInfo.InvariantCulture) }))" />
+                        </div>
+                        <div class="fp-row">
+                            <span class="fp-label">@Hinted("NumberOfStopCharacters", StopHelp)</span>
+                            <SegmentedControl AriaLabel="NumberOfStopCharacters" Disabled="@(!Editable)" Value="@_draft.NumberOfStopCharacters.ToString(CultureInfo.InvariantCulture)"
+                                              Items="StopItems" ValueChanged="@(v => Set(_draft with { NumberOfStopCharacters = int.Parse(v, CultureInfo.InvariantCulture) }))" />
+                        </div>
+                        <p class="fp-hint">@(UsedByPattern.Count > 0
+                            ? $"Read by the fields with PatternMatching on: {string.Join(", ", UsedByPattern)}."
+                            : "None of its fields has PatternMatching on, so this does nothing yet.")</p>
+                    </div>
+                    <div class="fp-group">
+                        <span class="fp-legend">@Hinted("TextRules", TextRulesHelp)</span>
+                        @if (_rules.Count > 0)
+                        {
+                            <div class="fp-rule fp-rule-head">
+                                <span>From</span><span></span><span>To</span><span>@Hinted("Keep original", KeepOriginalHelp)</span><span></span>
+                            </div>
+                        }
+                        @foreach (var row in _rules)
+                        {
+                            <div class="fp-rule" @key="row">
+                                <InputField @bind-Value="row.From" Immediate aria-label="From" placeholder="é" class="fp-rule-text" disabled="@(!Editable)" />
+                                <span class="fp-rule-sign"><Indx.Systm.Blazor.Icons.ArrowRight Size="14" Color="currentColor" /></span>
+                                <InputField @bind-Value="row.To" Immediate aria-label="To" placeholder="e" class="fp-rule-text" disabled="@(!Editable)" />
+                                <ToggleSwitch AriaLabel="Keep original" Checked="@row.KeepOriginal" CheckedChanged="@(v => row.KeepOriginal = v)" Disabled="@(!Editable)" />
+                                @if (Editable)
+                                {
+                                    <Tooltip Content="Delete the rule"><Button Variant="ghost" IconLeft="DatasetIcons.Erase" aria-label="Delete the rule" @onclick="@(() => _rules.Remove(row))" /></Tooltip>
+                                }
+                            </div>
+                        }
+                        @if (Editable && _rules.Count < FieldProfiles.MaxTextRules)
+                        {
+                            <div><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.ShowMore" @onclick="@(() => _rules.Add(new RuleRow()))">Add replacement</Button></div>
+                        }
+                        <p class="fp-hint">@(_rules.Count == 0
+                            ? "None: these fields are read with the dataset's rules alone."
+                            : "Read in this order, before the dataset's own. Write them in small letters: the text is lower-cased first. An empty To removes the text: \"-\" to nothing reads 978-0-306 as 9780306.")</p>
+                    </div>
+                </div>
+            </ChildContent>
+        </Disclosure>
+
+        @if (UsedBy.Count > 0)
+        {
+            <p class="fp-hint">Used by @string.Join(", ", UsedBy). @CostLine</p>
+        }
+
+        <div class="indx-form-actions">
+            @if (Editable)
+            {
+                <Button Variant="primary" Size="micro" Disabled="@(CustomField == null && string.IsNullOrWhiteSpace(_name))" @onclick="SaveAsync">@SaveLabel</Button>
+            }
+            <Button Variant="secondary" Size="micro" @onclick="() => OpenChanged.InvokeAsync(false)">Cancel</Button>
+            @if (Editable && OnDelete.HasDelegate && !_draft.BuiltIn && !FieldProfiles.IsBuiltInId(_draft.Id))
+            {
+                <span class="fp-delete" title="@(UsedBy.Count > 0 ? "In use: delete it in the Profile manager, which gives its fields another profile" : null)">
+                    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Delete" Disabled="@(UsedBy.Count > 0)" @onclick="() => OnDelete.InvokeAsync()">Delete</Button>
+                </span>
+            }
+        </div>
+    </div>
+</Modal>
+
+@code {
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    /// <summary>The profile edited, or a blank one for a new profile (empty <c>Id</c>).</summary>
+    [Parameter, EditorRequired] public FieldProfile Profile { get; set; } = default!;
+    /// <summary>The profile as saved, for saying what a change costs; null for a new one.</summary>
+    [Parameter] public FieldProfile? Before { get; set; }
+    /// <summary>Set when the editor is on a field whose values are its own (Custom): Save applies
+    /// them to that field, or with a name saves them as a profile it then has.</summary>
+    [Parameter] public string? CustomField { get; set; }
+    /// <summary>The searched fields that have the profile.</summary>
+    [Parameter] public IReadOnlyList<string> UsedBy { get; set; } = [];
+    /// <summary>Those of them with PatternMatching on, the ones that read the pattern setup.</summary>
+    [Parameter] public IReadOnlyList<string> UsedByPattern { get; set; } = [];
+    /// <summary>Those of them with WordMatching on, the ones the tolerance applies to.</summary>
+    [Parameter] public IReadOnlyList<string> UsedByWords { get; set; } = [];
+    /// <summary>The dataset's query parameters turn the fallback off (Candidates.Fallback).</summary>
+    [Parameter] public bool FallbackOff { get; set; }
+    [Parameter] public bool Editable { get; set; } = true;
+    [Parameter] public EventCallback<FieldProfile> OnSave { get; set; }
+    [Parameter] public EventCallback OnDelete { get; set; }
+
+    private FieldProfile _draft = default!;
+    private string _name = "";
+    private string _about = "";
+    private FieldProfile? _seeded;
+
+    protected override void OnParametersSet()
+    {
+        // A new profile, or reopened on another: start from it. Re-renders while open keep the edits.
+        if (!ReferenceEquals(_seeded, Profile))
+        {
+            _seeded = Profile;
+            _draft = Profile;
+            _name = Profile.Name;
+            _about = Profile.About;
+            _rules = Profile.TextRules.Select(r => new RuleRow { From = r.From, To = r.To, KeepOriginal = r.KeepOriginal }).ToList();
+        }
+    }
+
+    private void Set(FieldProfile next) => _draft = next;
+
+    /// <summary>A text rule while it is edited. A row with no From is not a rule yet and is left
+    /// out when saving.</summary>
+    private sealed class RuleRow
+    {
+        public string? From { get; set; }
+        public string? To { get; set; }
+        public bool KeepOriginal { get; set; }
+    }
+
+    private List<RuleRow> _rules = [];
+
+    private TextRule[] Rules => _rules.Where(r => !string.IsNullOrEmpty(r.From))
+        .Select(r => new TextRule(r.From!, r.To ?? "", r.KeepOriginal)).ToArray();
+
+    private string Title => CustomField != null ? $"{CustomField}: its own settings"
+        : string.IsNullOrEmpty(Profile.Id) ? "New profile" : $"Edit {Profile.Name}";
+
+    private string Description => CustomField != null
+        ? "This field's values match no profile. Change them for this field, or name them to save a profile it then has."
+        : "The search settings of the fields that use this profile.";
+
+    private string SaveLabel => CustomField != null
+        ? (string.IsNullOrWhiteSpace(_name) ? "Save for this field" : "Save as profile")
+        : string.IsNullOrEmpty(Profile.Id) ? "Create profile" : "Save";
+
+    private bool AdvancedDiffers =>
+        !Profile.IndexSizes.AsSpan().SequenceEqual([3]) || Profile.NumberOfStartCharacters != 2
+        || Profile.NumberOfStopCharacters != 0 || Profile.TextRules.Length > 0;
+
+    /// <summary>What saving costs, from the profile as saved: the text rules and the pattern setup
+    /// are built into the index, the tolerance and the rerank weight read at every search.</summary>
+    private string CostLine
+    {
+        get
+        {
+            if (Before is not { } before) return "A change applies to all of them.";
+            bool rebuild = (UsedByPattern.Count > 0 && (!before.IndexSizes.AsSpan().SequenceEqual(_draft.IndexSizes)
+                    || before.NumberOfStartCharacters != _draft.NumberOfStartCharacters
+                    || before.NumberOfStopCharacters != _draft.NumberOfStopCharacters))
+                || (UsedBy.Count > 0 && !before.TextRules.AsSpan().SequenceEqual(Rules));
+            if (rebuild) return "Saving rebuilds the index in the background.";
+            if (before.Tolerance != _draft.Tolerance || before.RerankWeight != _draft.RerankWeight || before.TypingPrefixFrom != _draft.TypingPrefixFrom) return "Takes effect at the next search.";
+            return "A change applies to all of them.";
+        }
+    }
+
+    private Task SaveAsync() => OnSave.InvokeAsync(_draft with { Name = _name.Trim(), About = _about.Trim(), TextRules = Rules });
+
+    private static readonly Tolerance[] Tolerances = Enum.GetValues<Tolerance>();
+    private static readonly IReadOnlyList<ScrubSlider.ScrubMark> ZeroMark = [new(0, "warning", "these fields confirm no words")];
+    private static readonly IReadOnlyList<SegmentedControl.Item> IndexSizeItems = [new("3", "3"), new("2,3", "2 and 3")];
+    private static readonly IReadOnlyList<SegmentedControl.Item> StartItems = [new("0", "0"), new("1", "1"), new("2", "2")];
+    private static readonly IReadOnlyList<SegmentedControl.Item> StopItems = [new("0", "0"), new("1", "1")];
+
+    /// <summary>The number the switch brings back: the last one set, else 5.</summary>
+    private int _startsOn = 5;
+
+    private void SetStarts(bool on)
+    {
+        if (on) Set(_draft with { TypingPrefixFrom = _startsOn });
+        else
+        {
+            if (_draft.TypingPrefixFrom is { } n) _startsOn = n;
+            Set(_draft with { TypingPrefixFrom = null });
+        }
+    }
+
+    private static readonly IReadOnlyList<ScrubSlider.ScrubMark> NeverMark = [new(0, null, "never")];
+
+    private static string StartsAbout(int from) => from == 0
+        ? "Never: a word being typed is met only as a whole word, within its typos. For codes and numbers, found by the whole code."
+        : $"From {from} letters: a word being typed meets the longer words it starts once it has {from}, or the search's own number when that is larger.";
+
+    private const string StartsHelp = "Field.TypingPrefixFrom: the word still being typed also finds the longer words it starts (\"mat\" finds Matrix), from the search's number of letters, 2 by default (Start of a word from, under Query parameters). Here a field can only start later, or never: the larger number wins. Off, the field follows the search.";
+
+    private static string ToleranceAbout(Tolerance t) => t switch
+    {
+        Tolerance.Exact => "No typos: words must match as written. For codes, numbers and long text, where a typo confirms the wrong record.",
+        Tolerance.TwoEdits => "Two typos, from six letters by default. For titles and names people misspell.",
+        Tolerance.ThreeEdits => "Three typos, from nine letters by default, where the search allows three too. For long names and compounds; a short word keeps to two.",
+        _ => "One typo: a letter added, dropped or changed, or two neighbours swapped. From three letters by default.",
+    };
+
+    /// <summary>What happens past the tolerance on the fields with the profile (8 Nov 2026): the
+    /// fallback is not a level a profile picks but follows from each field's pattern matching and
+    /// the dataset's Fallback, so it is said under the slider rather than offered on it.</summary>
+    private string BeyondTypos
+    {
+        get
+        {
+            if (FallbackOff)
+                return "Beyond this nothing is found: the fallback is off in this dataset's query parameters.";
+            var withPatterns = UsedByWords.Where(UsedByPattern.Contains).ToList();
+            var wordsOnly = UsedByWords.Where(f => !UsedByPattern.Contains(f)).ToList();
+            var patternOnly = UsedByPattern.Where(f => !UsedByWords.Contains(f)).ToList();
+            if (withPatterns.Count + wordsOnly.Count + patternOnly.Count == 0)
+                return "Larger typos: a field with pattern matching still finds them when no record matches every word, shown and not counted. A field without finds nothing beyond this.";
+            var said = new List<string>();
+            if (withPatterns.Count > 0)
+                said.Add($"Larger typos are still found on {Names(withPatterns)} by pattern matching, when no record matches every word: shown, not counted.");
+            if (wordsOnly.Count > 0)
+                said.Add($"On {Names(wordsOnly)} nothing is found beyond this.");
+            if (patternOnly.Count > 0)
+                said.Add($"{Names(patternOnly)} {(patternOnly.Count == 1 ? "is" : "are")} matched by pattern only, so typos do not apply: {(patternOnly.Count == 1 ? "it orders" : "they order")} the results and can bring records in when no record matches every word.");
+            return string.Join(" ", said);
+        }
+    }
+
+    private static string Names(IReadOnlyList<string> fields) =>
+        fields.Count == 1 ? fields[0] : string.Join(", ", fields.Take(fields.Count - 1)) + " and " + fields[^1];
+
+    private const string ToleranceHelp = "Field.Tolerance: how far a typed word may be from the word in the field. Exact: \"poter\" does not match Potter. OneEdit: it does, one letter is missing. TwoEdits: \"ashwaghanda\" matches ashwagandha. ThreeEdits: \"papikjompvniet\" matches papirkompaniet, where the search allows three. One edit from three letters, two from six and three from nine by default; the dataset's query parameters can move them. A search may lower it, never raise it.";
+    private const string RerankWeightHelp = "Field.RerankWeight: how much a match here counts when the results are reordered, against the heaviest searched field, so only the ratios matter: title 1 and text 0.5 is the same as 4 and 2. With those, \"dark knight\" in a title ranks above the same words in a description. 0 leaves the fields out of the reranker and the word lookup.";
+    private const string PatternHelp = "How PatternMatching cuts the text into pieces. A field with PatternMatching on is scored by pieces of its words as well as whole words. That score orders the records inside each typo level, blended with the reranker's score, and brings records in for the fallback, Rest and Bm25f mode. In the default mode it does not decide on its own which records match.";
+    private const string IndexSizesHelp = "The piece lengths. 3: \"potter\" gives pot, ott, tte, ter. 2 and 3 adds po, ot, tt, te, er, so short and partial values score better, at about twice the memory.";
+    private const string StartHelp = "Anchor pieces at the start of the text, so text that begins with what was typed counts more: a name starting with \"oslo\" above one with \"oslo\" inside it. 2 is the default; 0 turns it off.";
+    private const string TextRulesHelp = "FieldProxy.TextRules: text replaced in these fields before they are indexed and before a search is read against them. \"-\" to nothing makes 978-0-306 and 9780306 the same. An empty To removes the text. For codes and numbers written in more than one way; most fields need none.";
+    private const string KeepOriginalHelp = "The text is indexed both with the rule and without it, so either way of writing finds the record: 978-0-306-40615-7, 9780306406157, and a part such as 40615.";
+    private const string StopHelp = "The same at the end of the text. With both, a whole value outranks a longer one containing it: \"1234\" ranks 1234 above 91234 and 12345. For codes; 0 is the default.";
+
+    /// <summary>A label that explains itself: dotted underline, the help cursor, its examples in a
+    /// tooltip on the label, as .indx-stat-label--hint.</summary>
+    private static RenderFragment Hinted(string label, string help) => __builder =>
+    {
+        <Tooltip Content="@help"><span class="fp-hinted" tabindex="0">@label</span></Tooltip>
+    };
+}

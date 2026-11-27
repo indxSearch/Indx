@@ -1,0 +1,109 @@
+# IndxServer
+
+IndxServer is a multi-user search service API built on Indx Search.
+Technology: .NET 9, JWT authentication, JSON document indexing
+Purpose: High-performance pattern matching + coverage-based search
+
+## Understanding Indx
+
+### The 6-Step Workflow
+
+When setting up a dataset, follow this exact order:
+
+1. **Create/Open Dataset** - Initialize your search space
+2. **Analyze** - Parse JSON structure and discover all fields
+3. **Configure Fields**:
+   - Searchable: At least one required (set weights: High/Med/Low for relevance)
+   - WordIndexing: For deep searches in large datasets with full-word matching
+   - Filterable: MUST be set for any field used in filters or boosts
+   - Facetable: For aggregated counts (e.g., "Genre: Action (42)")
+   - Sortable: For result ordering
+4. **Load Documents** - Stream your JSON data
+5. **Index** - Build search structures
+6. **Search** - Query your data
+
+### Indx's Two-Phase Search Architecture
+
+**Phase 1: Pattern Matching** (always runs first)
+- Searches ALL documents
+- Fast, fault-tolerant pattern recognition
+- Finds candidates across entire dataset
+
+**Phase 2: Coverage** (optional, for truncation and re-ranking)
+- Detects exact and near-exact matches
+- Lifts best matches to top of results
+- Truncates result list at quality threshold
+- Works on topK documents (default: 500)
+
+### Coverage Configuration
+
+Key parameter: **IncludePatternMatches** (default: true)
+- `true`: Returns pattern matches + coverage matches (best for humans, unique Indx feature)
+- `false`: Only exact/near-exact matches (best for AI agents using Indx as a tool, reduces false positives)
+
+Common Coverage settings:
+- **TopK**: Default 500, use 1000-2000 for large result sets
+- **CoverageDepth**: Set to expected result count (e.g., 20,000 if expecting that many)
+  - E-commerce with many products: High CoverageDepth (scales linearly)
+  - Small catalogs: Default is fine
+
+CoverageSetup defaults (all true, rarely need changing):
+- CoverWholeQuery: Detect entire search query as string
+- CoverWholeWords: Detect complete words (multi-word phrases)
+- CoverFuzzyWords: Detect matches with edit distance of 1 (typo tolerance)
+- CoverJoinedWords: Detect words joined or split ("smartphone" vs "smart phone")
+- CoverPrefixSuffix: Detect incomplete strings as prefix/suffix
+- Truncate: Enable result truncation at quality threshold
+- LevenshteinMaxWordSize: 20 (max word length for edit distance, max: 63)
+
+### Field Configuration Rules
+
+**Searchable Fields:**
+- At least one field MUST be searchable
+- Set relevance weights (High/Med/Low) for scoring
+
+**WordIndexing Fields:**
+- Use for large datasets requiring deep full-word searches
+- Enables precise word boundary matching
+
+**Filterable Fields:**
+- REQUIRED for any field used in filter expressions
+- REQUIRED for any field used in boosts (boosts use filters)
+
+**Facetable Fields:**
+- For UI filtering and aggregated counts
+- Example: Category counts in sidebar filters
+
+**Sortable Fields:**
+- For ordering results (e.g., by popularity, date)
+
+## Getting Started
+
+1. Register account: /Account/Register
+2. Generate JWT token: /Account/ApiKey
+3. Use in Authorization header: `Bearer YOUR_TOKEN`
+4. Full API reference with examples: /swagger
+
+## API Documentation
+
+Complete API documentation with request/response schemas and curl examples:
+/swagger
+
+## Related Projects
+
+- **IndxCloudLoader** (C#): Command-line tool for bulk loading datasets
+  https://github.com/indxSearch/IndxCloudLoader
+
+- **indx-intrface** (React): Pre-built UI components for search interfaces
+  https://github.com/indxSearch/indx-intrface
+
+## Configuration Options
+
+Registration restrictions can be configured:
+- Open: Anyone can register (default)
+- EmailDomain: Restrict to specific email domains
+- Closed: No self-registration (admin creates accounts)
+
+Email confirmation can be required (OAuth users auto-confirmed).
+
+See /Account/Register for current registration policy.

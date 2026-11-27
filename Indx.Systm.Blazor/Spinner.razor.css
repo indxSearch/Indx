@@ -1,0 +1,20 @@
+.indx-spinner {
+    display: inline-block;
+    flex-shrink: 0;
+}
+
+/* Frames are invisible by default; the generated keyframes (wwwroot/spinners.generated.css)
+   flash each one on for its slot of the cycle, staggered via negative animation-delays. */
+.indx-spinner-frame {
+    opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .indx-spinner-frame {
+        animation: none !important;
+    }
+
+    .indx-spinner-frame:first-of-type {
+        opacity: 1;
+    }
+}

@@ -1,0 +1,542 @@
+@* The team page's dataset section: a card per dataset (state at a glance, link into the
+   dataset page) and the "new dataset" form. Replaces the tab strip the console used to be.
+   Cards read the keep-alive view and the in-memory instance only — never GetState, which would
+   wake every timed dataset of the team just to list it. *@
+@using Indx.Api
+@inject IDatasetEngines Engines
+@inject IndxServer.Services.DemoDatasets Demos
+@inject NavigationManager NavigationManager
+@inject ILogger<DatasetList> Logger
+@inject StatisticsService Stats
+@inject IndxServer.Services.Observr.ObservrFindingStore Findings
+@implements IDisposable
+
+<div class="indx-datasets-heading">
+    <h2>Datasets</h2>
+    @* The page action pattern (app.css): the primary "New" leads, right by the heading it adds to,
+       the team's other actions at the end of the row. The empty state carries the button itself,
+       as its call to action, so it is not repeated here. *@
+    @if (CanCreate && _rows.Count > 0)
+    {
+        <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="OpenNewDataset" title="New dataset">New</Button>
+    }
+    <span class="indx-datasets-heading-spacer"></span>
+    @* Top right (Nov 2026): a team with many sleeping datasets can show only the ones awake. Shown
+       while there is one to hide, or while it is on, so it cannot vanish under the hand. *@
+    @if (HibernatedCount > 0 || _hideHibernated)
+    {
+        <ToggleSwitch Label="@($"Hide hibernated ({HibernatedCount})")" Checked="_hideHibernated" CheckedChanged="@(v => _hideHibernated = v)" />
+    }
+    @HeadingActions
+</div>
+
+@if (_rows.Count == 0)
+{
+    @* The first visit: no dataset yet, so the page is the guide. What a dataset is, then the
+       three steps from nothing to a search, each with the action it takes, the first of them the
+       only thing to do right now. The skill for a developer whose LLM does the setting up. *@
+    <div class="indx-empty-state">
+        @* The opening, in the shape of intrface's result messages: a large icon, a line, a detail (systm EmptyState). *@
+        <EmptyState Icon="_iconEmpty" Title="Nothing here yet">@(CanCreate ? "Three steps to your first search." : "An editor of this team creates the first dataset.")</EmptyState>
+        <ol class="indx-empty-steps">
+            <li class="indx-empty-step">
+                <span class="indx-empty-step-number">1</span>
+                <h4 class="indx-empty-step-title">Create a dataset</h4>
+                <p class="indx-empty-step-text">Name it after what it holds: products, articles, schools. The name is part of its address, so keep it short and plain.</p>
+                @if (CanCreate)
+                {
+                    <div class="indx-empty-step-actions">
+                        <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="OpenNewDataset">New dataset</Button>
+                        @* Or try Indx first on 25,000 films from Wikidata (CC0), set up and indexed in seconds (DemoDatasets). *@
+                        @if (DemoDatasets.FilmsAvailable)
+                        {
+                            <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Disk" Disabled="_demoRunning" @onclick="StartDemoAsync">
+                                @(_demoRunning ? "Setting up the films…" : "Start from a demo")
+                            </Button>
+                        }
+                    </div>
+                    @if (_demoError != null)
+                    {
+                        <Alert Variant="destructive"><Description>@_demoError</Description></Alert>
+                    }
+                }
+            </li>
+            <li class="indx-empty-step">
+                <span class="indx-empty-step-number">2</span>
+                <h4 class="indx-empty-step-title">Upload the JSON and set the fields</h4>
+                <p class="indx-empty-step-text">An array of objects, nested fields welcome. Indx reads the fields it finds; you say which are searchable, which can filter and facet, which can sort, and the weight of each. Then load and index.</p>
+                <pre class="indx-empty-step-code">[
+  { "id": 1, "title": "Trail shoe", "price": 120 },
+  { "id": 2, "title": "Road shoe", "price": 95 }
+]</pre>
+            </li>
+            <li class="indx-empty-step">
+                <span class="indx-empty-step-number">3</span>
+                <h4 class="indx-empty-step-title">Search it</h4>
+                <p class="indx-empty-step-text">Try it in the dataset's Search preview as soon as it is indexed. For your own site or app, an API key with the Search scope and the intrface React components, or the HTTP API from anything else.</p>
+                <div class="indx-empty-step-actions">
+                    <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Lock" Href="@TeamRoutes.TeamKeys(TeamName)">API keys</Button>
+                    <Button Variant="ghost" Size="micro" Href="https://v6.docs.indx.co">Docs ↗</Button>
+                </div>
+            </li>
+        </ol>
+        <div class="indx-empty-skill">
+            <p class="indx-empty-intro indx-empty-intro--tight">Using an LLM to set up your search? The skill teaches it the API and the field roles.</p>
+            <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Agent" Href="https://www.skills.sh/indxsearch/skill-indx-search/indx-search">Indx Agent Skill ↗</Button>
+        </div>
+    </div>
+}
+else
+{
+    <div class="indx-dataset-grid">
+        @foreach (var row in VisibleRows)
+        {
+            <a class="indx-dataset-card" href="@TeamRoutes.Dataset(TeamName, row.Name)">
+                <span class="indx-dataset-card-head">
+                    <Database Size="14" Color="currentColor" />
+                    <span class="indx-dataset-card-name">@row.Name</span>
+                    @if (_open.TryGetValue(row.Name, out var open) && open > 0)
+                    {
+                        @* What Observr found on a watched dataset and nobody has decided: at the
+                           corner, in Observr's look, the way the side menu counts the same. *@
+                        <span class="indx-dataset-card-observr indx-observr" title="@($"{open} Observr finding(s) waiting for a decision")">@DatasetIcons.Observr(14)<span>@open</span></span>
+                    }
+                </span>
+                @* Everything below is read from the keep-alive view and the in-memory instance, so
+                   a hibernated dataset simply has less to show rather than being woken to fill it.
+                   A row is omitted when its value is unknown: a blank value reads as zero. *@
+                @if (!row.Pending && row.HasDetail)
+                {
+                    <span class="indx-dataset-card-detail">
+                        @if (row.IsMoving)
+                        {
+                            @* Figures are in flux, so the card says what is happening instead of
+                               reporting counts that change under the reader. The bar only appears
+                               once there is a percentage, so it does not sit at 0 looking stuck. *@
+                            <span class="indx-dataset-card-doing">@row.Doing</span>
+                            @if (row.Percent is { } pct)
+                            {
+                                <span class="indx-dataset-card-progress"><ProgressBar Value="pct" ShowLabel FulfilledColor /></span>
+                            }
+                        }
+                        else if (row.Error is { Length: > 0 } message)
+                        {
+                            @* The reason, which is the one thing this state has to give. The Status
+                               tab has the same message in full; here it is clamped. *@
+                            <span class="indx-dataset-card-error">@message</span>
+                        }
+                        else
+                        {
+                            @if (row.LastIndexed is { } indexed)
+                            {
+                                <span class="indx-dataset-card-term">Last indexed</span>
+                                <span class="indx-dataset-card-value"><TimeAgo Value="indexed" /></span>
+                            }
+                            @if (row.LastUsed is { } used)
+                            {
+                                <span class="indx-dataset-card-term">Last used</span>
+                                <span class="indx-dataset-card-value"><TimeAgo Value="used" /></span>
+                            }
+                            <span class="indx-dataset-card-term">Keep-alive</span>
+                            <span class="indx-dataset-card-value">@row.KeepAlive</span>
+                            @* Last, so the rows above it are the ones every dataset has. *@
+                            @if (row.Fields is { } f)
+                            {
+                                @* No total: the chips sit on the label's own line, in the value
+                                   column. The Search preview's facet chips: a label and its count
+                                   in one chip, the count set off and dimmer. *@
+                                <span class="indx-dataset-card-term">Fields</span>
+                                <span class="indx-dataset-card-fields">
+                                    <Chip Color="var(--lv2)" TextColor="var(--lv7)"><span>searchable</span><span class="indx-dataset-card-rolecount">@f.Searchable</span></Chip>
+                                    <Chip Color="var(--lv2)" TextColor="var(--lv7)"><span>filterable</span><span class="indx-dataset-card-rolecount">@f.Filterable</span></Chip>
+                                    <Chip Color="var(--lv2)" TextColor="var(--lv7)"><span>facetable</span><span class="indx-dataset-card-rolecount">@f.Facetable</span></Chip>
+                                </span>
+                            }
+                            else if (row.Label == "Empty")
+                            {
+                                @* Nothing in it yet: the card says what to do rather than listing
+                                   three rows of nothing. *@
+                                <span class="indx-dataset-card-doing">No documents yet. Open it to upload JSON.</span>
+                            }
+                        }
+                    </span>
+                }
+                @if (!row.Pending && row.Activity is { } activity)
+                {
+                    @* Option C of the dataset-card mockup (indx-react apps/components): A's
+                       placement above the state line, as a line - quieter than bars across a page
+                       of cards. Read from stats.db, never from the engine, so a hibernated
+                       dataset shows its activity without being woken. *@
+                    <span class="indx-dataset-card-activity">
+                        <span class="indx-dataset-card-activity-label">
+                            Search activity<span class="indx-dataset-card-activity-today">, @(((long)activity[^1]).ToString("N0")) today</span>
+                        </span>
+                        @* IdleColor: days without a search fade to a weaker tone, so the many idle
+                           datasets step back and the busy ones stand out (the mockup's D). *@
+                        <Sparkline Values="activity" Height="22" Color="var(--lv5)" Fill Baseline LastIsPartial
+                                   IdleColor="var(--lv3)" AriaLabel="@ActivityLabel(activity)" />
+                    </span>
+                }
+                <span class="indx-dataset-card-foot">
+                    @if (row.Pending)
+                    {
+                        <span class="indx-dataset-card-count"><Spinner Size="14" /></span>
+                    }
+                    else
+                    {
+                        <Chip Size="small" Color="@row.Chip.Color" TextColor="@row.Chip.TextColor" Icon="@row.Chip.Icon">@row.ChipLabel</Chip>
+                        @if (row.Count is { } n)
+                        {
+                            <span class="indx-dataset-card-count">@n.ToString("N0") @row.CountNoun@if (row.SearchedOnly is { } searched) {<text>, @searched.ToString("N0") searched</text>}</span>
+                        }
+                    }
+                </span>
+            </a>
+        }
+    </div>
+    @if (_hideHibernated && !VisibleRows.Any())
+    {
+        <p class="indx-datasets-all-hidden">All @HibernatedCount datasets are hibernated. Turn off Hide hibernated to see them.</p>
+    }
+}
+
+<Modal Open="_showNewDatasetForm" OpenChanged="@(open => { if (!open) CancelNewDataset(); })" Title="New dataset"
+       Description="Name it now; the JSON upload is the first step on its page.">
+    <div class="indx-modal-form">
+        <InputField Label="Dataset name" placeholder="e.g. products" @bind-Value="_newDatasetName"
+                    @oninput="OnNewDatasetInput" @onkeydown="OnNewDatasetKeyDown" />
+        @if (!string.IsNullOrEmpty(_createError))
+        {
+            <p class="indx-create-error">@_createError</p>
+        }
+        <div class="indx-form-actions">
+            <Button Variant="primary" Size="micro" @onclick="CreateDataset" disabled="@string.IsNullOrWhiteSpace(_newDatasetName)">Create</Button>
+            <Button Variant="secondary" Size="micro" @onclick="CancelNewDataset">Cancel</Button>
+        </div>
+    </div>
+</Modal>
+
+@code {
+    private static readonly RenderFragment<int> _iconEmpty = size => @<Empty Size="size" Color="currentColor" />;
+    [Parameter, EditorRequired] public string TeamId { get; set; } = "";
+    [Parameter, EditorRequired] public string TeamName { get; set; } = "";
+    [Parameter] public string? Role { get; set; }
+    /// <summary>Rendered at the right end of the "Datasets" heading row.</summary>
+    [Parameter] public RenderFragment? HeadingActions { get; set; }
+
+    private bool CanCreate => TeamRoles.CanWrite(Role);
+
+    /// <summary>How the dataset is configured, for the card. Only knowable while an engine is
+    /// loaded, which is why it is optional rather than zeroed.</summary>
+    private sealed record FieldShape(int Searchable, int Filterable, int Facetable);
+
+    private sealed record Row(string Name, string Label, DatasetStateChip Chip, int? Count, int? Percent = null,
+                              FieldShape? Fields = null, DateTime? LastIndexed = null,
+                              DateTime? LastUsed = null, int KeepAliveHrs = int.MaxValue,
+                              bool CountsAreOnDisk = false, string? Error = null,
+                              IReadOnlyList<double>? Activity = null, int? SearchedOnly = null)
+    {
+        /// <summary>Documents when the engine holds them, records on disk when it does not. The
+        /// noun changes with it, because "41,562 documents" on a hibernated dataset would claim
+        /// they are searchable.</summary>
+        public string CountNoun => CountsAreOnDisk
+            ? (Count == 1 ? "record on disk" : "records on disk")
+            : (Count == 1 ? "document" : "documents");
+
+        public string KeepAlive => KeepAliveHrs switch
+        {
+            int.MaxValue => "pinned",
+            0 => "off (manual)",
+            1 => "1 hour idle",
+            _ => $"{KeepAliveHrs} hours idle",
+        };
+
+        /// <summary>Keep-alive is always known, so every card has something to say. The states
+        /// that are moving say what they are doing instead of reporting figures that are about to
+        /// change, and an errored one says what went wrong -- which was the whole of the card
+        /// before, and is the state where a reader most wants a reason.</summary>
+        public bool HasDetail => Label is not "Unknown";
+
+        /// <summary>Loading, indexing or waking: the figures are in flux, so the card shows
+        /// progress rather than counts.</summary>
+        public bool IsMoving => Label is "Loading" or "Loaded" or "Indexing" or "Waking" or "Hibernating";
+
+        /// <summary>What a moving dataset is doing, in the reader's words rather than the engine's
+        /// state name.</summary>
+        public string Doing => Label switch
+        {
+            "Loading" or "Loaded" => "Reading documents",
+            "Indexing"            => "Building the index",
+            "Waking"              => "Loading from the database",
+            "Hibernating"         => "Freeing memory",
+            _                     => Label,
+        };
+
+        /// <summary>"Indexing 42%" while there is progress to report, otherwise just the state.
+        /// A percentage only appears once the monitor has one, so the chip does not flash 0%.</summary>
+        public string ChipLabel => Percent is > 0 and { } pct ? $"{Label} {pct}%" : Label;
+
+        /// <summary>Status not read yet — the card shows the name and a spinner.</summary>
+        public bool Pending { get; init; }
+        public static Row PendingFor(string name) => new(name, "", DatasetStateChip.Empty, null) { Pending = true };
+    }
+
+    private CancellationTokenSource? _describeCts;
+
+    private List<Row> _rows = new();
+    private bool _hideHibernated;
+    /// <summary>Asleep, not on the way there or back: Hibernating and Waking are still shown.</summary>
+    private static bool IsHibernated(Row r) => r.Label == "Hibernated";
+    private int HibernatedCount => _rows.Count(IsHibernated);
+    private IEnumerable<Row> VisibleRows => _hideHibernated ? _rows.Where(r => !IsHibernated(r)) : _rows;
+    private Dictionary<string, int> _open = new();
+    private string _newDatasetName = string.Empty;
+    private bool _showNewDatasetForm;
+    private string? _createError;
+    private string? _loadedFor;
+
+    protected override void OnParametersSet()
+    {
+        if (_loadedFor == TeamId) return;
+        _loadedFor = TeamId;
+        _showNewDatasetForm = false;
+        _newDatasetName = string.Empty;
+        _createError = null;
+        Reload();
+    }
+
+    /// <summary>Re-read the team's datasets: the names render at once, each card's state is
+    /// filled in off the circuit thread as it is read, every card at once (a sleeping dataset's
+    /// record count is a COUNT(*) on disk the first time, 8 s for a few hundred thousand records on App Service,
+    /// and the cards after it waited for it while they were read one by one, 11 Nov 2026).</summary>
+    public void Reload()
+    {
+        List<string> names;
+        try { names = string.IsNullOrEmpty(TeamId) ? [] : Engines.GetTeamDataSets(TeamId); }
+        catch { names = []; }
+        _rows = names.Select(Row.PendingFor).ToList();
+        _open = string.IsNullOrEmpty(TeamId) ? new() : Findings.CountOpenByDataset(TeamId);
+
+        _describeCts?.Cancel();
+        var cts = _describeCts = new CancellationTokenSource();
+        var teamId = TeamId;
+        _ = Task.Run(async () =>
+        {
+            await Task.WhenAll(names.Select(name => Task.Run(async () =>
+            {
+                if (cts.IsCancellationRequested) return;
+                var row = Describe(name, teamId);
+                await InvokeAsync(() =>
+                {
+                    if (cts.IsCancellationRequested) return;
+                    var i = _rows.FindIndex(r => r.Name == name);
+                    if (i >= 0) _rows[i] = row;
+                    StateHasChanged();
+                });
+            })));
+            if (cts.IsCancellationRequested) return;
+
+            // Keep the moving ones moving. The loop re-describes only the rows that were in a
+            // transient state and stops as soon as none are, so a settled team page costs nothing:
+            // no timer runs once everything is Ready, Hibernated or Empty.
+            await ProgressPoller.RunAsync(TimeSpan.FromMilliseconds(600),
+                tick: () =>
+                {
+                    if (cts.IsCancellationRequested) return false;
+                    bool stillMoving = false;
+                    for (var i = 0; i < _rows.Count; i++)
+                    {
+                        if (!IsTransient(_rows[i])) continue;
+                        _rows[i] = Describe(_rows[i].Name, teamId);
+                        stillMoving |= IsTransient(_rows[i]);
+                    }
+                    return stillMoving;
+                },
+                render: () => InvokeAsync(StateHasChanged),
+                ct: cts.Token);
+        }, cts.Token);
+    }
+
+    public void Dispose() => _describeCts?.Cancel();
+
+    /// <summary>A row that is still going to change on its own: something is loading, indexing or
+    /// rebuilding, or warm-up has not reached it yet. Only these are re-read while the page is
+    /// open; anything else is settled until the user acts.</summary>
+    private static bool IsTransient(Row row) =>
+        row.Percent is not null || row.Label is "Loading" or "Loaded" or "Indexing" or "Waking" or "Hibernating";
+
+    private Row Describe(string name, string teamId)
+    {
+        try
+        {
+            var ka = Engines.GetKeepAliveInfo(name, teamId);
+            var engine = Engines.FindSearchEngine(name, teamId);
+            var state = engine is { IsDisposed: false } ? engine.Status.SystemState : (SystemState?)null;
+            var lastUsed = ka.LastUsedUtc?.UtcDateTime;
+            if (state == SystemState.Ready)
+            {
+                // A Ready dataset can still be rebuilding on a shadow engine while it keeps serving.
+                var rebuilding = Engines.GetProgressPercent(name, teamId);
+                // The count stays: a rebuild runs on a shadow engine while this one keeps serving, so
+                // the documents it reports are real and still being searched.
+                return rebuilding is { } pct
+                    ? new Row(name, "Rebuilding", DatasetStateChip.Working(SystemState.Indexing), engine!.Status.DocumentCount, pct)
+                    : new Row(name, "Ready", DatasetStateChip.For(SystemState.Ready), engine!.Status.DocumentCount,
+                              Fields: Shape(engine), LastIndexed: engine!.Status.TimeOfLastIndexBuild,
+                              LastUsed: lastUsed, KeepAliveHrs: ka.KeepAliveTimeHrs,
+                              Activity: SearchActivity(name, teamId),
+                              SearchedOnly: engine!.Status.LicenseInfo is { DocumentLimitExceeded: true } l ? l.DocumentLimit : null);
+            }
+            // A wake being cancelled leaves its engine in Error (load) or Loaded (index) until it is
+            // disposed a moment later. Asked first, so neither is reported as the dataset's state.
+            if (Engines.GetWakeProgress(name, teamId) is { Cancelling: true })
+                return new Row(name, "Hibernating", DatasetStateChip.Hibernated, ka.RecordCount);
+            if (state is SystemState.Loading or SystemState.Loaded or SystemState.Indexing)
+                return new Row(name, state.ToString()!, DatasetStateChip.For(state.Value), null,
+                               Engines.GetProgressPercent(name, teamId));
+            if (state == SystemState.Error)
+                // The message is the whole point of this state on a card: without it the reader
+                // has to open the dataset to learn anything at all.
+                return new Row(name, "Error", DatasetStateChip.For(SystemState.Error), null,
+                               LastUsed: lastUsed, KeepAliveHrs: ka.KeepAliveTimeHrs,
+                               Error: engine!.Status.ErrorMessage);
+            // Data on disk and not loaded is hibernated, whatever the keep-alive policy says: that
+            // is what the word means to the reader, and the engine shell being registered or not is
+            // an implementation detail. The one case that is genuinely different is a dataset
+            // something is working on right now, which used to read "Hibernated" while warm-up was
+            // actively loading it. Ask for that directly rather than inferring it from the state.
+            if (ka.RecordCount > 0)
+                return Engines.IsWorkInProgress(name, teamId)
+                    ? new Row(name, "Waking", DatasetStateChip.Working(), ka.RecordCount, Engines.GetProgressPercent(name, teamId))
+                    // No engine, so no field shape and no last-index time. The count is what is on
+                    // disk, which CountNoun says rather than calling them documents.
+                    : new Row(name, "Hibernated", DatasetStateChip.Hibernated, ka.RecordCount,
+                              LastUsed: lastUsed, KeepAliveHrs: ka.KeepAliveTimeHrs, CountsAreOnDisk: true,
+                              Activity: SearchActivity(name, teamId));
+            return new Row(name, "Empty", DatasetStateChip.Empty, null,
+                           LastUsed: lastUsed, KeepAliveHrs: ka.KeepAliveTimeHrs);
+        }
+        catch
+        {
+            return new Row(name, "Unknown", DatasetStateChip.Empty, null);
+        }
+    }
+
+    /// <summary>Days of search activity on a card: two weeks, enough for a weekly rhythm to show.</summary>
+    private const int ActivityDays = 14;
+
+    /// <summary>Searches per day over the last <see cref="ActivityDays"/> days, today last, oldest
+    /// first, with the days nobody searched as zeros. Today is in so the day can be followed as
+    /// it goes, and drawn as partial (the Sparkline dashes its segment) with its count beside the
+    /// label: left out, a dataset searched only today drew a flat line and read as unused;
+    /// drawn plain, every card fell at its end until evening. Only the settled states ask (Ready and Hibernated): a moving
+    /// card is re-described on every progress tick and shows progress instead. Null when
+    /// statistics are off, which leaves the block off the card rather than drawing a flat line
+    /// that would claim nobody searched.</summary>
+    private IReadOnlyList<double>? SearchActivity(string name, string teamId)
+    {
+        var store = Stats.Enabled ? Stats.Store : null;
+        if (store == null) return null;
+        try
+        {
+            long toDay = store.Today(teamId, name);
+            long fromDay = toDay - ActivityDays + 1;
+            var series = new double[ActivityDays];
+            foreach (var day in store.TimeSeries(teamId, name, fromDay, toDay))
+                if (day.Day >= fromDay && day.Day <= toDay)
+                    series[day.Day - fromDay] = day.Searches;
+            return series;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Search activity for {DataSet} could not be read", name);
+            return null;   // a card is not worth an exception
+        }
+    }
+
+    private static string ActivityLabel(IReadOnlyList<double> activity)
+    {
+        var total = (long)activity.Sum();
+        return total == 0
+            ? $"No searches in the last {ActivityDays} days"
+            : $"{total:N0} searches in the last {ActivityDays} days, {(long)activity[^1]:N0} of them today";
+    }
+
+    /// <summary>The field configuration as four role counts. Read from the engine already in hand, so
+    /// it costs a dictionary walk and never wakes anything; null when there is no engine or it has
+    /// no configuration yet, which is what keeps the row off a hibernated card.</summary>
+    private static FieldShape? Shape(IServerSearchEngine? engine)
+    {
+        try
+        {
+            var fields = engine?.GetFieldConfiguration();
+            if (fields is not { Length: > 0 }) return null;
+            return new FieldShape(
+                fields.Count(f => f.WordMatching == true || f.PatternMatching == true),
+                fields.Count(f => f.Filterable == true),
+                fields.Count(f => f.Facetable == true));
+        }
+        catch
+        {
+            return null;   // a card is not worth an exception
+        }
+    }
+
+    // ── Create dataset ──────────────────────────────────────────────────────
+
+    // Live on every keystroke so Create enables immediately (bind-Value alone commits on blur).
+    private void OnNewDatasetInput(ChangeEventArgs e) => _newDatasetName = e.Value?.ToString() ?? string.Empty;
+
+    private async Task OnNewDatasetKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await CreateDataset();
+    }
+
+    private bool _demoRunning;
+    private string? _demoError;
+
+    /// <summary>The films demo in this team, then its page: a dataset ready to search in a few
+    /// seconds, for someone who wants to see Indx before bringing their own data.</summary>
+    private async Task StartDemoAsync()
+    {
+        _demoRunning = true;
+        _demoError = null;
+        try
+        {
+            var name = await Demos.CreateFilmsAsync(TeamId);
+            NavigationManager.NavigateTo(IndxServer.Services.TeamRoutes.Dataset(TeamName, name));
+        }
+        catch (InvalidOperationException ex)
+        {
+            _demoError = ex.Message;
+        }
+        finally
+        {
+            _demoRunning = false;
+        }
+    }
+
+    private void OpenNewDataset()
+    {
+        _createError = null;
+        _showNewDatasetForm = true;
+    }
+
+    private void CancelNewDataset()
+    {
+        _showNewDatasetForm = false;
+        _newDatasetName = string.Empty;
+        _createError = null;
+    }
+
+    private Task CreateDataset()
+    {
+        _createError = DatasetCreation.TryCreate(_newDatasetName, TeamId, Logger, out var name);
+        if (_createError != null) return Task.CompletedTask;
+        _newDatasetName = string.Empty;
+        _showNewDatasetForm = false;
+        // A new dataset's first step is the upload, which lives on its page.
+        NavigationManager.NavigateTo(TeamRoutes.Dataset(TeamName, name));
+        return Task.CompletedTask;
+    }
+}

@@ -1,0 +1,45 @@
+@page "/account/register-confirmation"
+@layout UnauthenticatedLayout
+@using Microsoft.AspNetCore.Identity
+@using IndxServer.Data
+@inject UserManager<ApplicationUser> UserManager
+
+<PageTitle>Register confirmation</PageTitle>
+
+<h3>Registration successful</h3>
+
+@if (!string.IsNullOrEmpty(Email))
+{
+    <div style="padding: 20px; border: 1px solid var(--CLightBlue); border-radius: var(--radius); background: rgba(107, 158, 255, 0.1); margin: 20px 0;">
+        <h4>Please check your email</h4>
+        <p>
+            We've sent a confirmation email to <strong>@Email</strong>.
+        </p>
+        <p>
+            Please check your inbox and click the confirmation link to activate your account.
+        </p>
+        <p style="color: var(--lv5); font-size: 13px; margin-top: 20px;">
+            Didn't receive the email? Check your spam folder or contact support.
+        </p>
+    </div>
+    <div style="margin-top: 20px;">
+        <Button Href="/account/login" Variant="primary">Log in</Button>
+    </div>
+}
+else
+{
+    <div style="padding: 20px; border: 1px solid var(--CSignal); border-radius: var(--radius); background: rgba(255, 66, 56, 0.1); margin: 20px 0;">
+        <p>Invalid registration confirmation request.</p>
+    </div>
+    <div style="margin-top: 20px;">
+        <Button Href="/" Variant="secondary">Go to home</Button>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery]
+    public string? Email { get; set; }
+
+    [SupplyParameterFromQuery]
+    public string? ReturnUrl { get; set; }
+}

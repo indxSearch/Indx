@@ -1,0 +1,6 @@
+@* Port of indx-systm TableValue: a muted secondary value inside a cell. *@
+<span class="indx-table-value">@ChildContent</span>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

@@ -1,0 +1,237 @@
+﻿@* A Ready dataset's Status page: what Observr found about it, to decide here, over its
+   diagnostics (counts, timings, keep-alive, the engine's last error). The findings as cards in
+   a grid under a bar that picks open or archive and a kind, the way the Statistics page has its
+   bar over its content, below the diagnostics so those are always in view; Yes and No for
+   editors, Discuss brings one into the Agent panel. The
+   findings moved here from the Agent panel on 15 Oct 2026: the panel is one conversation, and a
+   dataset's findings belong where the dataset is. Everyone on the team can read it; the only
+   other action is clearing the last error, for editors (keep-alive is changed under Options).
+   Licensing is instance-wide and lives on the License page; a limit breach still surfaces in
+   the alert banner. *@
+@using Indx.Api
+@using IndxServer.Models
+@using IndxServer.Engine
+@using IndxServer.Services
+@using IndxServer.Services.Observr
+@inherits DatasetTabBase
+@inject ObservrFindingStore Findings
+@inject StatisticsService Stats
+@inject AgentPanelState Agent
+@inject IServiceProvider Services
+
+@if (!Active) { return; }
+
+@if (Ctx.Status is { } status)
+{
+    var ka = Ctx.KeepAlive;
+    <div class="status-tab">
+        @if (!string.IsNullOrEmpty(status.ErrorMessage))
+        {
+            <div class="status-heading-row">
+                <h3 class="status-heading">Last error</h3>
+                @if (Ctx.IsEditor)
+                {
+                    <Button Variant="ghost" Size="micro" @onclick="ClearError">Clear</Button>
+                }
+            </div>
+            <Alert Variant="warning">
+                <Description>
+                    <span class="status-last-error-text">@status.ErrorMessage</span>
+                    <span class="status-last-error-help">The last operation the engine refused. It stays until it is cleared or a newer error replaces it; the dataset itself is unaffected.</span>
+                </Description>
+            </Alert>
+        }
+
+        @* Stats, as the statistics overview: a label over a value, the width of the page. Fixed
+           columns, so the Agent panel sliding in resizes the tiles rather than reflowing them;
+           the as-many-as-fit grid snapped through 6, 5 and 4 columns during the slide. *@
+        <h3 class="status-heading@(string.IsNullOrEmpty(status.ErrorMessage) ? "" : " status-heading--section")">Index</h3>
+        <StatGroup Columns="6">
+            @{ var stateChip = DatasetStateChip.For(status.SystemState); }
+            @Tile("State", DatasetIcons.Status, "Ready: searches are answered. Loading and Indexing are on the way there. Created with records on disk: asleep.", @<Chip Size="large" Color="@stateChip.Color" TextColor="@stateChip.TextColor" Icon="@stateChip.Icon">@status.SystemState</Chip>)
+            @if (status.LicenseInfo is { DocumentLimitExceeded: true } license)
+            {
+                @* Over the limit without a license: every document is loaded, the first ones searched. *@
+                <Stat Label="Documents" LabelIcon="DatasetIcons.Documents" Hint="The records in memory now. Without a license only the first of them are searched." Value="@status.DocumentCount.ToString("N0")">
+                    @license.DocumentLimit.ToString("N0") searched
+                </Stat>
+            }
+            else
+            {
+                @Tile("Documents", DatasetIcons.Documents, "The records in memory now: what a search sees. Deleted records are not counted.", @<text>@status.DocumentCount.ToString("N0")</text>)
+            }
+            @Tile("Records on disk", DatasetIcons.Disk, "The records kept in the server's database, which the dataset is loaded from after a restart or a sleep. The same as Documents once it is loaded and up to date.", @<text>@((ka?.RecordCount ?? 0).ToString("N0"))</text>)
+            @Tile("Last index build", DatasetIcons.Changes, "When the index was last built in full.", @<TimeAgo Value="status.TimeOfLastIndexBuild" />)
+            @Tile("Seconds to index", DatasetIcons.HourGlass, "How long that build took.", @<text>@status.SecondsToIndex.ToString("0.##")s</text>)
+            @Tile("Instance created", DatasetIcons.Calendar, "When the copy now in memory was made: at a server start, a wake from sleep, or a rebuild that swapped in a new index.", @<TimeAgo Value="status.TimeOfInstanceCreation" />)
+        </StatGroup>
+
+        <h3 class="status-heading status-heading--section">Usage</h3>
+        <StatGroup Columns="3">
+            @{ var checks = IndxServer.Services.BenchmarkSearches.Of(Ctx.FindEngine()); }
+            <Stat Label="Searches since load" LabelIcon="DatasetIcons.Search"
+                  Hint="Every search the copy in memory has answered since it was made, the console's own included, apart from its performance checks, which are counted beside it. Statistics count only your visitors."
+                  Value="@Math.Max(0, status.SearchCounter - checks).ToString("N0")">
+                @if (checks > 0) { <text>and @checks.ToString("N0") from performance checks</text> }
+            </Stat>
+            @Tile("Keep-alive", DatasetIcons.Hibernate, "How long the dataset stays in memory without being used before it goes to sleep. Always on: it never sleeps. Client managed: never loaded or put to sleep on its own; you load and wake it yourself.", @<text>@KeepAliveLabel(ka)</text>)
+            @if (ka?.LastUsedUtc is { } used)
+            {
+                @Tile("Last used", DatasetIcons.Clock, "When the dataset was last used. The keep-alive counts from here.", @<TimeAgo At="used" />)
+            }
+        </StatGroup>
+
+        <DatasetWakeDays Ctx="Ctx" />
+
+        @if (_observr)
+        {
+            var shown = Shown();
+            <h3 class="status-heading status-heading--section status-heading--observr"><span class="indx-observr">@DatasetIcons.Observr(14)</span>Observations</h3>
+            <div class="indx-context-bar">
+                <SegmentedControl Items="StatusItems" Value="@_view" ValueChanged="@(v => _view = v ?? Open)" AriaLabel="Findings shown" />
+                <div class="indx-context-bar-end">
+                    @if (KindOptions.Count > 1)
+                    {
+                        <SelectField Size="micro" Variant="ghost" Options="KindOptions" Value="@(_kind ?? "")" ValueChanged="v => _kind = string.IsNullOrEmpty(v) ? null : v" aria-label="Kind of finding" />
+                    }
+                </div>
+            </div>
+            <ObservrFindingList Findings="shown" Grid NameDataset="false" Link="@(f => $"{TeamRoutes.Dataset(Ctx.TeamName ?? "", f.DataSetName)}?tab={f.Tab}")" CanDecide="Ctx.IsEditor" Busy="_busy" Failure="_failure"
+                                OnDecide="d => DecideAsync(d.Finding, d.Yes, d.Only)" OnDiscuss="Discuss" OnHide="Hide" KindIcon="KindIcon"
+                                Empty="@(_view == Open ? (_findings.Count == 0 ? "Nothing yet. Observr reads this dataset's statistics each morning and puts what is worth your attention here." : "Nothing waiting for a decision.") : "Nothing decided yet.")" />
+        }
+
+    </div>
+}
+
+@code {
+    private const string Open = "open", Archive = "archive";
+    private bool _observr;
+    private List<ObservrFinding> _findings = [];
+    private string _view = Open;
+    private string? _kind;
+    private long _busy;
+    private (long Id, string Text)? _failure;
+
+    /// <summary>A tile with its hint on the label (Stat.Hint): what the number counts, for an owner
+    /// who meets "Records on disk" beside "Documents" and asks how they differ.</summary>
+    private static RenderFragment Tile(string label, RenderFragment<int> icon, string hint, RenderFragment value) =>
+        @<Stat Label="@label" LabelIcon="icon" Hint="@hint" ValueContent="value" />;
+
+    protected override void OnInitialized()
+    {
+        base.OnInitialized();
+        Findings.Changed += OnFindingsChanged;
+        LoadFindings();
+    }
+
+    public override void Dispose()
+    {
+        Findings.Changed -= OnFindingsChanged;
+        base.Dispose();
+    }
+
+    private void OnFindingsChanged() => _ = InvokeAsync(() => { LoadFindings(); StateHasChanged(); });
+
+    /// <summary>What Observr has found about this dataset, and whether it watches it at all: with
+    /// neither, the page is the diagnostics alone.</summary>
+    private void LoadFindings()
+    {
+        _findings = Findings.ListForDataset(Ctx.TeamId, Ctx.Name, 200);
+        _observr = _findings.Count > 0 || Findings.IsEnabled(Ctx.TeamId, Ctx.Name);
+    }
+
+    private List<ObservrFinding> Shown() => _findings
+        .Where(f => _view == Open ? f.Status == ObservrFinding.Open : f.Status != ObservrFinding.Open)
+        .Where(f => _kind == null || KindOf(f) == _kind)
+        .ToList();
+
+    private List<SegmentedControl.Item> StatusItems
+    {
+        get
+        {
+            var open = _findings.Count(f => f.Status == ObservrFinding.Open);
+            return [new(Open, "Open", DatasetIcons.OpenFinding, Badge: open > 0 ? open.ToString() : null, BadgeTone: "info"), new(Archive, "Archive", DatasetIcons.Archive)];
+        }
+    }
+
+    /// <summary>The kinds present, each once, by the name a reader knows them by.</summary>
+    private List<SelectField.SelectOption> KindOptions =>
+        new List<SelectField.SelectOption> { new("All kinds", "") }
+            .Concat(_findings.Select(KindOf).Distinct().OrderBy(k => KindLabel(k)).Select(k => new SelectField.SelectOption(KindLabel(k), k)))
+            .ToList();
+
+    /// <summary>A digest's items share a kind, whatever tab each points at.</summary>
+    private static string KindOf(ObservrFinding f) => f.Kind.StartsWith(ObservrClient.DigestKind) ? ObservrClient.DigestKind : f.Kind;
+
+    /// <summary>A kind's icon on its card: the section it comes from.</summary>
+    internal static RenderFragment<int> KindIcon(ObservrFinding f) => KindOf(f) switch
+    {
+        ObservrClient.ZeroHitKind => DatasetIcons.Empty,
+        ObservrClient.LowClickKind => DatasetIcons.FuzzySelected,
+        ObservrClient.FieldReviewKind => DatasetIcons.Fields,
+        ObservrClient.SynonymsKind => DatasetIcons.Synonym,
+        ObservrClient.ChangeKind => DatasetIcons.Changes,
+        ObservrClient.SetupKind => DatasetIcons.SearchOrAsk,
+        ObservrClient.DigestKind => DatasetIcons.Statistics,
+        ObservrChat.Kind => DatasetIcons.Agent,
+        _ => DatasetIcons.Observr,
+    };
+
+    internal static string KindLabel(string kind) => kind switch
+    {
+        ObservrClient.ZeroHitKind => "Found nothing",
+        ObservrClient.LowClickKind => "Low click-through",
+        ObservrClient.FieldReviewKind => "Field review",
+        ObservrClient.SynonymsKind => "Synonyms",
+        ObservrClient.ChangeKind => "Changes",
+        ObservrClient.SetupKind => "Search or ask",
+        ObservrClient.DigestKind => "Digest",
+        ObservrChat.Kind => "Conversation",
+        _ => kind,
+    };
+
+    private async Task DecideAsync(ObservrFinding f, bool yes, IReadOnlyList<int>? only)
+    {
+        if (_busy != 0 || !Ctx.IsEditor) return;
+        _busy = f.Id;
+        _failure = null;
+        try
+        {
+            // The client talks to the Observr service; it is absent where the service is not configured.
+            string? why = null;
+            if (Services.GetService(typeof(ObservrClient)) is ObservrClient observr)
+                why = await Task.Run(() => observr.Decide(f.Id, yes, only));
+            else
+                Findings.Decide(f.Id, yes ? ObservrFinding.Accepted : ObservrFinding.Declined);
+            if (why != null) _failure = (f.Id, why);
+        }
+        finally
+        {
+            _busy = 0;
+            LoadFindings();
+        }
+    }
+
+    /// <summary>Off the page for good; an open one goes undecided.</summary>
+    private void Hide(ObservrFinding f) { if (Ctx.IsEditor) Findings.Remove(f.Id); }
+
+    /// <summary>Into the Agent panel, with the finding named, so the owner can ask about it before deciding.</summary>
+    private void Discuss(ObservrFinding f) => Agent.Open($"About your finding \u201c{f.Title}\u201d: ");
+
+    // ClearErrorMessage raises Changed, which re-renders this tab and the rest of the panel.
+    private void ClearError() => Ctx.ClearErrorMessage();
+
+    private static string KeepAliveLabel(IndxServerInternalApi.KeepAliveInfo? ka)
+    {
+        if (ka == null) return "—";
+        return ka.KeepAliveTimeHrs switch
+        {
+            int.MaxValue => "Always on",
+            0 => "Client managed",
+            var h when ka.Remaining is { } r => $"{h}h, {Math.Max(0, (int)Math.Ceiling(r.TotalMinutes))} min left",
+            var h => $"{h}h",
+        };
+    }
+
+}

@@ -1,0 +1,746 @@
+# <img src="docs/icons/indx-logo.svg" width="35" height="25" alt="">&nbsp;Indx
+
+A self-hosted search service built on [Indx Search](https://indx.co). Blazor Server UI, HTTP API with JWT authentication, user management, and everything needed to run a multi-user search service on your own infrastructure.
+
+![A tour of the Indx console: the dataset list, a hibernated dataset, status, search statistics and journeys, field configuration, the records browser and its scan report, categories, query parameters, boost rules, synonyms, and the admin views of teams, datasets and the monitor](docs/images/tour.gif)
+
+## What's Included
+
+<table>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/icons/internet-browser.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Dashboard</b><br>
+<sub>Teams, datasets, field configuration with field profiles, a records browser with a data scan, categories as a tree, search preview, status, statistics with journeys, boost and bury rules, synonyms, options; plus an admin panel</sub>
+</td>
+<td width="50%" valign="top">
+<img src="docs/icons/user-group.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Teams</b><br>
+<sub>Datasets belong to teams; members join with per-team roles</sub>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/icons/api.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>HTTP API</b><br>
+<sub>JWT authentication and API key management; the whole API browsable in Swagger UI at <code>/swagger</code>; errors are RFC 9457 problem documents with a machine-readable <code>code</code></sub>
+</td>
+<td width="50%" valign="top">
+<img src="docs/icons/dynamic-json-field.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Dynamic data</b><br>
+<sub>Insert, update, delete, by key or by filter, with the index kept in sync</sub>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/icons/shadow-indexing.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Zero-downtime rebuilds</b><br>
+<sub>Replace a dataset, or change its field configuration, on a shadow engine while the old one keeps serving</sub>
+</td>
+<td width="50%" valign="top">
+<img src="docs/icons/hibernate.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Keep-alive &amp; hibernation</b><br>
+<sub>Pinned, timed or client-managed memory per dataset</sub>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/icons/mcp.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>MCP server</b><br>
+<sub>Connect AI agents (Claude, etc.) directly to your search data, at <code>/mcp</code></sub>
+</td>
+<td width="50%" valign="top">
+<img src="docs/icons/login.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Accounts</b><br>
+<sub>Registration, login and account management; local passwords, with optional Microsoft and Google sign-in</sub>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/icons/boost.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Relevance</b><br>
+<sub>Typo tolerance by levels, matching chosen per field, boost and bury rules with schedules, facets, vector and hybrid search</sub>
+</td>
+<td width="50%" valign="top">
+<img src="docs/icons/synonym.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Synonyms</b><br>
+<sub>Per-dataset lists (experimental); query expansion at search time</sub>
+</td>
+</tr>
+<tr>
+<td width="50%" valign="top">
+<img src="docs/icons/bell.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Notifications</b><br>
+<sub>In the app and by email</sub>
+</td>
+<td width="50%" valign="top">
+<img src="docs/icons/terminal.svg" width="21" height="15" alt="">&nbsp;&nbsp;<b>Terminal UI</b><br>
+<sub>A live view of datasets and server events in the terminal the server runs in, with no browser and no login</sub>
+</td>
+</tr>
+</table>
+
+## Quick Start
+
+### Prerequisites
+
+- [.NET 10.0 SDK](https://dotnet.microsoft.com/download/dotnet/10.0)
+
+### Run Locally
+
+```bash
+git clone https://github.com/indxSearch/Indx
+cd Indx
+dotnet run
+```
+
+Open `https://localhost:5001`. The first visit walks you through a short setup: create the admin account, name your team, and pick instance settings. Done in under a minute.
+
+The terminal you started it from now shows a live [monitor](#monitor) of the instance. The same
+view is in the console under **Admin → Monitor**, for deployments with no terminal.
+
+Works immediately with no configuration:
+- Local username/password accounts
+- SQLite databases auto-created in `./IndxData/`
+- Emails logged to console (no SMTP required)
+
+## First-Run Setup
+
+The setup wizard runs automatically on first visit. Afterwards, **Admin → Settings** configures:
+
+- **Registration mode**: Open, domain-restricted, or closed
+- **Email provider**: Switch from console logging to Azure Communication Services
+- **OAuth**: Enable Microsoft and/or Google sign-in
+
+Most settings can be changed through the UI without restarting the app.
+
+## Teams
+
+Everything is organized around teams:
+
+- A user who signs up on their own gets a **personal team**, and their datasets live there by default.
+- Create more teams to share datasets with colleagues. Members are invited with a
+  per-team role: **Admin** (manage members, delete datasets), **Editor** (load,
+  index, configure), or **Viewer** (search and read). Someone invited to a team
+  who has no account yet gets an email to register, and joins that team when they do,
+  without a personal team. An invitation works in every registration mode and lasts 14 days.
+- Datasets can be **renamed**, or **transferred** to another team you administer. Deleting a
+  team deletes its datasets with it (the dashboard asks you to type the team's name).
+- The HTTP API is team-scoped: every dataset route is
+  `/api/teams/{team}/datasets/{dataset}/…`.
+
+![Admin, Teams: two teams listed with their members and each member's role](docs/images/admin-teams.png)
+
+**Admin → Users** lists every account and its platform role; **Admin → Teams**, above, is where
+membership and per-team roles are managed.
+
+## Loading Data
+
+Data goes in as **JSON**, from the web UI or over the API.
+
+**From the UI:** open your dataset, upload a JSON file, mark how each field is searched, by its
+words, inside its words or both, and which are filterable / facetable / sortable, then
+**Load & Index**. The search preview tab lets
+you try queries immediately.
+
+![Field configuration: each field with its detected type, WordMatching and PatternMatching, its field profile, the filter roles and a weight slider. Nested objects are listed with their children indented beneath them](docs/images/console-field-configuration.png)
+
+Nested objects appear as their own row with the fields inside them indented underneath, so the
+structure of the source document stays readable while you configure it. A searched field takes
+its settings from a **field profile**: five are built in (title, name, category, code, text), and
+a dataset can keep its own.
+
+**The format:** an array of JSON documents. Nested objects become dotted field names
+(`brand.displayName`), arrays are supported, and fields are auto-detected with types on
+upload. **Export files that wrap the documents in a root object**, such as
+`{ "count": …, "products": [ … ] }` as many systems export, are handled automatically:
+Indx finds the document array inside the envelope on its own, so upload the file as-is.
+
+**Over the API:** the same steps as endpoints, so analyze, field configuration, load, index.
+See `/swagger` for the full surface.
+
+**Changing data afterwards:** `POST`/`PUT`/`PATCH`/`DELETE …/documents` and
+`…/documents/{key}` insert, update and delete documents one at a time or in batches, and
+`documents/delete-by-filter` / `documents/update-by-filter` act on everything a filter matches.
+The index follows immediately; no re-index. Batches are all-or-nothing. Fields that were not
+present at load time are stored but not indexed. Use **Replace** to adopt them.
+
+**Replace** (`POST …/replace`, or the *Options* tab) swaps the whole dataset for a new JSON
+file with no downtime: the new documents load and index on a shadow engine while the old one
+keeps answering, then the two are swapped. Changing the **field configuration** of a loaded
+dataset rebuilds the same way, and so does `POST …/index` on a dataset that is already Ready.
+Those two do not wait for the build: they answer `202` when it is started. While a build runs,
+`GET status` reports `shadowBuildInProgress` and a second build is refused with
+`409 shadowBusy`; when it is over, `shadowBuildFinishedUtc` is set and `shadowBuildError` says
+why it failed, or is null. Field roles are written by `PUT …/fields/configuration` only; the
+per-role lists (`GET …/fields/searchable` and the rest) are for reading.
+
+## Records
+
+The **Records** section shows a dataset's records as a table: searched as you type, filtered,
+ordered and paged, with columns you choose and resize. A row opens in place, as fields or as JSON,
+and with a search it shows how each query word was matched, and in which field.
+
+![Records: a catalogue's records as a table with name, brand, category and price, and the
+toolbar's filter, order, columns, search and Run scan](docs/images/console-records.png)
+
+**Run scan** reads every record once and reports, field by field, how many records lack a value
+and how many values the field has, the searched fields first and the worst first, and which records
+have text cut at indexing. A record without a searched field cannot be found by it, so this is
+where a gap in the data shows before a visitor finds it. **Show** lists those records in the
+table. The report says when records have changed since the scan, and a record fixed since is
+marked as fixed.
+
+![The scan's report: each searched field with the records that lack a value, their share and the
+field's number of values, worst first, each with a Show button](docs/images/console-records-report.png)
+
+A scan keeps one processor core busy while it runs, and searches go on as usual. Only an editor
+runs one; anyone who can open the dataset reads the report.
+
+## Categories
+
+A catalogue has a shape, and the **Categories** tab draws it: every category as a node with the
+number of products in it, the subcategories fanned out to the right, the chosen one with its first
+products beside it. The tree is read from the data as it is. A field whose values are paths, the
+way a product feed writes `product_type` ("Furniture > Chairs > Office chairs"), is one source;
+fields that each hold a level, such as `category.department`, `category.section` and
+`category.type`, are the other. Mark them **Facetable** under Field configuration and the tab
+finds them; mark them **Filterable** too and the chosen category lists its products and can be
+boosted from there, which opens Boost rules with the rule drafted.
+
+![Categories: a shop's hierarchy as a tree of nodes with product counts, opened two levels
+deep](docs/images/console-categories.png)
+
+Open the tree to a level, zoom it out to see more of it, filter the categories by name, or read
+the same tree as a list. Full screen is a click away for a wide catalogue. A category no visitor
+has selected or bought from in the last 90 days carries a small mark, for the editor who wants to
+know where the catalogue is thin; the counts behind the marks are in the category's panel.
+
+## Boost rules
+
+Ranking rules that lift matching documents in every search of the dataset, or, as **bury
+rules**, take them down while nothing else moves. They are per-dataset, edited on the dataset's
+**Boost rules** tab on one scale from Bury high to Boost high, and they stack: a document
+matching three rules is lifted by all three.
+
+![The boost rules tab: four rules, one with a date window, showing value, boolean and numeric
+range conditions and Low, Medium and High strengths](docs/images/console-boost-rules.png)
+
+A rule is a name, one or more conditions, and a strength:
+
+- **Conditions** use **filterable** fields, and are either an exact value or a numeric range
+  (not both). A value on a numeric field is sent as a range with equal limits, so you do not
+  have to know which the field wants.
+- **Strength** is Low, Medium or High.
+- **Time limit** is optional: give a rule an active-from and active-until date and it applies
+  only inside that window. Outside it the rule stays in the list, greyed rather than deleted, so
+  a seasonal rule is written once. The tab's header counts how many of the rules apply today.
+- A rule can be **switched off** without deleting it.
+
+## Synonyms (experimental)
+
+Each dataset can carry a synonym list that widens searches: a query word that matches an entry
+also finds the records holding the entry's other terms, as if they had been typed. Those records
+come below the ones holding the words as typed. Changes apply on the next search, and nothing is
+re-indexed.
+
+Two kinds of entries:
+
+- **Two-way**: all terms are equivalent; matching any of them pulls in the whole group.
+  For different words for the same thing (*legemiddel / medisin*). Not for typos, spelling
+  variants or translation: the search matches characters, and a list in two languages is not a
+  translation.
+- **One-way**: only the **From** term expands, into its synonyms. For acronyms: *hms*
+  should bring in *helse, miljø og sikkerhet*, but a search for *helse* must not become
+  a search for *hms*. Multi-word terms are matched as whole phrases.
+
+![The synonyms tab: five entries, four two-way with a double arrow between their terms and one
+one-way with a single arrow from its From term](docs/images/console-synonyms.png)
+
+**From the UI:** the **Synonyms** tab on a dataset (editor role). Create and edit entries
+in a dialog, or import/export the whole list as JSON.
+
+**Over the API:** `GET`/`PUT api/teams/<team>/datasets/<dataset>/synonyms`. `GET` returns
+the list (or `null`), `PUT` replaces it (`null` removes it; editor role required).
+
+**Why experimental:** a synonym widens what a search finds, and a long list on a large dataset
+widens it a lot. Measure the effect on your data before shipping one to production. Behavior may
+still change.
+
+## Query parameters
+
+What a search uses when its request leaves a value out: the typos a word may have and from how many
+letters, how the word being typed is read, and what the result list does when nothing matches every
+word. Under **Advanced**, how records are fetched and ranked, and the dataset's text rules: strings
+to replace and letters to read as other letters, beside Indx's own. A value the request sends
+always wins, and a change applies from the next search.
+
+![Query parameters: the typos, typing and result list settings, each with its help text and its
+control](docs/images/console-query-parameters.png)
+
+## Search statistics (experimental)
+
+The server counts every search with text on its own: the query text, and how many results it
+found. Empty searches, such as a browse page opening, are not counted, and neither is your own
+testing in the console's search preview. Your storefront adds the two things the server cannot
+see, which result the visitor chose and whether it led to an order. Each dataset's **Statistics**
+tab shows the result for the last 7, 30 or 90 days.
+
+![The statistics tab for a bookshop: a month of searches and clicks per day with changes
+marked, then the Overview section's tiles and pictures](docs/images/console-statistics.png)
+
+Below the chart, one section at a time, each with its own view settings:
+
+- **Overview** opens with the window's figures, searches, partial finds, click-through, the average
+  click position and, once there are any, conversions, and then the pictures: when people search,
+  as a week-by-hour grid and as a clock of the day; where the searches come from; which result
+  gets chosen; which languages visitors search in; how they type; and the search profile, six
+  shares on one scale with the window before this one drawn behind, so a change is the shape
+  moving.
+![The Overview section: the window's tiles, when people search as a week-by-hour grid and a clock
+of the day, searches by surface, which result is chosen and how people type](docs/images/console-statistics-overview.png)
+
+- **Top queries** gives each query its click-through and the average position of the result
+  people chose. A low position means the right document was found and ranked too low. Order by
+  searches or by click-through, ten more at a time.
+- **Partial matches** shows the searches no record held every word of, where the visitor still
+  chose one of the nearest results: how often, and which one. **All** adds those nothing was
+  chosen from.
+- **Top documents** lists what gets chosen, or what converts.
+- **Journeys** follows visits from how they started, a search, a facet value or a catalogue
+  page: open a start to see what came next, a chosen result, a conversion or nothing.
+- **Browsing** lists what people narrowed the catalogue by, filter value by filter value, with or
+  without typing. On a dataset of people, where a filter can hold a name, switch it off on the
+  **Options** tab.
+- **Changes** lists what was changed on the dataset itself. Pick a kind of change, and the chart
+  marks only those.
+
+![The Journeys section: visits that began with the search "walnut", how many chose a result and
+how many of those converted](docs/images/console-statistics-journeys.png)
+
+![The Partial matches section: misspelled searches, how often a result was chosen anyway, and the
+result chosen most](docs/images/console-statistics-coverage.png)
+
+Every dataset card on the team page also draws the last two weeks of searches, so a dataset
+nobody uses any more is visible at a glance.
+
+**Sending clicks and orders:** every search response carries an `Indx-Query-Id` header. Send it
+back with `POST …/events/select` when a result is clicked, and with `POST …/events/convert` for
+an order. A Search key, the one your storefront already has, is enough. Send a `session` with
+each search too, any random id made per page load, and a visitor typing "oslo" counts as one
+search instead of four. [@indxsearch/intrface](https://github.com/indxSearch/indx-intrface)
+does both for you: it sends the session, and a result's `select()` reports the click.
+
+**What changed:** small blue marks under the chart are changes made to the dataset itself, listed
+below it: synonyms, boost rules, field configuration, a replace, a reindex, and large document
+changes. When a number moves, the reason is next to it. Only what changed and when is kept,
+never who.
+
+**Languages:** send `locale` with each search, a BCP 47 tag such as `nb-NO` for the language the
+page is in, and the Overview counts the languages visitors search in; without it the browser's
+`Accept-Language` is read. intrface sends it for you.
+
+**Over the API:** `GET …/statistics/overview`, `timeseries`, `queries`, `documents` and `changes`,
+with a Read key. Statistics are stored in their own `stats.db` next to `indx.db`. Raw events are kept
+for 90 days and daily totals until you delete them, on the dataset's **Options** tab.
+`Statistics:Enabled` in `appsettings.json` switches the whole feature off.
+
+**Why experimental:** the numbers and their definitions may still change.
+
+## MCP: connect AI agents
+
+The server exposes a [Model Context Protocol](https://modelcontextprotocol.io) endpoint at `/mcp` (Streamable HTTP). Point an MCP-capable client at it with a bearer token, whether Claude Code, Claude Desktop, or any other, and the agent gets read-only tools over your datasets, for both querying and setting one up:
+
+- **Querying**: `list_datasets`, `describe_dataset`, `search`, `search_many`, `get_document`,
+  `get_cold`, `get_synonyms`
+- **Inspecting**: `get_status` (state, document count, scoring mode, errors, and what to do next)
+  and `get_field_configuration` (every field including the ones switched off, with weights, BM25
+  parameters and a sample of the real content)
+
+**Every tool is read-only.** An agent connected over MCP can read your data and your configuration
+and change neither. It can tell you that a field should be searchable; applying that happens in the
+web console or over the HTTP API, where a person sees the change before it takes effect.
+
+Paired with the [Indx agent skill](https://github.com/indxSearch/skill-indx-search), an agent can read the documentation and inspect your live instance at the same time, which is most of what deciding how to set a dataset up takes.
+
+- **Same keys and permissions** as the rest of the API. A Search only key lets the agent list,
+  search and fetch documents; `describe_dataset`, `get_synonyms`, `get_status` and
+  `get_field_configuration` need Read. No MCP tool needs Full, so no agent connection ever
+  requires a key that could delete a dataset
+- **The session is shaped by the key.** A client is offered only the tools its key can call, and
+  the instructions it receives at connection describe that set and no other. A Search key is not
+  told to inspect fields it cannot see
+- **Read-only, with nothing excepted.** No tool changes configuration, and none inserts, updates
+  or deletes a document or drops a dataset
+- **Switched off instance-wide** by an admin under Instance Settings, with no restart
+
+## API Access
+
+1. Log in and open **API keys** in the account menu. A key is limited to one team, optionally to
+   some of its datasets, and to an access level:
+
+   | Level | Can do | Use it for |
+   |---|---|---|
+   | **Search only** | Search (text, vector, hybrid), fetch result documents, build filters, read field lists, field configuration and status | Websites and apps, safe in a browser |
+   | **Read only** | Every read, including export and synonyms | Exports, reporting, AI agents, kept on a server |
+   | **Full access** | Everything your team role allows, including loading and deleting data | Your own servers and pipelines |
+
+   A key never exceeds your role in the team, and cannot be changed after it is created. Outside its
+   team or datasets it gets `404`; above its level, `403 insufficientKeyScope`.
+
+   **Anything that runs in a browser, [`@indxsearch/intrface`](https://github.com/indxSearch/indx-react)
+   included, ships its key to every visitor. Use a Search only key limited to the datasets that page searches.**
+   Keys created before access levels existed show as **Unscoped** and reach every team you belong
+   to: replace them and revoke the old ones.
+2. Every dataset operation is scoped to a team and dataset:
+
+```bash
+curl -X POST "https://localhost:5001/api/teams/<team>/datasets/<dataset>/search" \
+  -H "Authorization: Bearer <your-token>" \
+  -H "Content-Type: application/json" \
+  -d '{ "text": "your query", "maxNumberOfRecordsToReturn": 10 }'
+```
+
+Full API reference at `/swagger`.
+
+## Configuration
+
+The app works out of the box. For production, set these via environment variables or Azure App Service application settings.
+
+### Email (Optional)
+
+By default, emails are logged to the console. To send real emails via Azure Communication Services:
+
+```
+Email__Provider = AzureCommunicationServices
+Email__AzureCommunicationServices__ConnectionString = endpoint=https://...;accesskey=...
+Email__FromAddress = noreply@your-verified-domain.com
+```
+
+See [docs/EMAIL_SETUP.md](docs/EMAIL_SETUP.md) for full ACS setup instructions.
+
+### OAuth (Optional)
+
+OAuth providers are optional. Leave credentials empty to use local accounts only. When credentials are present, sign-in buttons appear on the login page automatically.
+
+**Microsoft:**
+```
+Authentication__Microsoft__ClientId = your-client-id
+Authentication__Microsoft__ClientSecret = your-client-secret
+```
+
+**Google:**
+```
+Authentication__Google__ClientId = your-client-id
+Authentication__Google__ClientSecret = your-client-secret
+```
+
+See [docs/OAUTH_SETUP.md](docs/OAUTH_SETUP.md) for app registration instructions.
+
+### Registration Mode
+
+```
+Registration__Mode = Closed
+```
+
+Options: `Open` (default), `EmailDomain` (restrict by domain), `Closed` (admin-only account creation).
+
+For domain restrictions:
+```
+Registration__Mode = EmailDomain
+Registration__AllowedDomains__0 = yourcompany.com
+Registration__AllowedDomains__1 = partner.com
+```
+
+### Rate limiting
+
+The anonymous auth endpoints, meaning `POST /api/login` and the dashboard's login, register,
+forgot-password, reset and resend-confirmation forms, are limited per client IP: 10 attempts
+per 60 seconds by default, together. Over the limit answers `429` with an RFC 9457 problem
+(`code: rateLimited`) and a `Retry-After` header. Configure under `RateLimits:Auth`
+(`Enabled`, `PermitLimit`, `WindowSeconds`).
+
+Authenticated `/api` and `/mcp` traffic can be limited **per API key** with a token bucket,
+`RateLimits:Api` (`Enabled`, `RequestsPerSecond`, `Burst`). It is **off by default**, since on your
+own hardware the ceiling is the hardware, and on for managed instances. Each key has its own
+bucket, so one runaway integration does not throttle a user's other keys. Over the limit is
+the same `429 rateLimited` with `Retry-After`.
+
+`/api` and `/mcp` requests with **no bearer token that validates**, whether none at all, forged or
+expired, are limited per client IP too, `RateLimits:Anon` (`Enabled`, `PermitLimit`,
+`WindowSeconds`), 30 per 60 seconds by default, **on**. They all end in `401`, so a working
+client makes them only while a token is being refreshed, whereas a scanner makes nothing else.
+Sending a junk `Authorization` header is not a way out of this window. CORS preflight (`OPTIONS`)
+is excluded.
+
+All three limits answer the same `429 rateLimited` problem, so a client needs one handler: wait
+`retryAfterSeconds` and retry. Rejections are logged (`IndxServer.RateLimit`) and counted
+(`indx.ratelimit.rejections`, tagged by limit).
+
+There is no instance-wide cap on how much work may run at once. Concurrency is bounded where
+it is actually known: a dataset that is mid-rebuild answers `409` (`ShadowBusyException`), and
+the engine holds its own slot pool per dataset.
+
+Behind a reverse proxy or App Service, set `ASPNETCORE_FORWARDEDHEADERS_ENABLED=true` so the
+server sees the client's IP rather than the proxy's; otherwise every caller shares one window.
+
+### Email Confirmation
+
+```
+Identity__RequireConfirmedEmail = true
+```
+
+OAuth users are auto-confirmed. Requires a real email provider when enabled.
+
+## License
+
+The Indx server's source is under the [PolyForm Shield License 1.0.0](LICENSE): you may use it, change
+it and run it for any purpose, your business's own included, but not to make a product that competes
+with Indx, such as selling it or a search service built from it. Versions released before
+27 November 2026 were MIT and stay so. The search engine inside it, IndxSearchLib, has its own licence
+terms, below.
+
+### The engine's licence
+
+Indx Search enforces a **100,000 document limit** without a license file. A free extended license removing this limit is available from the Indx License Portal at [license.indx.co](https://license.indx.co).
+
+### Manual placement
+
+Place the `.license` file in `./IndxData/`:
+
+```
+IndxData/
+├── identity.db
+├── indx.db
+└── indx-developer.license
+```
+
+The app detects any `.license` file in that directory on startup. Custom path via:
+```
+Indx__LicenseFile = /path/to/your.license
+```
+
+### Auto-fetch from the license portal
+
+Instead of placing the file manually, IndxServer can pull its license straight from the Indx License Portal ([license.indx.co](https://license.indx.co)) on startup. On your portal license page, create a license token, then configure:
+
+```
+Indx__LicenseToken = <token from your portal license page>
+```
+
+The download endpoint is **hardcoded** to the Indx portal (`https://license.indx.co/api/license/current`), because only Indx issues licenses, so it is not configurable. Auto-fetch is **token-gated**: with a token set, a **fresh license is fetched on every startup** (the portal rolls Pro/Free expiry forward) and written to `Indx:LicenseFile` (default `./IndxData/indx.license`). **Without a token, auto-fetch is a no-op**: the server fetches no licence and relies on a manually placed file or free-tier mode. With a token, the daily fetch also sends the server's version in an `X-Indx-Version` header, so we can see which licensed instances a fix has not reached; nothing else about the instance is sent. Fetch failures are logged but never fatal, and the server keeps any existing file, or falls back to free-tier mode. Set the token via environment variable or Key Vault, not in `appsettings.json`.
+
+> **Legacy:** the old `Indx__LicenseDownloadUrl` setting is no longer read. The URL is hardcoded and fetching is driven solely by `Indx__LicenseToken`. Remove it from any existing configuration.
+
+### Updates
+
+Once a day the server asks [license.indx.co](https://license.indx.co) which Indx release is the
+latest. When it is newer than the one running, every admin gets one notification in the console,
+and the admin area shows it under the running version until the server is updated. Email is off for an
+ordinary release (each admin can turn it on under notification settings); a release that fixes a
+security issue says so and is emailed as well. A self-hosted server points at the release on
+GitHub; a Managed instance is updated by Indx, since Azure keeps its files out of the customer's
+reach, and the notice says to write to support@indx.co.
+
+The check is one anonymous request: no token, no instance id, nothing about your data. Switch it
+off with:
+
+```
+Updates__Check = false
+```
+
+## Deployment
+
+### Azure App Service
+
+1. Create an App Service with **.NET 10** Linux runtime
+2. Deploy via zip deploy, GitHub Actions, or Visual Studio publish
+3. Set `ASPNETCORE_ENVIRONMENT = Production` in Application Settings
+4. **Turn on Web sockets** (Configuration → General settings, or
+   `az webapp config set --web-sockets-enabled true`). The dashboard is Blazor Server and
+   talks over SignalR; without WebSockets it falls back to long polling, which is slow and
+   shows up as a `GET /_blazor` taking 90 s in every IIS log line.
+
+The app creates its SQLite databases in `./IndxData/` on first run. This directory persists across redeployments.
+
+For email and OAuth, set the relevant Application Settings listed in the Configuration section above. The app restarts automatically when settings change in Azure.
+
+**Redirect URIs**, if using OAuth, add these to your app registrations:
+```
+https://your-app.azurewebsites.net/signin-microsoft
+https://your-app.azurewebsites.net/signin-google
+```
+
+## Database
+
+Two SQLite files in `./IndxData/`:
+
+- `identity.db`: user accounts, roles, and authentication (ASP.NET Core Identity)
+- `indx.db`: application config, API keys, notifications, **and each dataset's persisted document store** (the JSON records, field configuration, and keep-alive policy)
+
+Migrations run automatically on startup. No manual migration steps needed.
+
+> The **inverted search index is held in memory** and rebuilt on load; `indx.db` persists the documents and configuration, so a dataset can be unloaded to free memory and reloaded, re-indexed from the store, without re-uploading data.
+
+## Dataset lifecycle: keep-alive & hibernation
+
+Each dataset's **Status** tab reads its state at a glance: the index, its document count, when it
+was last built and how long that took, and how it is kept in memory.
+
+![The Status tab: the dataset's state, documents, records on disk, last index build and time to
+index, then searches since load, keep-alive and last used](docs/images/console-status.png)
+
+Because the documents live in `indx.db` while only the index is in memory, datasets can be loaded and unloaded on demand to manage RAM. Each dataset has a **keep-alive policy** (`KeepAliveTimeHrs`), set per dataset on the **Datasets** page (a dataset's *Options* tab) or, across all teams, on **Admin → Datasets**:
+
+| Policy | Behaviour |
+|--------|-----------|
+| **Pinned** (default) | Loaded at startup, never evicted. |
+| **Timed** (N hours) | Loaded at startup; evicted from memory after N hours idle, then **reloaded automatically on the next request**. |
+| **Off** (client-managed) | Not loaded at startup and never auto-loaded, so you load and wake it explicitly. Never auto-evicted. |
+
+A background sweeper frees idle *Timed* datasets; the next access transparently reloads and re-indexes from `indx.db`. **Pinned** and **Off** datasets are never auto-evicted.
+
+**Manual hibernation.** From a dataset's *Options* tab you can **Hibernate now** an *Off* dataset to free its memory immediately (the data stays on disk). A hibernated dataset shows a **💤 Hibernated** state with a **Wake up** action that reloads it.
+
+![A hibernated dataset: the Hibernated chip in the breadcrumb, a line saying the documents are on disk but not in memory, and a Wake up button](docs/images/console-hibernated-wake.png)
+
+> This is a *deep* hibernate: everything leaves memory and the dataset is rebuilt from `indx.db` on wake, which is the right model when storage is the source of truth. Every route into it — the Options button, the idle sweeper, and `POST …/hibernate` over the API — does the same thing, and a hibernated dataset always reports the `Created` state with `recordsOnDisk > 0` in its status. The core library's own `Hibernate`/`WakeUp` is the lighter variant for in-process use (documents stay resident in RAM, only the index is dropped, and the engine reports `Loaded`).
+
+![The dataset list with one dataset showing a Hibernated state chip beside the others marked Ready](docs/images/console-datasets-hibernated.png)
+
+**Admin → Datasets** shows every dataset across every team with its state, document count, when it
+was last indexed, and its keep-alive policy:
+
+![Admin, Datasets: every dataset across both teams with state, document count, last indexed and keep-alive](docs/images/admin-datasets.png)
+
+Over the HTTP API, the per-dataset `Hibernate`, `WakeUp`, and `LoadFromDatabase` operations control loading. See `/swagger` for the API reference.
+
+## Monitor
+
+A live view of the instance: what each dataset is doing right now, what the process is using, and
+what just happened. It is meant for the moment something looks wrong, and it comes in two forms
+reading the same thing.
+
+### In the browser
+
+**Admin → Monitor** shows the event stream and the instance figures: the process's CPU and memory
+as rings against what the machine allows, with the pressure zones marked, the native memory pool,
+the searches counted and the average a minute over the last hour, and every dataset's state in one
+strip. It needs no terminal, so it is the one to use on a hosted deployment, and it is where the
+stream is visible when an agent is configuring a dataset over MCP or the API.
+
+![Admin, Monitor: the instance figures above a table of recent events, newest first](docs/images/admin-monitor.png)
+
+Admin only: an event names the team whose dataset changed, so a member of one team must not read
+another's. Events are held in memory and start again when the server restarts.
+
+### In the terminal
+
+Start the server from a terminal and it draws the same view there, with no browser and no login.
+
+![The terminal monitor: a header line of instance figures, a table of datasets with their team, state and counts, and an event stream below it](docs/images/tui.png)
+
+The dataset table shows state, document count, records on disk, how long since each was last used,
+and its idle-eviction countdown. Below it, an event stream carries dataset state changes, idle
+sweeps, background jobs and anything the server logs while the monitor is up. Datasets are coloured
+by state, with the same colours and icons as the chips in the web UI.
+
+The monitor opens with the indx mark in voxels, large on an empty screen, turning while the
+datasets that load at startup come in. Under it, what is happening right now ("loading films 38%,
+2 more"); at the foot, the server and core versions and the address. When the first dataset is
+ready, the mark flies to the header and lands as its logo, and the monitor's frame draws itself in
+round it. Datasets still waiting their turn in the startup load show as **Queued** in the table. Any key goes
+straight to the monitor; with nothing to load it takes about five seconds. If datasets are still
+loading when the monitor is up, and none is ready, the mark turns on in the dataset pane until the
+first one serves. On a terminal with only 16 colours it is drawn in shade characters.
+
+| Key | Does |
+|---|---|
+| `Ctrl+Q` | Detach the monitor. **The server keeps running.** |
+| `Ctrl+C` | Stop the server, as usual |
+| `F10` | Shut down the server, after a confirmation |
+
+Drag the divider between the two panes to resize them. Where you leave it is remembered in
+`~/.indx/monitor.layout.json`.
+
+### The three memory numbers
+
+They disagree on purpose, and for Indx the difference is larger than for most servers.
+
+- **Managed heap** is what the .NET garbage collector accounts for. The search engine keeps its
+  score arrays in unmanaged memory, outside the GC, so this number **understates** what a loaded
+  dataset costs. It is not the one to quote.
+- **Resident** is the physical memory the process actually holds, unmanaged memory included. This
+  is what the machine feels and what a hosting bill reflects.
+- **Native blocks** is the count of unmanaged allocations outstanding. It is the only one that is
+  exact: heap and resident both move with paging, and on a memory-starved host they say very
+  little. A steady block count means allocations are being released in step; a rising one over a
+  quiet period is the signal worth acting on.
+
+### Lines about clients are not faults
+
+Two things in the event stream come from whatever is talking to the server, not from the server,
+and both are normal:
+
+- **"a client hung up before its response finished"** appears whenever something makes a request
+  and exits without closing the connection properly. `curl` does this on every invocation, and so
+  do most health probes. On macOS the underlying message is "the encryption operation failed",
+  which reads alarmingly and means only that the last write landed on a connection that had
+  already gone. A browser, or any client that keeps connections open, never produces it.
+- **"MCP call refused"** is an API key being correctly told it lacks the level a tool needs. The
+  client already received that answer; the line is there so you can see it happen.
+
+Anything the server itself got wrong keeps its category and its exception.
+
+### Piping it somewhere else
+
+Azure log stream, `docker logs` and the systemd journal are pipes, not terminals: they cannot show
+a full-screen application. There the monitor can print a compact status block instead, appended
+every 30 seconds, alongside events as they happen. This is **off by default**, because adding a
+status block to everyone's container logs uninvited is not a friendly default and log volume often
+costs money, and because the browser page above is usually the better answer. Turn it on where you
+want it:
+
+```jsonc
+{
+  "Indx": {
+    "Monitor": {
+      "Enabled": true,       // required when stdout is redirected; ignored otherwise
+      "StatusSeconds": 30    // how often the status block is printed
+    }
+  }
+}
+```
+
+### Turning the terminal view off
+
+`Indx:Monitor:Enabled=false`, or start with `--no-monitor`. Use this if you run the server by hand
+on a machine where you would rather keep the plain startup log. The browser page keeps working
+either way:
+
+```bash
+dotnet run --no-monitor
+```
+
+A startup that fails never draws the monitor, so an error such as a port already in use is printed
+the way it always was.
+
+## Local Development
+
+```bash
+# Run with hot reload
+dotnet watch
+
+# Set secrets without editing appsettings.json
+dotnet user-secrets set "Jwt:Key" "your-dev-key-minimum-32-characters"
+dotnet user-secrets set "Authentication:Microsoft:ClientId" "your-client-id"
+dotnet user-secrets set "Email:Provider" "Console"
+```
+
+`dotnet watch` applies most edits to a running server, so a dataset stays loaded and a console
+page keeps its state: markup and code in `.razor` files, method bodies in C#, and every stylesheet,
+scoped `.razor.css` included, which the browser picks up without a reload. An edit it cannot apply
+in place (a new field or parameter, a changed constructor or record, a new type in some cases) is
+reported in the terminal, and the server restarts. Set `DOTNET_WATCH_RESTART_ON_RUDE_EDIT=1` to
+restart without being asked. The terminal monitor is off under watch, since both want the
+console; `dotnet watch -- --monitor` turns it back on.
+
+The test suite lives in the full IndxSolutions repository and is not part of this repo; `dotnet test` here finds no tests.
+
+## Related Projects
+
+- [`@indxsearch/intrface`](https://www.npmjs.com/package/@indxsearch/intrface): React search UI components for IndxServer (with [`@indxsearch/systm`](https://www.npmjs.com/package/@indxsearch/systm) and [`@indxsearch/pixl`](https://www.npmjs.com/package/@indxsearch/pixl))
+- [`@indxsearch/indx-types`](https://www.npmjs.com/package/@indxsearch/indx-types): TypeScript types for every request, response and error code
+- [Indx Search skill](https://github.com/indxSearch/skill-indx-search/tree/v6): teaches AI coding agents this API; the Indx 6 version, for this server, is on its `v6` branch while in preview, with the v5 to v6 migration guide
+- [`IndxSearchLib`](https://www.nuget.org/packages/IndxSearchLib): the embedded C# search engine this server is built on
+- [Documentation](https://v6.docs.indx.co) for Indx 6, in beta; Indx 5 is at [docs.indx.co](https://docs.indx.co)
+- [Changelog](CHANGELOG.md) and [release notes](docs/release-notes/)

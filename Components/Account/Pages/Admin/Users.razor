@@ -1,0 +1,442 @@
+@page "/admin"
+@page "/admin/users"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@using IndxServer.Data
+@using Microsoft.EntityFrameworkCore
+@attribute [Authorize(Roles = "Admin")]
+@inject UserManager<ApplicationUser> UserManager
+@inject ILogger<Users> Logger
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager NavigationManager
+@inject IndxServer.Services.IEditionService Edition
+@inject IndxServer.Data.ApplicationDbContext Db
+@inject IndxServer.Services.InviteService Invites
+@inject Microsoft.Extensions.Caching.Memory.IMemoryCache MemoryCache
+
+<PageTitle>Admin — Users</PageTitle>
+
+
+
+<div style="display: flex; align-items: center; gap: 16px; margin-bottom: 40px;">
+    <div>
+        <h2 style="margin-bottom: 4px;">Users</h2>
+        <p style="color: var(--lv5);">Manage user accounts and roles.</p>
+    </div>
+    <Button Variant="ghost" Size="micro" IconLeft="_iconRefresh" style="margin-left: auto;" Loading="@_loadingUsers" @onclick="LoadUsers">Refresh</Button>
+</div>
+
+@if (!string.IsNullOrEmpty(_message))
+{
+    <div style="padding: 14px 18px; border: 1px solid var(--CTeal); border-radius: var(--radius); background: rgba(114,245,198,0.08); margin-bottom: 24px;">
+        @_message
+    </div>
+}
+@if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <div style="padding: 14px 18px; border: 1px solid var(--CSignal); border-radius: var(--radius); background: rgba(255,66,56,0.08); margin-bottom: 24px;">
+        @_errorMessage
+    </div>
+}
+
+@if (_users == null)
+{
+    <p>Loading...</p>
+}
+else if (_users.Count == 0)
+{
+    <EmptyState Size="compact" Icon="DatasetIcons.User" Title="No users yet">Everyone with an account on this instance is listed here.</EmptyState>
+}
+else
+{
+    <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+        <thead>
+            <tr style="border-bottom: 1px solid var(--lv3); color: var(--lv5);">
+                <th style="text-align: left; padding: 8px 12px; font-weight: 500;">Email</th>
+                <th style="padding: 8px 12px; font-weight: 500;">Role</th>
+                <th style="padding: 8px 12px; font-weight: 500;">Confirmed</th>
+                <th style="padding: 8px 12px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var u in _users)
+            {
+                <tr style="border-bottom: 1px solid var(--lv2);">
+                    <td style="padding: 10px 12px; color: var(--lv6);">@u.Email</td>
+                    <td style="padding: 10px 12px; text-align: center;">
+                        @if (u.IsAdmin)
+                        {
+                            <Chip Color="var(--CLightBlue)" TextColor="#080809">Admin</Chip>
+                        }
+                        else
+                        {
+                            <Chip Color="var(--lv3)" TextColor="var(--lv5)">Member</Chip>
+                        }
+                    </td>
+                    @* Confirmed is the pixl check in the ink, never a green mark. *@
+                    <td style="padding: 10px 12px; text-align: center; color: @(u.EmailConfirmed ? "var(--lv7)" : "var(--lv4)");">
+                        @if (u.EmailConfirmed) { <span role="img" aria-label="Confirmed" style="display: inline-flex;"><Indx.Systm.Blazor.Icons.Check Size="14" Color="currentColor" /></span> } else { <span aria-label="Not confirmed">–</span> }
+                    </td>
+                    <td style="padding: 10px 12px; text-align: right; display: flex; gap: 6px; justify-content: flex-end;">
+                        @if (u.IsAdmin)
+                        {
+                            @if (u.Id != _currentUserId && (_users?.Count(r => r.IsAdmin) ?? 0) > 1)
+                            {
+                                <Button Variant="ghost" Size="micro" Loading="@(_roleBusyId == u.Id)" @onclick="() => DemoteUser(u.Id)">Remove Admin</Button>
+                            }
+                        }
+                        else
+                        {
+                            <Button Variant="ghost" Size="micro" Loading="@(_roleBusyId == u.Id)" @onclick="() => PromoteUser(u.Id)">Make Admin</Button>
+                        }
+                        <Button Variant="ghost" Size="micro" IconLeft="_iconDelete" title="Delete user" @onclick="() => OpenDelete(u)" />
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    <ConfirmModal @bind-Open="_deleteOpen" Title="@($"Delete {_deleting?.Email}?")" Consequences="_deleteLines"
+                  TypeToConfirm="@_deleting?.Email" ConfirmLabel="Delete user" ConfirmIcon="_iconDelete" OnConfirm="ConfirmDeleteUser" />
+}
+
+@if (!Edition.IsEnabled(IndxServer.Services.EditionFeature.MultipleUsers))
+{
+    <div style="margin-top: 48px;">
+        <p style="color: var(--lv5); font: var(--text-xs);">
+            This plan supports a single user. Upgrade to the Professional plan to invite teammates.
+        </p>
+    </div>
+}
+else
+{
+    <div style="margin-top: 48px;">
+        <h3 style="margin-bottom: 4px;">Pending invites</h3>
+        <p style="color: var(--lv5); margin: 8px 0 20px; font: var(--text-xs);">
+            An invited address can register once, in any registration mode, within @((int)IndxServer.Services.InviteService.Lifetime.TotalDays) days.
+            Invited to a team, it joins that team instead of getting one of its own. Team admins invite from their team's settings too.
+        </p>
+
+        @* The page action pattern (app.css): the primary add on top of the list it adds to. *@
+        <div class="indx-list-toolbar">
+            <Button Variant="primary" Size="micro" IconLeft="_iconUserPlus" @onclick="OpenInvite">Invite user</Button>
+            @if (_invites.Count > 0)
+            {
+                <span class="indx-list-toolbar-end">@_invites.Count pending</span>
+            }
+        </div>
+
+        @if (_invites.Count > 0)
+        {
+            <table style="width: 100%; border-collapse: collapse; font-size: 13px; margin-bottom: 16px;">
+                <thead>
+                    <tr style="border-bottom: 1px solid var(--lv3); color: var(--lv5);">
+                        <th style="text-align: left; padding: 6px 12px; font-weight: 500;">Email</th>
+                        <th style="text-align: left; padding: 6px 12px; font-weight: 500;">Team</th>
+                        <th style="text-align: left; padding: 6px 12px; font-weight: 500;">Invited by</th>
+                        <th style="text-align: left; padding: 6px 12px; font-weight: 500;">Lasts until</th>
+                        <th style="padding: 6px 12px;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var i in _invites)
+                    {
+                        <tr style="border-bottom: 1px solid var(--lv2);">
+                            <td style="padding: 8px 12px; color: var(--lv6);">@i.Email</td>
+                            <td style="padding: 8px 12px; color: var(--lv6);">
+                                @if (i.TeamName != null) { @i.TeamName <Chip Color="var(--lv2)" TextColor="var(--lv6)">@i.Role</Chip> }
+                                else { <span style="color: var(--lv5);">Their own team</span> }
+                            </td>
+                            <td style="padding: 8px 12px; color: var(--lv5);">@(i.InvitedBy ?? "—")</td>
+                            <td style="padding: 8px 12px; color: @(i.Expired ? "var(--CSignal)" : "var(--lv5)");">
+                                @if (i.Expired) { <text>Expired </text> }<TimeAgo Value="i.ExpiresAt" />
+                            </td>
+                            <td style="padding: 8px 12px; text-align: right; white-space: nowrap;">
+                                <Button Variant="ghost" Size="micro" Loading="@(_inviteBusy == i.Id)" @onclick="() => ResendInvite(i.Id)">Resend</Button>
+                                <Button Variant="ghost" Size="micro" Disabled="@(_inviteBusy == i.Id)" @onclick="() => RevokeInvite(i.Id)">Revoke</Button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        else
+        {
+            <p style="color: var(--lv4); font-size: 13px; margin-bottom: 16px;">No pending invites.</p>
+        }
+
+        <Modal Open="_showAddInvite" OpenChanged="@(open => { if (!open && !_inviting) CloseInvite(); })" Title="Invite user"
+               Description="They get an email with a link to register. Invited to a team, they join it when they do; someone who already has an account is added to the team at once.">
+            <div class="indx-modal-form">
+                <InputField Label="Email address" placeholder="name@example.com" @bind-Value="_inviteEmailInput"
+                            @oninput="@(e => _inviteEmailInput = e.Value?.ToString() ?? string.Empty)" />
+                <SelectField Size="micro" Label="Team" @bind-Value="_inviteTeamId" Options="_teamOptions" />
+                @if (!string.IsNullOrEmpty(_inviteTeamId))
+                {
+                    <SelectField Size="micro" Label="Role" @bind-Value="_inviteRole" Options="_inviteRoleOptions" />
+                }
+                @if (!string.IsNullOrEmpty(_inviteError))
+                {
+                    <Alert Variant="destructive">@_inviteError</Alert>
+                }
+                <div class="indx-form-actions">
+                    <Button Variant="primary" Size="micro"
+                            Disabled="@(!IsValidEmail(_inviteEmailInput))" Loading="@_inviting"
+                            @onclick="AddInviteAsync">@(_inviting ? "Sending…" : "Send invite")</Button>
+                    <Button Variant="secondary" Size="micro" Disabled="@_inviting" @onclick="CloseInvite">Cancel</Button>
+                </div>
+            </div>
+        </Modal>
+    </div>
+}
+
+@code {
+    private RenderFragment<int> _iconDelete   => size => @<UserX Size="size" />;
+    private RenderFragment<int> _iconRefresh  => size => @<Refresh Size="size" />;
+    private RenderFragment<int> _iconUserPlus => size => @<UserPlus Size="size" />;
+
+    private List<UserRow>? _users;
+    private string? _message;
+    private string? _errorMessage;
+    private bool _deleteOpen;
+    private UserRow? _deleting;
+    private IReadOnlyList<string> _deleteLines = [];
+
+    // What goes with the account, read when the modal opens so it names the actual teams.
+    private async Task OpenDelete(UserRow u)
+    {
+        var teams = await Db.TeamMembers.Where(m => m.UserId == u.Id)
+            .Join(Db.Teams, m => m.TeamId, t => t.Id, (m, t) => t.Name).OrderBy(n => n).ToListAsync();
+        var keys = await Db.ApiKeys.CountAsync(k => k.UserId == u.Id && !k.IsRevoked);
+        _deleting = u;
+        _deleteLines =
+        [
+            teams.Count == 0 ? "They are in no team." : $"They leave {string.Join(", ", teams)}. The teams and their datasets stay.",
+            keys switch
+            {
+                0 => "They have no API keys.",
+                1 => "Their 1 personal API key is deleted, and whatever uses it gets errors.",
+                _ => $"Their {keys} personal API keys are deleted, and whatever uses them gets errors.",
+            },
+            "Team keys they created keep working.",
+            "This can't be undone.",
+        ];
+        _deleteOpen = true;
+    }
+
+    /// <summary>Null on success, else the reason, shown in the modal.</summary>
+    private async Task<string?> ConfirmDeleteUser()
+    {
+        if (_deleting == null) return null;
+        await DeleteUser(_deleting.Id);
+        var error = _errorMessage;
+        _errorMessage = null;
+        return error;
+    }
+    private string? _currentUserId;
+    private List<IndxServer.Services.InviteService.Pending> _invites = [];
+    private string _inviteEmailInput = "";
+    private bool _showAddInvite;
+    private bool _inviting;
+    private Guid? _inviteBusy;
+    private string? _roleBusyId;
+    private string? _inviteError;
+    // "" is no team: the invited person gets a team of their own, as before Nov 2026.
+    private string _inviteTeamId = "";
+    private string _inviteRole = IndxServer.Services.TeamRoles.Viewer;
+    private List<SelectField.SelectOption> _teamOptions = [];
+    private static readonly List<SelectField.SelectOption> _inviteRoleOptions =
+        IndxServer.Services.TeamRoles.All.Select(r => new SelectField.SelectOption(r, r)).ToList();
+
+    private record UserRow(string Id, string? Email, bool IsAdmin, bool EmailConfirmed);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        _currentUserId = UserManager.GetUserId(auth.User);
+        await LoadInvites();
+        await LoadUsers();
+    }
+
+    private async Task LoadInvites()
+    {
+        _invites = await Invites.AllAsync();
+        _teamOptions = [new("None: they get a team of their own", ""), .. (await Db.Teams.AsNoTracking().OrderBy(t => t.Name).ToListAsync())
+            .Select(t => new SelectField.SelectOption(t.Name, t.Id.ToString()))];
+    }
+
+    private void OpenInvite()
+    {
+        _inviteError = null;
+        _inviteEmailInput = string.Empty;
+        _inviteTeamId = "";
+        _inviteRole = IndxServer.Services.TeamRoles.Viewer;
+        _showAddInvite = true;
+    }
+
+    private void CloseInvite()
+    {
+        _showAddInvite = false;
+        _inviteEmailInput = string.Empty;
+        _inviteError = null;
+    }
+
+    private async Task AddInviteAsync()
+    {
+        if (_inviting || _currentUserId == null) return;
+        var email = _inviteEmailInput.Trim();
+        if (!IsValidEmail(email)) return;
+        _inviteError = null;
+        // Sending the email is the slow part (an SMTP/ACS round trip); keep the modal up with a
+        // spinner until it is done rather than collapsing it while nothing seems to happen.
+        _inviting = true;
+        try
+        {
+            Guid? team = Guid.TryParse(_inviteTeamId, out var id) ? id : null;
+            var result = await Invites.InviteAsync(email, team, team == null ? null : _inviteRole, _currentUserId, RegisterUrl);
+            _message = result.Outcome switch
+            {
+                IndxServer.Services.InviteService.Outcome.AddedToTeam => $"{email} already had an account and was added to the team.",
+                _ when !result.EmailSent => $"{email} is invited, but the email could not be sent. Try Resend.",
+                IndxServer.Services.InviteService.Outcome.Renewed => $"Invite to {email} sent again.",
+                _ => $"Invite sent to {email}.",
+            };
+            _showAddInvite = false;
+            _inviteEmailInput = string.Empty;
+            await LoadInvites();
+        }
+        catch (IndxServer.Services.InviteService.InviteException ex) { _inviteError = ex.Message; }
+        finally { _inviting = false; }
+    }
+
+    private async Task ResendInvite(Guid id)
+    {
+        if (_inviteBusy != null || _currentUserId == null) return;
+        _inviteBusy = id;
+        try
+        {
+            var sent = await Invites.ResendAsync(id, _currentUserId, RegisterUrl);
+            _message = sent ? "Invite sent again." : "The invite was renewed, but the email could not be sent.";
+            await LoadInvites();
+        }
+        catch (IndxServer.Services.InviteService.InviteException ex) { _errorMessage = ex.Message; }
+        finally { _inviteBusy = null; }
+    }
+
+    private async Task RevokeInvite(Guid id)
+    {
+        if (_inviteBusy != null || _currentUserId == null) return;
+        _inviteBusy = id;
+        try
+        {
+            await Invites.RevokeAsync(id, _currentUserId);
+            await LoadInvites();
+        }
+        catch (IndxServer.Services.InviteService.InviteException ex) { _errorMessage = ex.Message; }
+        finally { _inviteBusy = null; }
+    }
+
+    private string RegisterUrl => NavigationManager.ToAbsoluteUri("/account/register").ToString();
+
+    private static bool IsValidEmail(string email) =>
+        !string.IsNullOrWhiteSpace(email) && email.Contains('@') && email.Contains('.');
+
+    private bool _loadingUsers;
+
+    // The admins in one query, not one IsInRoleAsync per user: the page grew a query per account.
+    private async Task LoadUsers()
+    {
+        _loadingUsers = true;
+        try
+        {
+            var admins = (await UserManager.GetUsersInRoleAsync("Admin")).Select(u => u.Id).ToHashSet();
+            var rows = UserManager.Users.ToList()
+                .Select(u => new UserRow(u.Id, u.Email, admins.Contains(u.Id), u.EmailConfirmed));
+            _users = [.. rows.OrderByDescending(r => r.IsAdmin).ThenBy(r => r.Email)];
+        }
+        finally { _loadingUsers = false; }
+    }
+
+    private async Task PromoteUser(string userId)
+    {
+        if (_roleBusyId != null) return;
+        _message = null; _errorMessage = null;
+        _roleBusyId = userId;
+        try
+        {
+            var user = await UserManager.FindByIdAsync(userId);
+            if (user == null) return;
+            await UserManager.AddToRoleAsync(user, "Admin");
+            Logger.LogInformation("Promoted {Email} to Admin", user.Email);
+            _message = $"{user.Email} is now an Admin.";
+            await LoadUsers();
+        }
+        finally { _roleBusyId = null; }
+    }
+
+    private async Task DemoteUser(string userId)
+    {
+        _message = null; _errorMessage = null;
+
+        if (userId == _currentUserId)
+        {
+            _errorMessage = "You cannot remove your own admin role.";
+            return;
+        }
+
+        var adminCount = _users?.Count(u => u.IsAdmin) ?? 0;
+        if (adminCount <= 1)
+        {
+            _errorMessage = "Cannot remove the last admin.";
+            return;
+        }
+
+        if (_roleBusyId != null) return;
+        _roleBusyId = userId;
+        try
+        {
+            var user = await UserManager.FindByIdAsync(userId);
+            if (user == null) return;
+            await UserManager.RemoveFromRoleAsync(user, "Admin");
+            Logger.LogInformation("Removed Admin from {Email}", user.Email);
+            _message = $"{user.Email} is now a Member.";
+            await LoadUsers();
+        }
+        finally { _roleBusyId = null; }
+    }
+
+    private async Task DeleteUser(string userId)
+    {
+        _message = null; _errorMessage = null;
+        var user = await UserManager.FindByIdAsync(userId);
+        if (user == null) return;
+        var email = user.Email;
+
+        // Team membership cascades on the user row, so deleting the only Admin of a team leaves
+        // that team alive with its datasets and nobody who can reach them — and /admin/teams is
+        // read-only, so there is no way back. Removing a member already refuses this; deleting a
+        // user must too. Add another Admin first.
+        var orphaned = await IndxServer.Services.TeamService.TeamsOnlyAdministeredByAsync(Db, userId);
+        if (orphaned.Count > 0)
+        {
+            _errorMessage = $"{email} is the only admin of {string.Join(", ", orphaned)}. "
+                          + "Add another admin to those teams first, or delete them.";
+            return;
+        }
+
+        var result = await UserManager.DeleteAsync(user);
+        if (result.Succeeded)
+        {
+            // The account's tokens stop at once, not when the validation cache next looks.
+            IndxServer.Services.TokenValidationCache.EvictUser(MemoryCache, userId);
+            Logger.LogInformation("Deleted user {Email}", email);
+            _message = $"{email} deleted.";
+            await LoadUsers();
+        }
+        else
+        {
+            _errorMessage = $"Delete failed: {string.Join(", ", result.Errors.Select(e => e.Description))}";
+        }
+    }
+}

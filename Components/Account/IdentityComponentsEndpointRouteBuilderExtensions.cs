@@ -1,0 +1,201 @@
+using Indx.Storage;
+using IndxServer.Components.Account.Pages;
+using IndxServer.Components.Account.Pages.Manage;
+using IndxServer.Data;
+using IndxServer.Models;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Components.Authorization;
+using Microsoft.AspNetCore.Http.Extensions;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Primitives;
+using System.Security.Claims;
+using System.Text.Json;
+
+
+namespace Microsoft.AspNetCore.Routing
+{
+    internal static class IdentityComponentsEndpointRouteBuilderExtensions
+    {
+        #region Public Methods
+        // These endpoints are required by the Identity Razor components defined in the /Components/Account/Pages directory of this project.
+        public static IEndpointConventionBuilder MapAdditionalIdentityEndpoints(this IEndpointRouteBuilder endpoints)
+        {
+            ArgumentNullException.ThrowIfNull(endpoints);
+
+            var accountGroup = endpoints.MapGroup("/account");
+
+            accountGroup.MapPost("/perform-external-login", (
+                HttpContext context,
+                [FromServices] SignInManager<ApplicationUser> signInManager,
+                [FromForm] string provider,
+                [FromForm] string returnUrl) =>
+            {
+                IEnumerable<KeyValuePair<string, StringValues>> query = [
+                    new("ReturnUrl", returnUrl),
+                    new("Action", ExternalLogin.LoginCallbackAction)];
+
+                var redirectUrl = UriHelper.BuildRelative(
+                    context.Request.PathBase,
+                    "/account/external-login",
+                    QueryString.Create(query));
+
+                var properties = signInManager.ConfigureExternalAuthenticationProperties(provider, redirectUrl);
+                return TypedResults.Challenge(properties, [provider]);
+            });
+
+            accountGroup.MapPost("/logout", async (
+                ClaimsPrincipal user,
+                SignInManager<ApplicationUser> signInManager,
+                [FromForm] string returnUrl) =>
+            {
+                await signInManager.SignOutAsync();
+                return TypedResults.LocalRedirect($"~/{returnUrl}");
+            });
+
+            var manageGroup = accountGroup.MapGroup("/manage").RequireAuthorization();
+
+            manageGroup.MapPost("/delete-account", async (
+                ClaimsPrincipal user,
+                HttpContext context,
+                [FromServices] SignInManager<ApplicationUser> signInManager,
+                [FromServices] UserManager<ApplicationUser> userManager,
+                [FromServices] ILoggerFactory loggerFactory,
+                [FromServices] IMemoryCache memoryCache) =>
+            {
+                var logger = loggerFactory.CreateLogger("DeleteAccount");
+                var appUser = await userManager.GetUserAsync(user);
+                if (appUser == null)
+                {
+                    return Results.BadRequest("User not found");
+                }
+
+                var userId = appUser.Id;
+
+                // The only Admin of a team leaving it leaves the team and its datasets with nobody
+                // who can manage them, and /admin/teams is read-only. The admin "Delete user" path
+                // has always refused this; deleting your own account must too. The page checks
+                // first and says so; this is the guarantee.
+                var db = context.RequestServices.GetRequiredService<IndxServer.Data.ApplicationDbContext>();
+                var orphaned = await IndxServer.Services.TeamService.TeamsOnlyAdministeredByAsync(db, userId);
+                if (orphaned.Count > 0)
+                    return Results.BadRequest($"You are the only Admin of {string.Join(", ", orphaned)}. Make someone else an Admin, or delete the team, first.");
+
+                logger.LogInformation("Starting account deletion for {Email}", appUser.Email);
+
+                // Datasets are owned by teams, not by users — so deleting a user must NOT delete
+                // any datasets (that continuity is the whole point of team ownership). The user's
+                // TeamMember rows cascade-delete via the FK to AspNetUsers when Identity removes
+                // the account below; the team and its datasets survive.
+
+                // Step 3: Delete from Identity database
+                // The account's tokens stop at once, not when the validation cache next looks.
+                IndxServer.Services.TokenValidationCache.EvictUser(memoryCache, userId);
+                var result = await userManager.DeleteAsync(appUser);
+                if (!result.Succeeded)
+                {
+                    logger.LogError("Failed to delete the account of {Email}: {Errors}", appUser.Email, string.Join(", ", result.Errors.Select(e => e.Description)));
+                    return Results.BadRequest(string.Join(", ", result.Errors.Select(e => e.Description)));
+                }
+
+                logger.LogInformation("Deleted the account of {Email}", appUser.Email);
+                await signInManager.SignOutAsync();
+                return TypedResults.LocalRedirect("~/");
+            });
+
+            // Adds a provider's login to the account that is signed in (the account page's "Sign-in
+            // methods"). This is how a login is attached to an account that already exists: being
+            // signed in is what shows the account is theirs, which the address a provider gives
+            // does not (ExternalEmail). The user id rides along as the callback's XSRF value, so
+            // the login that comes back is added to this account and no other.
+            manageGroup.MapPost("/link-external-login", async (
+                HttpContext context,
+                [FromServices] SignInManager<ApplicationUser> signInManager,
+                [FromForm] string provider) =>
+            {
+                // Entra ID's accounts are the directory's, with rules of their own (EntraSignIn).
+                if (provider == IndxServer.Services.EntraSignIn.Scheme)
+                    return Results.LocalRedirect("~/account/manage?linkError=" + Uri.EscapeDataString("A work account is not added here: sign in with it."));
+                // A clean start: no external cookie left by an earlier attempt.
+                await context.SignOutAsync(IdentityConstants.ExternalScheme);
+
+                var redirectUrl = UriHelper.BuildRelative(
+                    context.Request.PathBase,
+                    "/account/external-login",
+                    QueryString.Create("Action", ExternalLogin.LinkCallbackAction));
+
+                var properties = signInManager.ConfigureExternalAuthenticationProperties(
+                    provider, redirectUrl, signInManager.UserManager.GetUserId(context.User));
+                return TypedResults.Challenge(properties, [provider]);
+            });
+
+            // Takes a provider's login off the account, unless it is the only way left to sign in.
+            manageGroup.MapPost("/remove-external-login", async (
+                HttpContext context,
+                [FromServices] SignInManager<ApplicationUser> signInManager,
+                [FromServices] UserManager<ApplicationUser> userManager,
+                [FromForm] string provider,
+                [FromForm] string providerKey) =>
+            {
+                var appUser = await userManager.GetUserAsync(context.User);
+                if (appUser == null) return Results.LocalRedirect("~/account/login");
+                string Back(string name, string value) => $"~/account/manage?{name}={Uri.EscapeDataString(value)}";
+
+                if (provider == IndxServer.Services.EntraSignIn.Scheme)
+                    return Results.LocalRedirect(Back("linkError", "A work account is not removed here."));
+                var logins = await userManager.GetLoginsAsync(appUser);
+                if (!await userManager.HasPasswordAsync(appUser) && logins.Count <= 1)
+                    return Results.LocalRedirect(Back("linkError", "This is the only way you sign in. Set a password first."));
+
+                var result = await userManager.RemoveLoginAsync(appUser, provider, providerKey);
+                if (!result.Succeeded)
+                    return Results.LocalRedirect(Back("linkError", string.Join(" ", result.Errors.Select(e => e.Description))));
+                await signInManager.RefreshSignInAsync(appUser);
+                return Results.LocalRedirect(Back("unlinked", provider));
+            });
+
+            var loggerFactory = endpoints.ServiceProvider.GetRequiredService<ILoggerFactory>();
+            var downloadLogger = loggerFactory.CreateLogger("DownloadPersonalData");
+
+            manageGroup.MapPost("/download-personal-data", async (
+                HttpContext context,
+                [FromServices] UserManager<ApplicationUser> userManager,
+                [FromServices] AuthenticationStateProvider authenticationStateProvider) =>
+            {
+                var user = await userManager.GetUserAsync(context.User);
+                if (user is null)
+                {
+                    return Results.NotFound($"Unable to load user with ID '{userManager.GetUserId(context.User)}'.");
+                }
+
+                var userId = await userManager.GetUserIdAsync(user);
+                downloadLogger.LogInformation("User with ID '{UserId}' asked for their personal data.", userId);
+
+                // Only include personal data for download
+                var personalData = new Dictionary<string, string>();
+                var personalDataProps = typeof(ApplicationUser).GetProperties().Where(
+                    prop => Attribute.IsDefined(prop, typeof(PersonalDataAttribute)));
+                foreach (var p in personalDataProps)
+                {
+                    personalData.Add(p.Name, p.GetValue(user)?.ToString() ?? "null");
+                }
+
+                var logins = await userManager.GetLoginsAsync(user);
+                foreach (var l in logins)
+                {
+                    personalData.Add($"{l.LoginProvider} external login provider key", l.ProviderKey);
+                }
+
+                personalData.Add("Authenticator Key", (await userManager.GetAuthenticatorKeyAsync(user))!);
+                var fileBytes = JsonSerializer.SerializeToUtf8Bytes(personalData);
+
+                context.Response.Headers.TryAdd("Content-Disposition", "attachment; filename=PersonalData.json");
+                return TypedResults.File(fileBytes, contentType: "application/json", fileDownloadName: "PersonalData.json");
+            });
+
+            return accountGroup;
+        }
+        #endregion Public Methods
+    }
+}

@@ -1,0 +1,1232 @@
+@* Search or ask for one dataset: the settings (SearchOrAskStore),
+   saved with the SaveBar as a working copy, and a tester that judges what is typed into it with
+   the working copy, saved or not, so an owner can try it before switching it on. The tester costs
+   what a visitor's call costs and counts against the daily budget. *@
+@using System.Globalization
+@using Microsoft.AspNetCore.Components.Web
+@using System.Text.Json
+@using System.Text.Json.Nodes
+@using System.Text.Json.Serialization
+@using IndxServer.Services.SearchOrAsk
+@using Indx.Api
+@using Icons = Indx.Systm.Blazor.Icons
+@inherits DatasetTabBase
+@inject SearchOrAskStore Store
+@inject BrowserFiles Files
+@inject SearchOrAskService Service
+@inject IndxServer.Services.Observr.AgentPanelState Agent
+@inject IServiceProvider Services
+
+@if (!Active) { return; }
+
+<div class="soa-tab">
+    @* What the tab is, the chip that says it may still change, and Observr's action at the
+       row's right end. *@
+    <div class="soa-intro">
+        <p class="indx-section-help">
+            When a visitor types a question rather than a name, offer to answer it from this dataset's records.
+            On each pause in typing, a judge reads what is typed and the top results. An answer is written only
+            when the visitor asks, and only from the records.
+        </p>
+        <Chip Size="large" Color="var(--CTeal)" TextColor="#080809" Icon="DatasetIcons.Experimental">Experimental</Chip>
+        @if (Ctx.IsEditor)
+        {
+            <ObservrPageAction Label="Help me set this up" OnClick="SetupInAgent" Disabled="@IsDirty" />
+        }
+    </div>
+
+    @if (!Service.Available)
+    {
+        <Alert Variant="warning">
+            <Description>
+                This instance has no model key, so Search or ask cannot run. An instance admin adds one, with the
+                provider of their choice, in Admin, Settings, Experimental. The settings below are kept until then.
+            </Description>
+        </Alert>
+    }
+
+    <ModelRefusalAlert />
+
+
+    @* Two columns: the settings on the left, one under the other; the tester on the right, sticky,
+       so it stays in view while a threshold or a note is changed under it (19 Oct 2026). On a
+       narrow window the tester comes first, then the settings. *@
+    <div class="soa-layout">
+        <div class="soa-settings">
+        @* The settings, read-only below Editor; the tester beside them stays open to everyone,
+           as Search preview is. *@
+        <ReadOnlyArea Editable="@Ctx.IsEditor">
+        <div class="soa-groups">
+            @* In the order an owner decides (27 Oct 2026): what it does (on, mode, the site), when it
+               offers and what the list does while asking; then the answers' content, the
+               fine-tuning, and the limits last. *@
+            <div class="soa-group">
+            <Table AriaLabel="Search or ask" Class="soa-table">
+                @Head("Search or ask")
+                <tbody>
+                    @Row(DatasetIcons.SearchOrAsk, "Offer answers",
+                         $"Sends what visitors type to {Service.Setup.Receivers}, and their questions to the answer model. Name this in your privacy notice.",
+                         _edit.Enabled, @<ToggleSwitch Label="Enabled" Variant="positive" Checked="@_edit.Enabled" CheckedChanged="@(v => _edit.Enabled = v)" />)
+                    @Row(Icon<Icons.Book>(), "Kind of site", "How the judge tells a question from a lookup.",
+                         false, @<div class="soa-select"><SelectField Size="micro" Options="KindOptions" Value="@_edit.Kind" ValueChanged="@(v => _edit.Kind = v ?? SearchOrAskRecipes.Documentation)" /></div>)
+                    @Row(Icon<Icons.Info>(), "About the site", "Who reads it and what the records hold.",
+                         !string.IsNullOrWhiteSpace(_edit.SiteDescription),
+                         @<Textarea Rows="3" @bind-Value="_edit.SiteDescription" placeholder="@_effectiveSite" />)
+                    @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
+                    {
+                        @Row(Icon<Icons.Filter>(), "About the fields", "What the values mean here, one per line.",
+                             !string.IsNullOrWhiteSpace(_edit.FilterNotes),
+                             @<Textarea Rows="4" @bind-Value="_edit.FilterNotes" placeholder="friskole: private" />)
+                    }
+                    @* The mode last in the group, right above When to offer (5 Nov 2026): it says how
+                       forward the offers are, and the thresholds below say when each one comes. *@
+                    @Row(Icon<Icons.SlidersHorizontal>(), "Mode", "How forward the offer is, from the most careful to the most forward.",
+                         _edit.Mode != SearchOrAskSettings.ModeSoft,
+                         @<div class="soa-mode">
+                             <SegmentedControl Items="ModeItems" Value="@_edit.Mode" ValueChanged="@(v => _edit.Mode = v ?? SearchOrAskSettings.ModeSoft)" Stretch AriaLabel="Mode" />
+                             <p class="soa-mode-help">@ModeHelp(_edit.Mode)</p>
+                         </div>)
+                    @if (_edit.Mode == SearchOrAskSettings.ModeProactive)
+                    {
+                        @Row(Icon<Icons.Coins>(), "Proactive answers", $"Answers written without a click, per day (UTC). {Service.ProactiveAnswersToday(Ctx.TeamId, Ctx.Name):N0} today.",
+                             _proactiveText != null,
+                             @<div class="soa-number"><InputField @bind-Value="_proactiveText" @bind-Value:after="SetProactive" Error="@_proactiveError" inputmode="numeric" placeholder="500" /></div>)
+                    }
+                </tbody>
+            </Table>
+            </div>
+
+            <div class="soa-group">
+            <Table AriaLabel="When to offer" Class="soa-table">
+                @Head("When to offer")
+                <tbody>
+                    @* A ladder, in the order a visitor meets the offers (5 Nov 2026): each row one offer,
+                       with every line it needs. The judge gives two scores on each pause: how sure
+                       it is the visitor is asking, and whether the question is finished. *@
+                    <TableRow>
+                        <TableCell Class="soa-cell">
+                            <span class="soa-help">On each pause the judge scores how sure it is the visitor is asking: 0 is a lookup, 1 a question. Each offer starts at its line on that score. Defaults measured for @JudgeName.</span>
+                            @Scale()
+                        </TableCell>
+                    </TableRow>
+                    @if (_edit.Mode is SearchOrAskSettings.ModeInviting or SearchOrAskSettings.ModeProactive)
+                    {
+                        var hint = _edit.Thresholds.Hint ?? SearchOrAskThresholds.HintFor(_edit.Kind, Judge);
+                        @Row(Icon<Icons.Spark>(), "Hint", "First: \"For a quick answer, type a bit more\". Low, so it shows early that the field answers.",
+                             _edit.Thresholds.Hint != null,
+                             @<div class="soa-thresholds">
+                                 @Line("Show from", "The question score the hint needs.", hint, 0.01,
+                                     v => _edit.Thresholds.Hint = v == SearchOrAskThresholds.HintFor(_edit.Kind, Judge) ? null : v, "Hint: show from")
+                             </div>)
+                    }
+                    @if (_edit.Mode != SearchOrAskSettings.ModeStrict)
+                    {
+                        @ThresholdRow(Icon<Icons.CommentChatMessage>(), "Invitation", "Then: \"Ask about this\", quieter than the answer offer.",
+                            t => t.Invite, (t, v) => t.Invite = v, Defaults.Invite!.Value,
+                            t => t.InviteHide, (t, v) => t.InviteHide = v, Defaults.InviteHide!.Value)
+                    }
+                    @ThresholdRow(Icon<Icons.ClickButton>(), "Answer offer",
+                        _edit.Mode == SearchOrAskSettings.ModeProactive
+                            ? "Last: \"Ask the assistant\", Enter asks, once the question is also whole (below). Proactive starts the answer itself once the visitor stops."
+                            : "Last: \"Ask the assistant\", Enter asks, once the question is also whole (below).",
+                        t => t.Strong, (t, v) => t.Strong = v, Defaults.Strong!.Value,
+                        t => t.StrongHide, (t, v) => t.StrongHide = v, Defaults.StrongHide!.Value)
+                    @* The second score, a scale of its own (5 Nov 2026): it was a line in the answer offer's row,
+                       and read as a point on the question score above, which it is not. *@
+                    @* The judge's second score as its own setting (5 Nov 2026): a switch, and the line it
+                       holds the answer offer to. Off is the threshold at 0, the rule before the gate. *@
+                    @Row(Icon<Icons.FinishedQuestion>(), "Whole question", "Holds the answer offer until the judge reads the question as finished; the invitation until then.",
+                         _edit.Thresholds.Finished != DefaultFinished,
+                         @<div class="soa-thresholds">
+                             <ToggleSwitch Label="Judge on whether the question is finished" Checked="@WaitsForWhole" CheckedChanged="SetWaitsForWhole" />
+                             @Line("Answer offer from", "The finished score the answer offer needs, from 0 (stops on a word still waiting for more) to 1 (whole). Proactive answers on its own only from here too.",
+                                 WaitsForWhole ? _edit.Thresholds.Finished : _finishedOn, 0.05, v => _edit.Thresholds.Finished = v, "Whole question: answer offer from",
+                                 min: 0.05, disabled: !WaitsForWhole)
+                         </div>)
+                </tbody>
+            </Table>
+            </div>
+
+            <div class="soa-group">
+            <Table AriaLabel="While asking" Class="soa-table">
+                @Head("While asking")
+                <tbody>
+                    <TableRow>
+                        <TableCell Class="soa-cell">
+                            <span class="soa-help">What the page does with its list when the text is a question.</span>
+                        </TableCell>
+                    </TableRow>
+                    @* Refocusing (10 Nov 2026): a switch and its line on the question score, as the found line. *@
+                    @Row(Icon<Icons.SearchRefocus>(), "Refocus", "When no record holds every word of a question or a description of what to list, the list comes back ordered by the rarest words the records hold, so the common words count for little. The count and the filters stay the search's.",
+                         _edit.Thresholds.Refocus > 0,
+                         @<div class="soa-thresholds">
+                             <ToggleSwitch Label="Refocus the list on a question or a description" Checked="@Refocuses" CheckedChanged="SetRefocuses" />
+                             @Line("Question or description from", "The question score or the description score the list is refocused from, whichever is higher. Below the answer offer's lines, so a question is refocused before the judge is sure of it.",
+                                 Refocuses ? _edit.Thresholds.Refocus : _refocusOn, 0.05, v => _edit.Thresholds.Refocus = v, "Refocus: question or description from",
+                                 min: 0.05, disabled: !Refocuses)
+                         </div>)
+                    @Row(Icon<Icons.Results>(), "The list", Judge == SearchOrAskProviders.OpenAiDecisions
+                             ? "Dims the list under an answer offer when the judge's found score is below the line. OpenAI's Decisions API is not asked for found yet, so nothing dims."
+                             : "Dims the list under an answer offer when the judge's found score is below the line: what is asked about is not in it.",
+                         _edit.Thresholds.Found != DefaultFound,
+                         @<div class="soa-thresholds">
+                             <ToggleSwitch Label="Dim the list when the question is not in it" Checked="@Dims" CheckedChanged="SetDims" />
+                             @Line("Found below", "The judge's found score, shown in the tester: whether what the visitor asks about is among the results, from 0 (not there) to 1 (there). Below this line the list is dimmed.",
+                                 Dims ? _edit.Thresholds.Found : _foundOn, 0.05, v => _edit.Thresholds.Found = v, "The list: found below",
+                                 min: 0.05, disabled: !Dims)
+                         </div>)
+                    @Row(Icon<Icons.TextSize>(), "Matching", "The page's own searches match whole words only.",
+                         !_edit.StrictCoverageWhileAsking, @<ToggleSwitch Label="Whole words only" Checked="@_edit.StrictCoverageWhileAsking" CheckedChanged="@(v => _edit.StrictCoverageWhileAsking = v)" />)
+                    @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
+                    {
+                        @Row(Icon<Icons.Filter>(), "Filters", "When the text describes what to list: filters now, or only after Ask.",
+                             _edit.FiltersWhileTyping != SearchOrAskSettings.FiltersOff,
+                             @<div class="soa-select"><SelectField Size="micro" Options="FiltersWhileTypingOptions" Value="@_edit.FiltersWhileTyping" ValueChanged="@(v => _edit.FiltersWhileTyping = v ?? SearchOrAskSettings.FiltersOff)" /></div>)
+                    }
+                </tbody>
+            </Table>
+            </div>
+
+            <div class="soa-group">
+            <Table AriaLabel="Answers" Class="soa-table">
+                @Head("Answers")
+                <tbody>
+                    @Row(Icon<Icons.Owl>(), "Knowledge", "What is true about the site that no record holds. Markdown.",
+                         !string.IsNullOrWhiteSpace(_edit.Knowledge),
+                         @<div class="soa-knowledge">
+                             <Textarea Rows="8" @bind-Value="_edit.Knowledge" placeholder="@KnowledgeExample" />
+                             @if (!string.IsNullOrWhiteSpace(_edit.Knowledge))
+                             {
+                                 <div class="soa-knowledge-preview">@ChatMarkdown.Render(_edit.Knowledge)</div>
+                             }
+                             <div class="soa-knowledge-foot">
+                                 <span class="soa-help">@((_edit.Knowledge?.Length ?? 0).ToString("N0", CultureInfo.InvariantCulture)) of @SearchOrAskSettings.MaxKnowledge.ToString("N0", CultureInfo.InvariantCulture) characters</span>
+                                 <span class="soa-knowledge-files">
+                                     <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Download" Disabled="@(SavedKnowledge == null)" @onclick="DownloadKnowledgeAsync">Download .md</Button>
+                                     <Button Variant="ghost" Size="micro" IconLeft="UploadIcon" @onclick="() => Files.TriggerFileInputAsync(KnowledgeInputId)">Upload .md</Button>
+                                 </span>
+                             </div>
+                             <Microsoft.AspNetCore.Components.Forms.InputFile OnChange="UploadKnowledgeAsync" accept=".md,.markdown,.txt,text/markdown,text/plain" style="display:none" id="@KnowledgeInputId" />
+                             @if (_knowledgeError != null) { <span class="soa-error">@_knowledgeError</span> }
+                         </div>)
+                    @Row(Icon<Icons.AiAgent>(), "Answers", "Which model writes the answer.",
+                         _edit.AnswerModel != null || _edit.Answers != SearchOrAskSettings.BestAnswers,
+                         @<div class="soa-select"><SelectField Size="micro" Options="AnswerOptions" Value="@Service.Setup.ModelFor(_edit)" ValueChanged="ChooseModel" /></div>)
+                    @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
+                    {
+                        @Row(Icon<Icons.Loop>(), "Searches", "Several, as an agent, or one.",
+                             _edit.Searches != null,
+                             @<div class="soa-select"><SelectField Size="micro" Options="SearchesOptions" Value="@_edit.SearchesResolved()" ValueChanged="@(v => _edit.Searches = v)" /></div>)
+                    }
+                    @Row(Icon<Icons.Paragraph>(), "Answer instructions", "The answers' voice and house rules.",
+                         !string.IsNullOrWhiteSpace(_edit.AnswerInstructions),
+                         @<Textarea Rows="3" @bind-Value="_edit.AnswerInstructions" placeholder="Formal. Say du. Never recommend another shop." />)
+                    @Row(Icon<Icons.UserText>(), "Answer language", "The visitor's language, or one for every answer.",
+                         !string.IsNullOrWhiteSpace(_edit.AnswerLanguage),
+                         @<div class="soa-select"><SelectField Size="micro" Options="LanguageOptions" Value="@(_edit.AnswerLanguage ?? VisitorsLanguage)" ValueChanged="@(v => _edit.AnswerLanguage = v == VisitorsLanguage ? null : v)" /></div>)
+                </tbody>
+            </Table>
+            </div>
+
+            @* Ask phrases: the words a question is built with, which the page takes off its start
+               so the list searches what the question is about while it is typed. *@
+            <div class="soa-group">
+            <Table AriaLabel="What the judge sees" Class="soa-table">
+                @Head("What the judge sees of a result")
+                <tbody>
+                    @if (TextFields.Count == 0)
+                    {
+                        <TableRow><TableCell Class="soa-cell"><span class="soa-help">The fields can be chosen once the dataset has been analyzed.</span></TableCell></TableRow>
+                    }
+                    else
+                    {
+                        @Row(Icon<Icons.TextSize>(), "Title", "Each result's name.",
+                             _edit.TitleField != null,
+                             @<div class="soa-select"><SelectField Size="micro" Options="TitleOptions" Value="@(_edit.TitleField ?? Automatic)" ValueChanged="@(v => _edit.TitleField = v == Automatic ? null : v)" /></div>)
+                        @Row(Icon<Icons.Tag>(), "Section", "Short facts visitors name besides the name, such as a category, a colour or an author. A true/false field shows as its name when true.",
+                             _edit.SectionFields != null, FieldChoice(PlaceFields, () => _edit.SectionFields, v => _edit.SectionFields = v, _effective?.SectionFields))
+                        @Row(Icon<Icons.Paragraph>(), "Snippet", "The text the judge reads and answers are written from.",
+                             _edit.SnippetFields != null, FieldChoice(TextFields, () => _edit.SnippetFields, v => _edit.SnippetFields = v, _effective?.SnippetFields))
+                    }
+                </tbody>
+            </Table>
+            </div>
+
+            <div class="soa-group">
+            <Table AriaLabel="Limits" Class="soa-table">
+                @Head("Limits")
+                <tbody>
+                    @Row(Icon<Icons.Coins>(), "Daily call budget", $"Calls per day (UTC). {_callsToday:N0} used today.",
+                         _budgetText != null,
+                         @<div class="soa-number"><InputField @bind-Value="_budgetText" @bind-Value:after="SetBudget" Error="@_budgetError" inputmode="numeric" placeholder="5,000" /></div>)
+                </tbody>
+            </Table>
+            </div>
+        </div>
+        </ReadOnlyArea>
+        </div>
+        <aside class="soa-preview" aria-label="Try it">
+            @* Drawn as a visitor's search would be (the Search preview's box, intrface's offer row
+               under the field, the answer as a chat turn), so what an editor tries here looks like
+               what a visitor gets. *@
+            <section class="soa-try">
+                <div class="soa-try-head">
+                    <div class="soa-try-head-row">
+                        <span class="soa-try-title">Try it</span>
+                        <span class="soa-try-spacer"></span>
+                        @* The hits, as on the demo page: off by default, since the judgement is the point here. *@
+                        <ToggleSwitch Label="Show results" Checked="@_showResults" CheckedChanged="OnShowResults" />
+                    </div>
+                    <span class="soa-help">Type as a visitor would. Uses the settings below, saved or not. Each pause is one call against the budget.</span>
+                    @if (!_edit.Enabled)
+                    {
+                        @* The try box works with answers off: it runs the settings as they stand here,
+                           so the owner can see what visitors would get before offering it to them. *@
+                        <span class="soa-help">Answers are not offered to visitors yet: try them here first, then switch on Offer answers.</span>
+                    }
+                </div>
+                @if (!Service.Available)
+                {
+                    <span class="soa-help soa-try-off">Needs the instance's model key.</span>
+                }
+                else if (Ctx.EngineState != SystemState.Ready)
+                {
+                    <span class="soa-help soa-try-off">Available after the index is built.</span>
+                }
+                else
+                {
+                    <SearchField Value="@_tryText" ValueChanged="@(async v => { _tryText = v; await OnTryInput(); })" Placeholder="Search or type a question"
+                                 @onkeydown="OnTryKey" />
+                    @* The offer as the visitor sees it: intrface's row under the field, always there and
+                       the same height, so a judgement arriving moves nothing. Before any text it says
+                       what will show; while the text is still changing, then while the judge reads, a
+                       spinner says which; then the offer, or that there is none. *@
+                    <div class="soa-try-offer" aria-live="polite">
+                        @if (string.IsNullOrWhiteSpace(_tryText))
+                        {
+                            <span class="soa-help">The offer shows here as you type: "Ask the assistant", "Ask about this", or none.</span>
+                        }
+                        else if (_judging)
+                        {
+                            <StreamStatus SpinnerName="spectrum">Asking the judge…</StreamStatus>
+                        }
+                        else if (_typingNow)
+                        {
+                            @* The visitor's motion, not the system's: the icon's quiet colour, not the status lines' teal. *@
+                            <span class="soa-try-none" role="status"><span class="soa-try-none-icon"><Spinner Name="search-as-you-type" Size="14" AriaLabel="Typing" /></span>Typing…</span>
+                        }
+                        else if (_try is { } r)
+                        {
+                            @if (r.Offer == "strong")
+                            {
+                                <Button Variant="primary" Size="micro" IconLeft="_iconAgent" Loading="@_asking" @onclick="AskAsync">Ask the assistant</Button>
+                                <span class="soa-try-hint"><kbd class="soa-kbd">↵</kbd> to ask</span>
+                            }
+                            else if (r.Offer == "invite")
+                            {
+                                <Button Variant="ghost" Size="micro" IconLeft="_iconAgent" Loading="@_asking" @onclick="AskAsync">Ask about this</Button>
+                            }
+                            else
+                            {
+                                @* The flat spectrum, the spinner at rest, keeps the line's indent with the spinners'. *@
+                                <span class="soa-try-none"><span class="soa-try-none-icon"><Indx.Systm.Blazor.Icons.SpectrumFlat Size="14" Color="currentColor" /></span>No offer: the visitor sees the results and nothing more.</span>
+                                <Button Variant="ghost" Size="micro" Loading="@_asking" @onclick="AskAsync">Ask anyway</Button>
+                            }
+                        }
+                        else if (_tryMessage != null)
+                        {
+                            <span class="soa-help">@_tryMessage</span>
+                        }
+                    </div>
+                    @if (_showResults && _results is { } found)
+                    {
+                        @* What the search finds, as the judge reads it: title, section, snippet. Refocused
+                           (thresholds.refocus), the same records' count in the order the page is sent,
+                           and a switch back to the search's own order to compare. *@
+                        var refocused = _refocused != null && !_ownOrder;
+                        var shown = refocused ? _refocused! : found;
+                        <div class="soa-try-results">
+                            @if (shown.Top.Count == 0)
+                            {
+                                <span class="soa-help">No results.</span>
+                            }
+                            else
+                            {
+                                <div class="soa-try-results-head">
+                                    <span class="soa-help">@shown.Hits.ToString("N0", CultureInfo.InvariantCulture) results@(shown.CloseMatch ? "" : ", none hold every word"); the first @shown.Top.Count as the judge reads them.</span>
+                                    @if (_refocused != null)
+                                    {
+                                        <Button Variant="ghost" Size="micro" @onclick="() => _ownOrder = !_ownOrder">@(_ownOrder ? "Refocused order" : "The search's own order")</Button>
+                                    }
+                                </div>
+                                @if (refocused)
+                                {
+                                    <span class="soa-help">Refocused: no record holds every word, so the records holding the rarest of them come first.</span>
+                                }
+                                <ol class="soa-try-hits">
+                                    @foreach (var hit in shown.Top)
+                                    {
+                                        <li class="soa-try-hit">
+                                            <span class="soa-try-hit-title">@(hit.Title.Length > 0 ? hit.Title : hit.Key.ToString())</span>
+                                            @if (hit.Section.Length > 0) { <span class="soa-try-hit-section">@hit.Section</span> }
+                                            @if (hit.Snippet.Length > 0) { <span class="soa-try-hit-snippet">@hit.Snippet</span> }
+                                        </li>
+                                    }
+                                </ol>
+                            }
+                        </div>
+                    }
+                    @if (_try is { } j)
+                    {
+                        @* The judge's scores, each with what it answers on hover: the labels alone
+                           said nothing to an owner reading "p 0.12" (19 Oct 2026). *@
+                        <div class="soa-try-scores">
+                            <Tooltip Content="@OfferHelp(Seen(j), j.Mode)"><Chip Size="micro" Class="@($"soa-offer soa-offer--{j.Offer}")">@OfferLabel(Seen(j), j.Mode)</Chip></Tooltip>
+                            <span class="soa-try-score">
+                                @* Each score with its thresholds as ticks on a meter: where it stands against
+                                   the lines that decide the offer, not only its number. *@
+                                @Score("question", QuestionHelp, j.P, QuestionMarks(j))
+                                @if (j.Criteria is { } c) { @Score("description", DescriptionHelp, c, [new(j.Thresholds.Strong!.Value, "Answer offer"), .. j.Thresholds.Refocus > 0 ? new ScoreMeter.Mark[] { new(j.Thresholds.Refocus, "Refocus") } : []]) }
+                                @if (j.Finished is { } f) { @Score("finished", FinishedHelp, f, [new(j.Thresholds.Finished, "Full offer from")]) }
+                                @if (j.Answerable is { } a) { @Score("answerable", AnswerableHelp, a, []) }
+                                @if (j.Found is { } fd) { @Score("found", FoundHelp, fd, j.Thresholds.Found > 0 ? [new(j.Thresholds.Found, "Found below: the list is dimmed")] : []) }
+                                <Tooltip Content="@(j.Cached ? "The judge answered this text before; the cached answer, no call made." : "How long the judge took. A visitor's page waits at most 3 seconds.")">@(j.Cached ? "cached" : $"{j.Ms} ms")</Tooltip>
+                                @if (j.Reason is { } why) { <text>, @why</text> }
+                                @if (j.Refocused != null) { <Tooltip Content="The question or description score reached the refocus line and no record holds every word: the list is sent in the order of the rarest words the records hold.">, refocused</Tooltip> }
+                            </span>
+                            <span class="soa-try-spacer"></span>
+                            @if (_edit.Kind == SearchOrAskRecipes.Catalogue)
+                            {
+                                <Button Variant="ghost" Size="micro" Loading="@_filtering" @onclick="FiltersAsync">Filters</Button>
+                            }
+                            <Button Variant="ghost" Size="micro" IconRight="@(_showState ? DatasetIcons.ChevronDown : DatasetIcons.ChevronRight)"
+                                    @onclick="() => _showState = !_showState">What the judge was sent</Button>
+                        </div>
+                    }
+                    @if (_showState && _state != null)
+                    {
+                        <pre class="soa-state">@_state</pre>
+                    }
+                    @if (_filters is { } fr)
+                    {
+                        <div class="soa-try-filters">
+                            <span class="soa-help">Searched with</span>
+                            @if (fr.Filters.Length == 0)
+                            {
+                                <span class="soa-help">no filters@(fr.Reason is { } why ? $" ({why})" : "")</span>
+                            }
+                            @foreach (var f in fr.Filters)
+                            {
+                                <Chip Size="micro">@FilterLabel(f)</Chip>
+                            }
+                            @if (fr.Text.Length > 0) { <span class="soa-help">and the words "@fr.Text"</span> }
+                            <span class="soa-try-score">@fr.Ms ms</span>
+                        </div>
+                    }
+                    @if (_asking && _answer.Length == 0 && _answerError == null)
+                    {
+                        @* The answer on its way, as the Agent panel shows Observr's: the step it is on
+                           (the agent's searches, or the summary's reading), then skeleton lines where
+                           the answer will land. *@
+                        <div class="soa-try-turn">
+                            <UserMessage>@_tryText</UserMessage>
+                            <AssistantMessage Label="Answer" Icon="_iconAgent" Class="soa-try-pending">
+                                @* As intrface's AskPanel: the default spinner for the steps, grow while writing. *@
+                                @if (_askStep == "Writing")
+                                {
+                                    <StreamStatus SpinnerName="grow">Writing…</StreamStatus>
+                                }
+                                else
+                                {
+                                    <StreamStatus>@_askStep…</StreamStatus>
+                                }
+                                <div class="soa-try-pending-lines">
+                                    <Skeleton Width="92%" />
+                                    <Skeleton Width="78%" Delay="0.05" />
+                                    <Skeleton Width="54%" Delay="0.1" />
+                                </div>
+                            </AssistantMessage>
+                        </div>
+                    }
+                    else if (_sources.Count > 0 || _answer.Length > 0 || _answerError != null)
+                    {
+                        <div class="soa-try-turn">
+                            <UserMessage>@_tryText</UserMessage>
+                            <AssistantMessage Label="Answer" Icon="_iconAgent">
+                                @if (_answerError != null) { <p class="soa-error">@_answerError</p> }
+                                @ChatMarkdown.Render(_answer)
+                                @if (_sources.Count > 0)
+                                {
+                                    <ol class="soa-sources">
+                                        @foreach (var s in _sources) { <li>@s.Title <span class="soa-key">@s.DocumentKey</span></li> }
+                                    </ol>
+                                }
+                            </AssistantMessage>
+                        </div>
+                    }
+                }
+            </section>
+        </aside>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <p class="soa-error">@_error</p>
+    }
+
+    @if (ChangedUnderEdit)
+    {
+        <Alert Variant="warning">
+            <Title>Observr changed the saved settings</Title>
+            <Description>You have unsaved changes here. Save keeps yours; Cancel shows the ones Observr applied.</Description>
+        </Alert>
+    }
+    <SaveBar Visible="@(IsDirty && Ctx.IsEditor)" Message="Unsaved changes">
+        <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" Loading="@_saving" @onclick="SaveAsync">Save</Button>
+        <Button Variant="secondary" Size="micro" Disabled="@_saving" @onclick="Cancel">Cancel</Button>
+    </SaveBar>
+</div>
+
+@code {
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+    };
+    private static readonly JsonSerializerOptions Pretty = new()
+    {
+        WriteIndented = true,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+    };
+
+    private static readonly IEnumerable<SelectField.SelectOption> FiltersWhileTypingOptions =
+        [
+            new("Only after Ask", SearchOrAskSettings.FiltersOff),
+            new("From facet values, at once", SearchOrAskSettings.FiltersFromFacets),
+            new("With the model, for the rest", SearchOrAskSettings.FiltersWithModel),
+        ];
+
+    private static readonly IEnumerable<SelectField.SelectOption> KindOptions =
+        [
+            new("Documentation, help and reference", SearchOrAskRecipes.Documentation),
+            new("Catalogue: a description becomes filters", SearchOrAskRecipes.Catalogue),
+        ];
+
+    // First-word times measured on the docs with eight sources.
+    private static readonly IReadOnlyList<SegmentedControl.Item> ModeItems =
+    [
+        // A gate from shut to open, and what comes through it (pixl, 13 Nov 2026).
+        new(SearchOrAskSettings.ModeStrict, "Strict", Icon<Icons.AskModeStrict>()),
+        new(SearchOrAskSettings.ModeSoft, "Soft", Icon<Icons.AskModeSoft>()),
+        new(SearchOrAskSettings.ModeOpen, "Open", Icon<Icons.AskModeOpen>()),
+        new(SearchOrAskSettings.ModeInviting, "Inviting", Icon<Icons.AskModeInviting>()),
+        new(SearchOrAskSettings.ModeProactive, "Proactive", Icon<Icons.AskModeProactive>()),
+    ];
+
+    private static string ModeHelp(string mode) => mode switch
+    {
+        SearchOrAskSettings.ModeStrict => "Only the full offer, once the judge is sure it is a question.",
+        SearchOrAskSettings.ModeOpen => "Asking is always there. Enter asks whatever the judge says.",
+        SearchOrAskSettings.ModeInviting => "Open, with an invitation that sweeps as soon as a question starts. No answer until asked.",
+        SearchOrAskSettings.ModeProactive => "Inviting, and the answer written on its own once the judge is sure and the visitor has stopped.",
+        _ => "A quiet invitation early, the full offer once the judge is sure.",
+    };
+
+    /// <summary>The models the instance offers, each with its median time to first words on this
+    /// dataset over the last 30 days where it has answered: what a model was here, not a promise.</summary>
+    private IEnumerable<SelectField.SelectOption> AnswerOptions => Service.Setup.OfferedModels.Select(m =>
+    {
+        var label = ModelName(m);
+        if (m == Service.Setup.AnswerModel) label += ", best quality";
+        else if (m == Service.Setup.FastAnswerModel) label += ", fast";
+        if (_firstText.TryGetValue(m, out var t))
+            label += $", first words {t.MedianMs / 1000.0:0.0} s here ({t.Answers:N0} {(t.Answers == 1 ? "answer" : "answers")})";
+        return new SelectField.SelectOption(label, m);
+    });
+
+    /// <summary>The instance's answer and fast models are the presets (<c>answers</c>); any other
+    /// is named. Choosing a preset clears the name, so the dataset follows the admin's choice.</summary>
+    private void ChooseModel(string? model)
+    {
+        if (model == null) return;
+        if (model == Service.Setup.AnswerModel) (_edit.Answers, _edit.AnswerModel) = (SearchOrAskSettings.BestAnswers, null);
+        else if (model == Service.Setup.FastAnswerModel) (_edit.Answers, _edit.AnswerModel) = (SearchOrAskSettings.FastAnswers, null);
+        else (_edit.Answers, _edit.AnswerModel) = (SearchOrAskSettings.BestAnswers, model);
+    }
+
+    private static readonly SelectField.SelectOption[] SearchesOptions =
+    [
+        new("Several, as an agent", SearchOrAskSettings.SeveralSearches),
+        new("One search", SearchOrAskSettings.OneSearch),
+    ];
+
+    private Dictionary<string, (long MedianMs, int Answers)> _firstText = [];
+
+    /// <summary>"anthropic/claude-sonnet-5.5" as "claude-sonnet-5.5": the provider adds nothing here.</summary>
+    private static string ModelName(string model) => model[(model.IndexOf('/') + 1)..];
+
+    // The judge's own thresholds (SearchOrAskThresholds.For), each measured for it on the docs set.
+    private string Judge => Service.Setup.JudgeProvider;
+    private string JudgeName => Judge == SearchOrAskProviders.OpenAiDecisions ? "OpenAI's Decisions API" : "Jev";
+    private SearchOrAskThresholds Defaults => SearchOrAskThresholds.For(Judge);
+    private static readonly double DefaultFinished = new SearchOrAskThresholds().Finished;
+
+    /// <summary>Whether the answer offer waits for a whole question: the finished threshold above 0.</summary>
+    private static readonly double DefaultFound = new SearchOrAskThresholds().Found;
+    private bool Dims => _edit.Thresholds.Found > 0;
+    private double _foundOn = DefaultFound;
+
+    private void SetDims(bool on)
+    {
+        if (on) _edit.Thresholds.Found = _foundOn > 0 ? _foundOn : DefaultFound;
+        else
+        {
+            if (_edit.Thresholds.Found > 0) _foundOn = _edit.Thresholds.Found;
+            _edit.Thresholds.Found = 0;
+        }
+    }
+
+    /// <summary>Whether the list is refocused on a question: the refocus line above 0.</summary>
+    private bool Refocuses => _edit.Thresholds.Refocus > 0;
+    private double _refocusOn = SearchOrAskThresholds.RefocusOn;
+
+    private void SetRefocuses(bool on)
+    {
+        if (on) _edit.Thresholds.Refocus = _refocusOn > 0 ? _refocusOn : SearchOrAskThresholds.RefocusOn;
+        else
+        {
+            if (_edit.Thresholds.Refocus > 0) _refocusOn = _edit.Thresholds.Refocus;
+            _edit.Thresholds.Refocus = 0;
+        }
+    }
+
+    private bool WaitsForWhole => _edit.Thresholds.Finished > 0;
+    /// <summary>The line the switch brings back: the last one set, else the default.</summary>
+    private double _finishedOn = DefaultFinished;
+
+    private void SetWaitsForWhole(bool on)
+    {
+        if (on) _edit.Thresholds.Finished = _finishedOn > 0 ? _finishedOn : DefaultFinished;
+        else
+        {
+            if (_edit.Thresholds.Finished > 0) _finishedOn = _edit.Thresholds.Finished;
+            _edit.Thresholds.Finished = 0;
+        }
+    }
+
+    private static RenderFragment<int> Icon<T>() where T : IComponent => size => builder =>
+    {
+        builder.OpenComponent<T>(0);
+        builder.AddAttribute(1, "Size", size);
+        builder.CloseComponent();
+    };
+
+    // ── Fields: chosen from the dataset's own, never typed ────────────────────────────────
+
+    private const string Automatic = "";
+
+    /// <summary>The dataset's text fields, searchable ones first by weight: what a title or a
+    /// snippet can be read from.</summary>
+    private List<string> TextFields => (Ctx.SavedFields ?? [])
+        .Where(f => f.FieldType == "String")
+        .OrderByDescending(f => f.WordMatching == true || f.PatternMatching == true).ThenByDescending(f => f.Weight ?? 0).ThenBy(f => f.FieldName)
+        .Select(f => f.FieldName).ToList();
+
+    /// <summary>What can place a result: text, numbers (a category, a year) and true/false fields,
+    /// which the judge reads as the field's name when true.</summary>
+    private List<string> PlaceFields => (Ctx.SavedFields ?? [])
+        .Where(f => f.FieldType is "String" or "Number" or "Boolean")
+        .OrderBy(f => f.FieldName).Select(f => f.FieldName).ToList();
+
+    private IEnumerable<SelectField.SelectOption> TitleOptions =>
+        new[] { new SelectField.SelectOption($"Automatic ({AutoTitle})", Automatic) }
+            .Concat(TextFields.Select(f => new SelectField.SelectOption(f, f)));
+
+    /// <summary>The title the server picks when none is chosen, read with no title set.</summary>
+    private string AutoTitle
+    {
+        get
+        {
+            var engine = Ctx.FindEngine();
+            return Service.FieldsFor(Ctx.TeamId, Ctx.Name, new SearchOrAskSettings(), engine).TitleField ?? "none";
+        }
+    }
+
+    /// <summary>A field per checkbox. Untouched, the boxes show what the server picks on its own
+    /// (<paramref name="automatic"/>); the first click makes the choice the dataset's, and
+    /// "Automatic" hands it back.</summary>
+    private RenderFragment FieldChoice(List<string> fields, Func<List<string>?> get, Action<List<string>?> set,
+        IReadOnlyList<string>? automatic) => __builder =>
+    {
+        var chosen = get();
+        var shown = chosen ?? automatic?.ToList() ?? [];
+        @foreach (var f in fields)
+        {
+            var name = f;
+            <Checkbox Label="@name" Checked="@shown.Contains(name)"
+                      CheckedChanged="@(on => set(on ? [.. shown.Where(x => x != name), name] : [.. shown.Where(x => x != name)]))" />
+        }
+        @if (chosen != null)
+        {
+            <Button Variant="ghost" Size="micro" @onclick="() => set(null)">Automatic</Button>
+        }
+    };
+
+    // ── When to offer: scores from 0 to 1 ─────────────────────────────────────────────────
+
+    /// <summary>The scale the thresholds cut: lookups at 0, questions at 1, and where each offer
+    /// starts. Redrawn as the sliders move.</summary>
+    // The scale above the thresholds, with the lines the tester's question meter has in this mode:
+    // the hint where the mode sweeps, the invitation unless strict, the full offer.
+    private RenderFragment Scale() => __builder =>
+    {
+        var t = _edit.Thresholds.Resolved(_edit.Kind, Judge);
+        double strong = Math.Clamp(Math.Max(t.Strong!.Value, t.Invite!.Value), 0, 1);
+        double? invite = _edit.Mode == SearchOrAskSettings.ModeStrict ? null : Math.Clamp(t.Invite.Value, 0, 1);
+        double? hint = _edit.Mode is SearchOrAskSettings.ModeInviting or SearchOrAskSettings.ModeProactive
+            ? Math.Clamp(Math.Min(t.Hint!.Value, invite ?? strong), 0, 1) : null;
+        double start = hint ?? invite ?? strong;
+        <div class="soa-scale" aria-hidden="true">
+            <div class="soa-scale-bar">
+                <span class="soa-scale-none" style="@($"width:{Pct(start)}")"></span>
+                @if (hint is { } h) { <span class="soa-scale-hint" style="@($"width:{Pct((invite ?? strong) - h)}")"></span> }
+                @if (invite is { } inv) { <span class="soa-scale-invite" style="@($"width:{Pct(strong - inv)}")"></span> }
+                <span class="soa-scale-strong" style="@($"width:{Pct(1 - strong)}")"></span>
+            </div>
+            <div class="soa-scale-ticks">
+                <span>0 lookup</span>
+                @if (hint is { } hm) { <span class="soa-scale-mark" style="@($"left:{Pct(hm)}")">@Two(hm)</span> }
+                @if (invite is { } im) { <span class="soa-scale-mark" style="@($"left:{Pct(im)}")">@Two(im)</span> }
+                <span class="soa-scale-mark" style="@($"left:{Pct(strong)}")">@Two(strong)</span>
+                <span>question 1</span>
+            </div>
+        </div>
+    };
+
+    private static string Pct(double fraction) => (fraction * 100).ToString("0.##", CultureInfo.InvariantCulture) + "%";
+    private static string Two(double v) => v.ToString("0.00", CultureInfo.InvariantCulture);
+
+    /// <summary>One offer's pair: the score it shows from, and the score it is kept down to once
+    /// shown, each a slider from 0 to 1 in steps of 0.05. Unset, a value is the judge's own (the
+    /// default given); moved back onto it, it is unset again, so it follows a switch of judge.</summary>
+    private RenderFragment ThresholdRow(RenderFragment<int> icon, string label, string help,
+        Func<SearchOrAskThresholds, double?> getShow, Action<SearchOrAskThresholds, double?> setShowValue, double showDefault,
+        Func<SearchOrAskThresholds, double?> getKeep, Action<SearchOrAskThresholds, double?> setKeepValue, double keepDefault,
+        RenderFragment? extra = null, bool extraSet = false) => __builder =>
+    {
+        var t = _edit.Thresholds;
+        double show(SearchOrAskThresholds x) => getShow(x) ?? showDefault;
+        double keep(SearchOrAskThresholds x) => getKeep(x) ?? keepDefault;
+        void setShow(SearchOrAskThresholds x, double v) => setShowValue(x, v == showDefault ? null : v);
+        void setKeep(SearchOrAskThresholds x, double v) => setKeepValue(x, v == keepDefault ? null : v);
+        @Row(icon, label, help, getShow(t) != null || getKeep(t) != null || extraSet,
+            @<div class="soa-thresholds">
+                @Line("Show from", "The question score the offer needs to appear.", show(t), 0.05, v => setShow(_edit.Thresholds, v), $"{label}: show from")
+                @Line("Keep down to", "Once up, the offer stays while the score is at least this, so it does not blink as the visitor types. Applied on the visitor's page, which remembers what it showed; the tester has no memory and uses Show from alone.", keep(t), 0.05, v => setKeep(_edit.Thresholds, v), $"{label}: keep down to")
+                @extra
+            </div>)
+    };
+
+    /// <summary>One line of an offer: its name (explained on hover), a slider from 0 to 1, the value.</summary>
+    private RenderFragment Line(string name, string explained, double value, double step, Action<double> set, string ariaLabel,
+        double min = 0, bool disabled = false) => __builder =>
+    {
+        <div class="soa-threshold @(disabled ? "soa-threshold--off" : null)">
+            <span class="soa-threshold-label"><Tooltip Content="@explained">@name</Tooltip></span>
+            <Slider Min="min" Max="1" Step="step" Value="@value" ValueChanged="@(v => set(Math.Round(v, 2)))" AriaLabel="@ariaLabel" Class="soa-slider" Disabled="disabled" />
+            <span class="soa-threshold-value">@Two(value)</span>
+        </div>
+    };
+
+    private bool _loaded;
+    private SearchOrAskSettings _edit = new();
+    private string _savedJson = "";
+    private SearchOrAskEffective? _effective;
+    private string _effectiveSite = "";
+    private int _callsToday;
+    private string? _budgetText;
+    private string? _budgetError;
+    private string? _error;
+    private bool _saving;
+
+    protected override void OnParametersSet()
+    {
+        if (Active && !_loaded) Load();
+    }
+
+    private void Load()
+    {
+        _loaded = true;
+        _changedUnderEdit = false;
+        Ctx.EnsureFieldsLoaded();
+        var saved = Store.Load(Ctx.TeamId, Ctx.Name);
+        _savedJson = Json(saved ?? new SearchOrAskSettings());
+        _savedKnowledge = saved?.Knowledge;
+        Reset(saved);
+    }
+
+    private void Reset(SearchOrAskSettings? from)
+    {
+        // A copy: the store's instance is shared with every intent call.
+        _edit = JsonSerializer.Deserialize<SearchOrAskSettings>(Json(from ?? new SearchOrAskSettings()), JsonOpts)!;
+        _budgetText = from == null || from.DailyCallBudget == Defaults2.DailyCallBudget ? null : from.DailyCallBudget.ToString(CultureInfo.InvariantCulture);
+        _budgetError = null;
+        _proactiveText = from == null || from.DailyProactiveAnswers == Defaults2.DailyProactiveAnswers ? null : from.DailyProactiveAnswers.ToString(CultureInfo.InvariantCulture);
+        _proactiveError = null;
+        _error = null;
+        Refresh();
+    }
+
+    private static readonly SearchOrAskSettings Defaults2 = new();
+    private const string VisitorsLanguage = "";
+    private static readonly List<SelectField.SelectOption> LanguageOptions =
+    [
+        new("The visitor's language", VisitorsLanguage),
+        .. new[] { "English", "Norwegian", "Swedish", "Danish", "Finnish", "German", "Dutch", "French", "Spanish", "Italian", "Portuguese", "Polish" }
+            .Select(l => new SelectField.SelectOption(l, l)),
+    ];
+    private void SetupInAgent() => Agent.Run(new IndxServer.Services.Observr.AgentAction("Help me set up Search or ask",
+        ct => Observr().AskSearchOrAskSetupAsync(Ctx.TeamId, Ctx.Name, ct), () => InvokeAsync(Reload)));
+    private IndxServer.Services.Observr.ObservrClient Observr() => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<IndxServer.Services.Observr.ObservrClient>(Services);
+    private void Reload() { Load(); Ctx.NotifyChanged(); }
+
+    // The knowledge as a file: download is what is saved; an upload fills the box, as typing would, so
+    // the preview and the Save bar come before anything takes effect.
+    private static readonly RenderFragment<int> UploadIcon = Icon<Icons.DocumentOrFile>();
+    private string KnowledgeInputId => $"knowledge-{Ctx.Name}";
+    private string? _knowledgeError;
+    private string? _savedKnowledge;
+    private string? SavedKnowledge => string.IsNullOrWhiteSpace(_savedKnowledge) ? null : _savedKnowledge;
+
+    private async Task DownloadKnowledgeAsync()
+    {
+        if (SavedKnowledge is { } knowledge) await Files.DownloadAsync($"{Ctx.Name}-knowledge.md", knowledge, "text/markdown");
+    }
+
+    private async Task UploadKnowledgeAsync(Microsoft.AspNetCore.Components.Forms.InputFileChangeEventArgs e)
+    {
+        if (!Ctx.IsEditor) return;
+        _knowledgeError = null;
+        try
+        {
+            // Four bytes a character at most, so anything larger cannot fit the limit.
+            using var stream = e.File.OpenReadStream(maxAllowedSize: SearchOrAskSettings.MaxKnowledge * 4L);
+            using var reader = new StreamReader(stream, System.Text.Encoding.UTF8, detectEncodingFromByteOrderMarks: true);
+            var text = (await reader.ReadToEndAsync()).Replace("\r\n", "\n").Trim();
+            if (text.Contains('\0')) { _knowledgeError = $"{e.File.Name} is not a text file."; return; }
+            if (text.Length > SearchOrAskSettings.MaxKnowledge)
+            {
+                _knowledgeError = $"{e.File.Name} has {text.Length:N0} characters; Knowledge holds {SearchOrAskSettings.MaxKnowledge:N0}.";
+                return;
+            }
+            _edit.Knowledge = text.Length == 0 ? null : text;
+        }
+        catch (IOException) { _knowledgeError = $"{e.File.Name} is larger than Knowledge can hold."; }
+        await Render();
+    }
+
+    private const string KnowledgeExample = "The set holds 23,000 films from TMDB, up to 2026.\nRatings are TMDB's vote average, out of 10.";
+
+    /// <summary>Set when Observr changed the saved settings while this tab held unsaved edits.</summary>
+    private bool _changedUnderEdit;
+    /// <summary>The notice, while the edits it is about are still unsaved: a Save or a Cancel ends
+    /// them, and with them the notice, so a later edit does not show it for an old change.</summary>
+    private bool ChangedUnderEdit { get { if (!IsDirty) _changedUnderEdit = false; return _changedUnderEdit; } }
+
+    protected override void OnObservrApplied(IReadOnlySet<string> kinds)
+    {
+        if (!_loaded || !kinds.Contains(IndxServer.Services.Observr.ObservrProposal.SearchOrAskKind)) return;
+        if (IsDirty) { _changedUnderEdit = true; return; }
+        Load();
+    }
+
+    /// <summary>What the dataset runs with after defaults, and today's calls.</summary>
+    private void Refresh()
+    {
+        var engine = Ctx.FindEngine();
+        var fields = Service.FieldsFor(Ctx.TeamId, Ctx.Name, _edit, engine);
+        _effectiveSite = Service.SiteDescription(Ctx.TeamId, Ctx.Name, new SearchOrAskSettings());
+        _effective = new SearchOrAskEffective(_effectiveSite, fields.TitleField, fields.SectionFields, fields.SnippetFields);
+        _callsToday = Service.CallsToday(Ctx.TeamId, Ctx.Name);
+        if (Services.GetService(typeof(IndxServer.Services.StatisticsService)) is IndxServer.Services.StatisticsService { Store: { } store })
+        {
+            var today = store.Today(Ctx.TeamId, Ctx.Name);
+            _firstText = store.FirstTextByModel(Ctx.TeamId, Ctx.Name, today - 29, today);
+        }
+    }
+
+    private static string Json(SearchOrAskSettings s) => JsonSerializer.Serialize(s, JsonOpts);
+
+    private bool IsDirty => _loaded && (Json(_edit) != _savedJson || _budgetError != null || _proactiveError != null);
+
+
+    /// <summary>Each setting's full explanation, by its name: the name's tooltip. The line under the
+    /// name says what the setting is; this says what it does, with an example, and what off means.</summary>
+    private static readonly Dictionary<string, string> Explained = new()
+    {
+        ["Offer answers"] = "While on, each pause in typing sends the text to the judge, and a question asked goes to the answer model with the records it is answered from. Visitors' text leaves your server, so the privacy notice must say so. Off: the search works as before and nothing is sent.",
+        ["Kind of site"] = "Documentation: records written to explain, such as help pages, manuals and policies; an answer says what no single page shows. Catalogue: records of facts, such as products, places or films; a description of what to list becomes filters, and a question about one item is answered from its fields.",
+        ["About the site"] = "One or two sentences the judge and the answer model read with every request, such as \"A furniture shop's catalogue for customers in Norway.\" It helps the judge tell a question from a lookup on this site, and gives the answers their frame.",
+        ["About the fields"] = "For turning a description into filters. Each line names a value and what it means on this site, such as \"barneskole: grades 1 to 7\" or \"friskole: private school\", so \"schools for young children\" can become the filter barneskole.",
+        ["Knowledge"] = "Facts about the site for the answers, such as what the set covers, what a rating means, that prices include VAT, delivery times, or what is not sold. An answer may state them, saying the site says so; a record still decides about itself. Not read by the judge. It goes to the answer model with every question, so keep it short and leave out anything confidential. How to answer belongs in Answer instructions, what a value means in About the fields.",
+        ["Answers"] = "The model that writes the answers, from the ones this instance offers. Best quality and fast are the instance's own choices and follow them if an admin changes them; the others are named. Where a model has answered here, its median time to the first words over the last 30 days is beside it. Every model answers from the records only.",
+        ["Searches"] = "How a question is answered on a catalogue. Several: an agent that searches, sorts and filters as often as it needs, then answers; the best answers, about 10 seconds. One: one search turned into filters, then a summary of what it found; quicker and cheaper, and it misses what a single search cannot see. Follows the model choice until set: several with best quality, one with fast.",
+        ["Answer instructions"] = "How the answers should speak: voice, house rules, what to say when nothing is found, such as \"Formal. Say du. Never recommend another shop.\" They shape the wording; what an answer may claim stays bound to the records.",
+        ["Answer language"] = "By default an answer is written in the language the question is asked in. Choose a language to write every answer in it, whatever the visitor writes.",
+        ["Mode"] = "How forward the offer is. Strict: only the full offer, for a site where a wrong offer costs more than a missed one. Soft: the quiet \"Ask about this\" early and the full offer when sure. Open: an Ask button whenever something is typed, and Enter asks; the judge decides only how strong it looks. Inviting: Open, with \"For a quick answer, type a bit more\" sweeping as soon as the judge reads a question starting (Hint, below), but no answer until the visitor asks; meant to teach visitors that the field answers. Proactive: Inviting, and the answer starts by itself once the judge is sure, reads the question as finished, and the visitor has stopped typing for a second, as Notion's search does. The thresholds below apply in all five.",
+        ["Proactive answers"] = "Answers the proactive mode writes without a click, counted per day from midnight UTC. An answer costs as much as hundreds of judgements, so this is the spend proactive adds. Past it the field works as Inviting until midnight. Each also counts against the daily call budget.",
+        ["Daily call budget"] = "Every judgement, every question asked, and every filter the model makes while a visitor types (Filters: with the model) counts as one call, however many model calls an answer takes, counted per day from midnight UTC. Once the budget is spent the search works as before and no offers show until midnight. 0 stops all calls.",
+        ["Title"] = "The field that names a result, as the judge and the answers refer to it. Automatic picks the dataset's most title-like field.",
+        ["Section"] = "Fields that say where a result belongs, such as a category, a year or a chapter. The judge reads them beside the title; leave them empty when the records have none.",
+        ["Snippet"] = "The prose fields the judge reads and the answers are written from: a description, a body text. Not identifiers or links, which tell the model nothing.",
+        ["Whole question"] = "The judge gives a second score on each pause: whether the visitor has finished the question, or it stops on a word still waiting for more. On, the answer offer waits until that score reaches Answer offer from, and the visitor gets the invitation until then; proactive waits for it before answering on its own. Off, the answer offer comes on the question score alone.",
+        ["Answer offer"] = "The full offer, \"Ask the assistant\": Enter asks. It needs two lines: the question score reaches Show from, and the judge reads the question as whole (Whole question from); until then the visitor gets the invitation. Once up, it stays while the score is above Keep down to, so it does not blink as the visitor types on.",
+        ["Invitation"] = "The quiet \"Ask about this\" under the field, for a score that may be a question. Clicking it asks; Enter still searches.",
+        ["The list"] = "With each judgement the judge also scores found: whether what the visitor asks about, the item or the page, is among the results, even when none of them holds the answer. While the full offer is up and found is below the line, the page dims its list and says above it that the results may not answer the question. The list is never hidden. Off shows it as usual.",
+        ["Matching"] = "While the full offer is up, the page's searches match whole words only: no typos, prefixes or joined words, which a long question otherwise picks up everywhere. The answer still searches with the full setup, so a typo in a name still finds the record.",
+        ["Filters"] = "When the judge reads the text as a description of what to list. Only after Ask: the list stays as it is until the visitor asks. From facet values: a typed word that equals a value becomes that filter at once. With the model: the model also turns what the values could not name into filters, in about a second and a half.",
+    };
+
+    private static RenderFragment Head(string group) => __builder =>
+    {
+        <thead>
+            <tr><th>@group</th></tr>
+        </thead>
+    };
+
+    /// <summary>A setting: its icon, its name in bold when changed from the default, one short line
+    /// of what it is, and the control under them. The full explanation (what it does, an example,
+    /// what off means) is the name's tooltip, as elsewhere in the console, from <see cref="Explained"/>.</summary>
+    private static RenderFragment Row(RenderFragment<int> icon, string label, string help, bool set, RenderFragment control) => __builder =>
+    {
+        <TableRow Class="@(set ? "soa-row--set" : null)">
+            <TableCell Class="soa-cell">
+                <div class="soa-row">
+                    <span class="soa-icon">@icon(14)</span>
+                    <div class="soa-row-body">
+                        @if (Explained.TryGetValue(label, out var more))
+                        {
+                            <Tooltip Content="@more" Position="right"><span class="soa-label soa-label--explained" tabindex="0">@label</span></Tooltip>
+                        }
+                        else
+                        {
+                            <span class="soa-label">@label</span>
+                        }
+                        <span class="soa-help">@help</span>
+                        <div class="soa-control">@control</div>
+                    </div>
+                </div>
+            </TableCell>
+        </TableRow>
+    };
+
+
+    private string? _proactiveText;
+    private string? _proactiveError;
+
+    private void SetProactive()
+    {
+        _proactiveError = null;
+        var text = _proactiveText?.Trim().Replace(" ", "").Replace(",", "");
+        if (string.IsNullOrEmpty(text)) { _proactiveText = null; _edit.DailyProactiveAnswers = Defaults2.DailyProactiveAnswers; return; }
+        if (!int.TryParse(text, out var n) || n < 0) { _proactiveError = "A whole number, 0 or more"; return; }
+        _edit.DailyProactiveAnswers = n;
+    }
+
+    private void SetBudget()
+    {
+        _budgetError = null;
+        var text = _budgetText?.Trim().Replace(" ", "").Replace(",", "");
+        if (string.IsNullOrEmpty(text)) { _budgetText = null; _edit.DailyCallBudget = Defaults2.DailyCallBudget; return; }
+        if (!int.TryParse(text, out var n) || n < 0) { _budgetError = "A whole number, 0 or more"; return; }
+        _edit.DailyCallBudget = n;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!Ctx.IsEditor) return;
+        if (_saving) return;
+        _error = null;
+        if (_budgetError != null || _proactiveError != null) { _error = "Fix the values marked above, or clear them to use the default."; return; }
+        if (_edit.Validate(Judge) is { } invalid) { _error = invalid; return; }
+        var toSave = JsonSerializer.Deserialize<SearchOrAskSettings>(Json(_edit), JsonOpts)!;
+        toSave.Thresholds.Normalise(toSave.Kind, Judge);
+        // The dataset's switch is the Options tab's (a team admin's): kept as it is now.
+        toSave.Shown = Store.Load(Ctx.TeamId, Ctx.Name)?.Shown ?? false;
+        _saving = true;
+        try
+        {
+            await Task.Run(() => Store.Save(Ctx.TeamId, Ctx.Name, toSave));
+            _savedJson = Json(toSave);
+            _savedKnowledge = toSave.Knowledge;
+            Refresh();
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not save: {ex.Message}";
+        }
+        finally { _saving = false; }
+    }
+
+    private void Cancel() => Reset(Store.Load(Ctx.TeamId, Ctx.Name));
+
+    // ── The tester ────────────────────────────────────────────────────────────
+
+    private const int PauseMs = 300;
+    private string? _tryText;
+    private IntentResult? _try;
+    private bool _showResults;
+    private SearchOrAskService.SearchSummary? _results;
+    /// <summary>The results in the refocused order, when the judgement refocused them; the switch
+    /// shows the search's own order instead, to compare.</summary>
+    private SearchOrAskService.SearchSummary? _refocused;
+    private bool _ownOrder;
+
+    private void Refocus()
+    {
+        _refocused = _showResults && _try?.Refocused is { } keys && _results is { } page && Ctx.FindEngine() is { } engine
+            ? Service.RefocusedResults(Ctx.TeamId, Ctx.Name, engine, keys, page, _edit) : null;
+    }
+    /// <summary>The text changed and the pause has not passed; then the judge is reading.</summary>
+    private bool _typingNow, _judging;
+
+    private void OnShowResults(bool on)
+    {
+        _showResults = on;
+        if (!on) { _results = _refocused = null; return; }
+        var text = _tryText?.Trim() ?? "";
+        if (text.Length > 0 && Ctx.FindEngine() is { } engine) _results = Service.Results(Ctx.TeamId, Ctx.Name, engine, text, _edit);
+        Refocus();
+    }
+    private string? _tryMessage;
+    private string? _state;
+    private bool _showState;
+    private CancellationTokenSource? _typing;
+    private bool _asking;
+    /// <summary>What the answer is doing while nothing has arrived: the agent's step, or the summary's.</summary>
+    private string _askStep = "Reading the question";
+    private string _answer = "";
+    private string? _answerError;
+    private List<AskSource> _sources = [];
+
+    private string Address => $"console:{Ctx.TeamId}";
+
+    private static readonly RenderFragment<int> _iconAgent = size => @<Indx.Systm.Blazor.Icons.AiAgent Size="size" Color="currentColor" />;
+
+    /// <summary>Enter asks while the full offer is up, as it does for a visitor.</summary>
+    private async Task OnTryKey(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && _try is { } j && (j.Offer == "strong" || AskAnytime(j.Mode)) && !_asking) await AskAsync();
+    }
+
+    private const string QuestionHelp = "How sure the judge is that the visitor is asking a question rather than looking something up. " +
+        "On a catalogue: a question about one particular item. The thresholds under When to offer are applied to this score.";
+    private const string DescriptionHelp = "On a catalogue: how sure the judge is that the visitor describes what kind of items to list, " +
+        "or asks for a recommendation of a kind. At the full offer's Show from it earns the offer, since the catalogue answers it with filters and a summary.";
+    private const string AnswerableHelp = "Whether the results on the page could answer it: one of them holds what is asked closely enough to write from. " +
+        "It does not decide the offer; the statistics use it to show offers the records could not answer.";
+    private const string FoundHelp = "Whether what the visitor asks about is among the results on the page, even when none of them holds the answer. " +
+        "Below Found below (While asking, The list), under an answer offer, the page dims its list. It does not decide the offer.";
+
+    private static RenderFragment Score(string label, string help, double value, IReadOnlyList<ScoreMeter.Mark> marks) => __builder =>
+    {
+        <Tooltip Content="@help"><span class="soa-score" tabindex="0">@label <ScoreMeter Value="value" Marks="marks" AriaLabel="@label" /> @Two(value)</span></Tooltip>
+    };
+
+    /// <summary>The question score's lines in this judgement's mode: the hint where it sweeps, the
+    /// invitation and the full offer.</summary>
+    private static IReadOnlyList<ScoreMeter.Mark> QuestionMarks(IntentResult j) =>
+    [
+        .. Sweeps(j.Mode) && j.Thresholds.Hint is { } h ? new ScoreMeter.Mark[] { new(h, "Hint") } : [],
+        .. j.Mode == SearchOrAskSettings.ModeStrict ? Array.Empty<ScoreMeter.Mark>() : [new(j.Thresholds.Invite!.Value, "Invitation")],
+        new(j.Thresholds.Strong!.Value, "Answer offer"),
+        .. j.Thresholds.Refocus > 0 ? new ScoreMeter.Mark[] { new(j.Thresholds.Refocus, "Refocus") } : [],
+    ];
+
+    private const string FinishedHelp = "Whether the visitor has finished typing it: a whole request, not one that stops on a word still waiting for more (\"what type is\"). " +
+        "Proactive answers on its own only from 0.50, so a sure question still being typed waits.";
+
+    /// <summary>What a visitor's page shows for a judgement: proactive's sure offer on a question
+    /// still being typed is the hint, and the hint below the invitation where the score reaches it.</summary>
+    private static string Seen(IntentResult j) => (j.Offer, j.Mode) switch
+    {
+        ("none", _) when Sweeps(j.Mode) && j.P >= (j.Thresholds.Hint ?? 1) => "invite",
+        _ => j.Offer,
+    };
+
+    private static bool AskAnytime(string mode) => mode is SearchOrAskSettings.ModeOpen or SearchOrAskSettings.ModeInviting or SearchOrAskSettings.ModeProactive;
+    private static bool Sweeps(string mode) => mode is SearchOrAskSettings.ModeInviting or SearchOrAskSettings.ModeProactive;
+
+    private static string OfferHelp(string offer, string mode) => (offer, mode) switch
+    {
+        ("strong", SearchOrAskSettings.ModeProactive) => "What a visitor sees for this text: the answer, started on its own once they pause.",
+        ("strong", _) => "What a visitor sees for this text: the full offer to answer. Enter asks.",
+        ("invite", _) when Sweeps(mode) => "What a visitor sees for this text: \"For a quick answer, type a bit more\". Enter asks.",
+        ("invite", _) => "What a visitor sees for this text: the quieter \"Ask about this\".",
+        (_, _) when AskAnytime(mode) => "What a visitor sees for this text: the results, and an Ask button. Enter asks.",
+        _ => "What a visitor sees for this text: the results and nothing more.",
+    };
+
+    private static string OfferLabel(string offer, string mode) => (offer, mode) switch
+    {
+        ("strong", SearchOrAskSettings.ModeProactive) => "Answer on its own",
+        ("strong", _) => "Offer an answer",
+        ("invite", _) when Sweeps(mode) => "Type a bit more",
+        ("invite", _) => "Invite to ask",
+        (_, _) when AskAnytime(mode) => "Ask button",
+        _ => "Results only",
+    };
+
+    /// <summary>The judgement ahead of the pause, as a visitor's page asks it (useSearchOrAsk's
+    /// prefetch): one call out at a time, then the next for what the box holds when it returns. It
+    /// fills the judge's cache and shows nothing; the pause shows it.</summary>
+    private (string Text, Task Done)? _ahead;
+
+    private void JudgeAhead(string text)
+    {
+        if (_ahead != null || text.Length == 0 || _edit.Validate() != null || Ctx.FindEngine() is not { } engine) return;
+        var done = JudgeAheadAsync(engine, text);
+        // A cached text answers at once, and its next has started already.
+        if (!done.IsCompleted) _ahead = (text, done);
+    }
+
+    private async Task JudgeAheadAsync(IServerSearchEngine engine, string text)
+    {
+        try { await Service.IntentAsync(Ctx.TeamId, Ctx.Name, engine, text, Address, CancellationToken.None, trial: _edit, prefetch: true); }
+        catch (Exception) { } // the pause asks for itself
+        _ahead = null;
+        var now = _tryText?.Trim() ?? "";
+        if (now != text) JudgeAhead(now);
+    }
+
+    /// <summary>A pause in typing, as the search page has it: the judge reads ahead while the text
+    /// changes, the offer is shown once it has been still for <see cref="PauseMs"/>, and only the
+    /// newest answer is shown.</summary>
+    private async Task OnTryInput()
+    {
+        _typing?.Cancel();
+        var typing = _typing = new CancellationTokenSource();
+        var text = _tryText?.Trim() ?? "";
+        if (text.Length == 0) { _try = null; _tryMessage = null; _state = null; _results = _refocused = null; _typingNow = _judging = false; return; }
+        var engine = Ctx.FindEngine();
+        if (engine == null) return;
+        // The hits on every keystroke, as the Search preview searches: milliseconds, no model
+        // behind them. Only the judge waits for the pause.
+        if (_showResults) _results = Service.Results(Ctx.TeamId, Ctx.Name, engine, text, _edit);
+        // The refocused order belongs to the judgement of the text before; the next one decides again.
+        _refocused = null;
+        JudgeAhead(text);
+        _typingNow = true;
+        try { await Task.Delay(PauseMs, typing.Token); }
+        catch (OperationCanceledException) { return; }
+
+        if (_edit.Validate() is { } invalid) { _try = null; _tryMessage = invalid; _typingNow = false; return; }
+        string? state = null;
+        _typingNow = false;
+        _judging = true;
+        StateHasChanged();
+        IntentOutcome outcome;
+        try
+        {
+            // The judge is reading this very text ahead: its answer, not a second call.
+            if (_ahead is { } reading && reading.Text == text) await reading.Done;
+            if (typing.IsCancellationRequested) return;
+            outcome = await Service.IntentAsync(Ctx.TeamId, Ctx.Name, engine, text, Address, typing.Token,
+                trial: _edit, onState: s => state = s.ToJsonString(Pretty));
+        }
+        finally { if (!typing.IsCancellationRequested) _judging = false; }
+        if (typing.IsCancellationRequested) return; // a newer pause has asked since
+        (_try, _tryMessage) = outcome.Status switch
+        {
+            IntentStatus.Ok => (outcome.Result, null),
+            IntentStatus.RateLimited => ((IntentResult?)null, $"Too many tries; wait {outcome.RetryAfterSeconds} seconds."),
+            IntentStatus.BudgetSpent => (null, "Today's budget is spent."),
+            _ => (null, "Search or ask cannot run on this instance."),
+        };
+        _state = state;
+        Refocus();
+        _callsToday = Service.CallsToday(Ctx.TeamId, Ctx.Name);
+        _answer = "";
+        _answerError = null;
+        _sources = [];
+        _filters = null;
+        // Proactive, as a visitor's page does it: the answer starts on its own once the judge is sure,
+        // the judge reads it as finished (not "what type is"), and the box has stayed still for
+        // a second (intrface's answerAfterMs), the pause included.
+        if (_try is { Offer: "strong", Mode: SearchOrAskSettings.ModeProactive } j && !_asking && j.Finished >= j.Thresholds.Finished)
+        {
+            try { await Task.Delay(1000 - PauseMs, typing.Token); }
+            catch (OperationCanceledException) { return; }
+            if (!_asking) await AskAsync();
+        }
+    }
+
+
+    private FiltersResult? _filters;
+    private bool _filtering;
+
+    private static string FilterLabel(FilterSuggestion f) =>
+        f.Value != null ? $"{f.Field}: {f.Value}"
+        : $"{f.Field}: {f.Min?.ToString(CultureInfo.InvariantCulture) ?? ""}–{f.Max?.ToString(CultureInfo.InvariantCulture) ?? ""}";
+
+    /// <summary>The tester's description, as the filters a page would apply, with the settings on screen.</summary>
+    private async Task FiltersAsync()
+    {
+        var engine = Ctx.FindEngine();
+        var text = _tryText?.Trim();
+        if (engine == null || string.IsNullOrEmpty(text) || _filtering) return;
+        _filtering = true;
+        try
+        {
+            var outcome = await Service.FiltersAsync(Ctx.TeamId, Ctx.Name, engine, text, Address, CancellationToken.None, trial: _edit);
+            _filters = outcome.Result;
+            if (outcome.Result == null) _tryMessage = outcome.Status.ToString();
+        }
+        finally { _filtering = false; }
+    }
+
+    private async Task AskAsync()
+    {
+        MarkStep("soa-try");
+        var engine = Ctx.FindEngine();
+        var question = _tryText?.Trim();
+        if (engine == null || string.IsNullOrEmpty(question) || _asking) return;
+        _answer = "";
+        _answerError = null;
+        _sources = [];
+        _askStep = "Reading the question";
+        var gate = Service.CanAsk(Ctx.TeamId, Ctx.Name, Address, trial: _edit);
+        if (gate.Status != IntentStatus.Ok)
+        {
+            _answerError = gate.Status == IntentStatus.BudgetSpent ? "Today's budget is spent." : $"Not now ({gate.Status}).";
+            return;
+        }
+        _asking = true;
+        try
+        {
+            await Service.AskAsync(Ctx.TeamId, Ctx.Name, engine, question, async (name, data) =>
+            {
+                switch (name)
+                {
+                    case "status": _askStep = JsonSerializer.SerializeToNode(data)?["step"]?.GetValue<string>() ?? _askStep; break;
+                    case "filters": _askStep = "Searching with the filters"; break;
+                    case "sources": _sources = ((AskSource[])data).ToList(); _askStep = "Writing"; break;
+                    case "text": _answer += JsonSerializer.SerializeToNode(data)?["delta"]?.GetValue<string>(); break;
+                    case "error": _answerError = JsonSerializer.SerializeToNode(data)?["message"]?.GetValue<string>(); break;
+                }
+                await InvokeAsync(StateHasChanged);
+            }, CancellationToken.None, trial: _edit);
+        }
+        finally
+        {
+            _asking = false;
+            _callsToday = Service.CallsToday(Ctx.TeamId, Ctx.Name);
+        }
+    }
+
+    public override void Dispose()
+    {
+        _typing?.Cancel();
+        base.Dispose();
+    }
+}

@@ -1,0 +1,459 @@
+@page "/account/api-key"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@using System.Text.Json
+@using IndxServer.Data
+@using IndxServer.Models
+@using IndxServer.Engine
+@attribute [Authorize]
+@inject UserManager<ApplicationUser> UserManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject ApplicationDbContext Db
+@inject IndxServer.Services.ApiKeyService Keys
+@inject IndxServer.Services.TeamService Teams
+@inject Microsoft.Extensions.Caching.Memory.IMemoryCache MemoryCache
+@inject IndxServer.Services.BrowserFiles BrowserFiles
+@inject ILogger<ApiKey> Logger
+@inject NavigationManager Nav
+@inject IndxServer.Services.InstanceSettingsService Settings
+
+<PageTitle>API Keys</PageTitle>
+
+<div class="key-page">
+    <h2>API keys</h2>
+    <p class="key-intro">
+        An API key authenticates requests to the Indx API. Every key is limited to one team, optionally to some of its
+        datasets, and to a level of access. It is shown only once, when it is created.
+    </p>
+    <p class="key-intro">
+        These keys act as you, which suits your own scripts and AI agents, and they stop working if you leave the team.
+        For a production website or a shared server, a team Admin can create a team key on the team's API keys page instead.
+    </p>
+
+    @if (!string.IsNullOrEmpty(_error) && !_showCreate)
+    {
+        <Alert Variant="destructive">
+            <Description>@_error</Description>
+        </Alert>
+    }
+
+    @* ── New key reveal ── *@
+    @if (_created != null)
+    {
+        <Alert Variant="success" Class="key-reveal">
+            <Title>@(_created.Record.Level == nameof(IndxServer.Services.ApiKeyLevel.Full)
+                ? "Key created. Copy it now: it will not be shown again."
+                : "Key created. Copy it now; you can show it again from the list.")</Title>
+            <Description>
+                <span class="key-reveal-scope">@IndxServer.Services.ApiKeyService.DescribeScope(_created.Record, TeamName(_created.Record.TeamId))</span>
+                <code class="key-token">@_created.Token</code>
+                <span class="key-reveal-actions">
+                    <Button Variant="secondary" Size="micro" @onclick="CopyNewToken">@(_copied ? "Copied" : "Copy key")</Button>
+                    @if (_created.Record.Level == nameof(IndxServer.Services.ApiKeyLevel.Search))
+                    {
+                        <span class="key-muted">Safe to use in a browser: it can search the datasets above and nothing else.</span>
+                    }
+                    else
+                    {
+                        <span class="key-muted">Keep this key on a server. Anyone who has it can @(_created.Record.Level == "Read" ? "read and download these datasets" : "change and delete these datasets").</span>
+                    }
+                </span>
+            </Description>
+        </Alert>
+    }
+
+    @* ── Existing keys ── *@
+    <h3 class="indx-section-heading">Your keys</h3>
+    @* The page action pattern (app.css): the primary "New …" on top of the list it adds to. *@
+    @if (_teams.Count == 0)
+    {
+        <p class="key-muted">You are not a member of any team yet, so there is nothing a key could reach.</p>
+    }
+    else
+    {
+        <div class="indx-list-toolbar">
+            <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="OpenCreate">New API key</Button>
+            @if (_keys.Count > 0)
+            {
+                <span class="indx-list-toolbar-end">@_keys.Count key@(_keys.Count == 1 ? "" : "s")</span>
+            }
+        </div>
+    }
+    @if (_keys.Count == 0)
+    {
+        <EmptyState Size="compact" Icon="IndxServer.Components.Datasets.DatasetIcons.Key" Title="No API keys yet">A personal key lets your own scripts and tools reach the datasets you can.</EmptyState>
+    }
+    else
+    {
+        @* systm Table: scrolls inside its own frame with the key name pinned. Squeezed into a phone's
+           width the columns wrapped each value onto three or four lines. *@
+        <div class="key-table-wrap">
+            <Table Scrollable StickyFirstColumn BleedEnd="var(--page-gutter)" ResizableColumns ColumnStorageKey="api-keys" AriaLabel="Your API keys">
+                <thead>
+                    <tr>
+                        <th data-column="name" data-width="220">Name</th>
+                        <th data-column="access" data-width="260" data-fill>Access</th>
+                        <th data-column="created" data-width="120">Created</th>
+                        <th data-column="expires" data-width="120">Expires</th>
+                        <th data-column="status" data-width="110">Status</th>
+                        <th data-column="actions" data-width="200" aria-label="Actions"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var key in _keys)
+                    {
+                        var expired = key.ExpiresAt < DateTime.UtcNow;
+                        <tr>
+                            <td>
+                                @key.Name
+                                @if (key.KeySuffix != null) { <span class="key-suffix">…@key.KeySuffix</span> }
+                            </td>
+                            <td class="key-scope">@IndxServer.Services.ApiKeyService.DescribeScope(key, TeamName(key.TeamId))</td>
+                            <td class="key-muted"><TimeAgo Value="key.CreatedAt" TooltipPosition="left" /></td>
+                            <td class="@(expired ? "key-expired" : "key-muted")"><TimeAgo Value="key.ExpiresAt" TooltipPosition="left" /></td>
+                            <td>
+                                @if (key.IsRevoked) { <Chip Color="var(--lv3)" TextColor="var(--lv5)">Revoked</Chip> }
+                                else if (expired) { <Chip Color="var(--lv3)" TextColor="var(--lv5)">Expired</Chip> }
+                                else if (key.TeamId == null) { <Chip Color="var(--CWarning)" TextColor="#080809">Unscoped</Chip> }
+                                else { <Chip Color="var(--CTeal)" TextColor="#080809">Active</Chip> }
+                            </td>
+                            <td class="key-actions">
+                                @if (!key.IsRevoked && !expired)
+                                {
+                                    <div class="key-row-actions">
+                                        @if (key.SealedToken != null)
+                                        {
+                                            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Eye" @onclick="() => Show(key)">Show key</Button>
+                                        }
+                                        <ConfirmButton Label="Revoke" Icon="DatasetIcons.Lock" Prompt="Requests with this key fail at once." ConfirmLabel="Yes, revoke" OnConfirm="() => Revoke(key.Id)" />
+                                    </div>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </Table>
+        </div>
+        @if (_keys.Any(k => k.TeamId == null && !k.IsRevoked && k.ExpiresAt >= DateTime.UtcNow))
+        {
+            <Alert Variant="warning" Class="key-legacy">
+                <Title>Unscoped keys reach every team you belong to</Title>
+                <Description>Keys created before access levels existed are not limited to a team, a dataset or a level. Replace them with scoped keys and revoke the old ones — especially any key used in a website.</Description>
+            </Alert>
+        }
+    }
+
+    @* ── Show a Search key again (only those are stored; Read and Full are shown once) ── *@
+    <Modal @bind-Open="_showToken" Title="@(_shownName ?? "API key")" Description="Search and Read keys can be shown again to whoever could create a new one. Full keys are shown only once.">
+        <div class="indx-modal-form">
+            <code class="key-token">@_shownToken</code>
+            <div class="indx-form-actions">
+                <Button Variant="primary" Size="micro" @onclick="CopyShownToken">@(_shownCopied ? "Copied" : "Copy key")</Button>
+                <Button Variant="secondary" Size="micro" @onclick="() => _showToken = false">Close</Button>
+            </div>
+        </div>
+    </Modal>
+
+    @* ── Create ── *@
+    <Modal @bind-Open="_showCreate" Title="New API key" Description="The key is shown once, right after it is created.">
+        <div class="key-form">
+            <div class="key-field">
+                <InputField Label="Name" placeholder="e.g. Docs site search, Nightly import" @bind-Value="_name" />
+            </div>
+
+            <div class="key-field">
+                <SelectField Label="Team" Value="@_teamId" ValueChanged="OnTeamChanged" Options="TeamOptions" />
+            </div>
+
+            <div class="key-field">
+                <SelectField Label="Access" Value="@_level.ToString()" ValueChanged="OnLevelChanged" Options="LevelOptions" />
+                <p class="key-help">@LevelHelp(_level)</p>
+                @if (_level == IndxServer.Services.ApiKeyLevel.Read && CurrentRole is { } coldRole && TeamRoles.CanWrite(coldRole))
+                {
+                    @* a Read key reads public and answer items, private only when asked for. *@
+                    <Checkbox Id="key-private-cold" Label="Also reads private cold storage" Checked="@_privateCold" CheckedChanged="@(v => _privateCold = v)" />
+                    <p class="key-help">For a server that may see customer data kept beside the records, such as a support chatbot's backend.</p>
+                }
+            </div>
+
+            <div class="key-field">
+                <span class="key-label">Datasets</span>
+                <div class="key-radios">
+                    <RadioButton Id="key-ds-all" Name="key-datasets" Value="all" Label="All datasets in the team" Checked="@(!_limitDatasets)" OnChange="@(_ => _limitDatasets = false)" />
+                    <RadioButton Id="key-ds-some" Name="key-datasets" Value="some" Label="Only these datasets" Checked="@_limitDatasets" OnChange="@(_ => _limitDatasets = true)" />
+                </div>
+                @if (_limitDatasets)
+                {
+                    @if (_teamDatasets.Count == 0)
+                    {
+                        <p class="key-help">This team has no datasets yet.</p>
+                    }
+                    else
+                    {
+                        <div class="key-datasets">
+                            @foreach (var ds in _teamDatasets)
+                            {
+                                <Checkbox Id="@($"key-ds-{ds}")" Label="@ds" Checked="@_selected.Contains(ds)" CheckedChanged="@(v => ToggleDataset(ds, v))" />
+                            }
+                        </div>
+                    }
+                }
+                else if (_level != IndxServer.Services.ApiKeyLevel.Full)
+                {
+                    <p class="key-help">A key for a website is safer limited to the datasets that site searches — including ones created later is what "all" means.</p>
+                }
+            </div>
+
+            <div class="key-field">
+                <SelectField Label="Expires after" Value="@_days.ToString()" ValueChanged="@(v => { if (int.TryParse(v, out var d)) _days = d; })" Options="ExpirationOptions" />
+            </div>
+
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <Alert Variant="destructive"><Description>@_error</Description></Alert>
+            }
+            <div class="indx-form-actions">
+                <Button Variant="primary" Size="micro" Loading="@_creating" Disabled="@(_limitDatasets && _selected.Count == 0)" @onclick="Create">Create key</Button>
+                <Button Variant="secondary" Size="micro" Disabled="@_creating" @onclick="() => _showCreate = false">Cancel</Button>
+            </div>
+        </div>
+    </Modal>
+
+    @* ── Using a key ── *@
+    @if (_created != null && _created.Record.TeamId is { } createdTeam)
+    {
+        var team = TeamName(createdTeam) ?? "your-team";
+        var dataset = _created.Record.Datasets is { } json ? (JsonSerializer.Deserialize<string[]>(json)?.FirstOrDefault() ?? "your-dataset") : "your-dataset";
+        var baseUrl = Nav.BaseUri.TrimEnd('/');
+        <h3 class="indx-section-heading">Using this key</h3>
+        <p class="indx-section-help">Send it as a Bearer token. A search, with cURL:</p>
+        <pre class="key-code"><code>curl -X POST "@baseUrl/api/teams/@team/datasets/@dataset/search" \
+     -H "Authorization: Bearer &lt;key&gt;" \
+     -H "Content-Type: application/json" \
+     -d '{"text": "your query", "maxNumberOfRecordsToReturn": 10}'</code></pre>
+        @if (_created.Record.Level == nameof(IndxServer.Services.ApiKeyLevel.Search))
+        {
+            <p class="indx-section-help">In a React front-end with <code>@("@")indxsearch/intrface</code>:</p>
+            <pre class="key-code"><code>&lt;SearchProvider url="@baseUrl" preAuthenticatedToken="&lt;key&gt;" team="@team" dataset="@dataset"&gt;</code></pre>
+        }
+        <Button Href="/swagger" Variant="secondary" Size="micro">API reference</Button>
+    }
+
+    @{
+        var mcpEnabled = Settings.Load().McpEnabled;
+        var mcpUrl = Nav.BaseUri.TrimEnd('/') + "/mcp";
+    }
+    @if (mcpEnabled)
+    {
+        <h3 class="indx-section-heading">AI agents (MCP)</h3>
+        <p class="indx-section-help">
+            Connect an agent to <code>@mcpUrl</code> with a key as a Bearer token. The agent sees only what the key reaches:
+            a Search key can search and fetch documents; describing datasets and reading synonyms needs Read.
+        </p>
+    }
+</div>
+
+@code {
+    private List<Data.ApiKey> _keys = new();
+    private List<(Team Team, string Role)> _teams = new();
+    private IndxServer.Services.ApiKeyService.Created? _created;
+    private string? _error;
+    private bool _copied;
+    private bool _showCreate;
+    private bool _creating;
+    private string? _userId;
+
+    private string? _name;
+    private string? _teamId;
+    private IndxServer.Services.ApiKeyLevel _level = IndxServer.Services.ApiKeyLevel.Search;
+    private bool _privateCold;
+    private bool _limitDatasets = true;
+    private readonly HashSet<string> _selected = new(StringComparer.Ordinal);
+    private List<string> _teamDatasets = new();
+    private int _days = 90;
+
+    private static readonly List<SelectField.SelectOption> ExpirationOptions = new()
+    {
+        new("30 days", "30"),
+        new("90 days (recommended)", "90"),
+        new("180 days", "180"),
+        new("1 year", "365"),
+    };
+
+    private IEnumerable<SelectField.SelectOption> TeamOptions =>
+        _teams.Select(t => new SelectField.SelectOption($"{t.Team.Name} ({t.Role})", t.Team.Id.ToString()));
+
+    private IEnumerable<SelectField.SelectOption> LevelOptions
+    {
+        get
+        {
+            yield return new("Search only — for websites and apps", nameof(IndxServer.Services.ApiKeyLevel.Search));
+            yield return new("Read only — for exports, reporting, agents", nameof(IndxServer.Services.ApiKeyLevel.Read));
+            if (CurrentRole is { } role && TeamRoles.CanWrite(role))
+                yield return new("Full access — for your own servers", nameof(IndxServer.Services.ApiKeyLevel.Full));
+        }
+    }
+
+    private string? CurrentRole => _teams.FirstOrDefault(t => t.Team.Id.ToString() == _teamId).Role;
+
+    private static string LevelHelp(IndxServer.Services.ApiKeyLevel level) => level switch
+    {
+        IndxServer.Services.ApiKeyLevel.Search =>
+            "Search, vector and hybrid search, fetching result documents, filters, and the field lists a filter panel reads. Nothing else — safe to put in a browser.",
+        IndxServer.Services.ApiKeyLevel.Read =>
+            "Everything Search can do, plus every other read: export, field configuration, synonyms, boost rules and counts. Keep it on a server.",
+        _ =>
+            "Everything your role in the team allows, including loading, changing and deleting data. Keep it on a server.",
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var user = await UserManager.GetUserAsync(authState.User);
+        if (user == null) return;
+        _userId = user.Id;
+        _teams = await Teams.GetTeamsForUserAsync(user.Id);
+        await LoadKeys();
+    }
+
+    private async Task LoadKeys()
+    {
+        if (_userId != null)
+            _keys = await Keys.ListAsync(_userId);
+    }
+
+    private string? TeamName(Guid? teamId) =>
+        teamId == null ? null : _teams.FirstOrDefault(t => t.Team.Id == teamId).Team?.Name;
+
+    private void OpenCreate()
+    {
+        _error = null;
+        _name = null;
+        _level = IndxServer.Services.ApiKeyLevel.Search;
+        _privateCold = false;
+        _limitDatasets = true;
+        _selected.Clear();
+        _days = 90;
+        OnTeamChanged(_teams[0].Team.Id.ToString());
+        _showCreate = true;
+    }
+
+    private void OnTeamChanged(string? teamId)
+    {
+        _teamId = teamId;
+        _selected.Clear();
+        _teamDatasets = Guid.TryParse(teamId, out var id)
+            ? IndxServerInternalApi.Manager.GetTeamDataSets(id.ToString()).OrderBy(n => n, StringComparer.OrdinalIgnoreCase).ToList()
+            : new();
+        // A Viewer cannot hold a Full key; drop back rather than offer an option that fails.
+        if (_level == IndxServer.Services.ApiKeyLevel.Full && !(CurrentRole is { } role && TeamRoles.CanWrite(role)))
+            _level = IndxServer.Services.ApiKeyLevel.Read;
+    }
+
+    private void OnLevelChanged(string? value)
+    {
+        if (Enum.TryParse<IndxServer.Services.ApiKeyLevel>(value, out var level))
+            _level = level;
+    }
+
+    private void ToggleDataset(string name, bool on)
+    {
+        if (on) _selected.Add(name); else _selected.Remove(name);
+    }
+
+    private async Task Create()
+    {
+        _error = null;
+        _creating = true;
+        try
+        {
+            var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+            var user = await UserManager.GetUserAsync(authState.User);
+            if (user == null) { _error = "Your account could not be found."; return; }
+            if (!Guid.TryParse(_teamId, out var teamId)) { _error = "Choose a team."; return; }
+
+            _created = await Keys.CreateAsync(user, _name ?? "", _days, _level, teamId, _limitDatasets ? _selected.ToArray() : null,
+                _level == IndxServer.Services.ApiKeyLevel.Read && _privateCold && CurrentRole is { } r && TeamRoles.CanWrite(r));
+            _copied = false;
+            _showCreate = false;
+            await LoadKeys();
+        }
+        catch (ArgumentException ex)
+        {
+            _error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _error = "The key could not be created.";
+            Logger.LogError(ex, "Error creating API key");
+        }
+        finally
+        {
+            _creating = false;
+        }
+    }
+
+    private async Task Revoke(int id)
+    {
+        var key = _keys.FirstOrDefault(k => k.Id == id);
+        if (key == null || key.UserId != _userId) return;
+        var row = await Db.ApiKeys.FindAsync(id);
+        if (row == null || row.UserId != _userId) return;
+        row.IsRevoked = true;
+        await Db.SaveChangesAsync();
+        // Drop the cached "not revoked" verdict so the key stops working now, not in five minutes.
+        IndxServer.Services.TokenValidationCache.EvictJti(MemoryCache, row.Jti);
+        await LoadKeys();
+        Logger.LogInformation("API key \"{Name}\" in {Team} revoked by its owner {User}", row.Name, TeamName(row.TeamId) ?? "an unknown team",
+            (await UserManager.FindByIdAsync(_userId!))?.Email ?? "an unknown user");
+    }
+
+    private bool _showToken;
+    private string? _shownToken;
+    private string? _shownName;
+    private bool _shownCopied;
+
+    private async Task Show(Data.ApiKey key)
+    {
+        _error = null;
+        if (_userId == null) return;
+        try
+        {
+            _shownToken = await Keys.RevealAsync(key.Id, _userId);
+            _shownName = key.Name;
+            _shownCopied = false;
+            _showToken = true;
+        }
+        catch (ArgumentException ex) { _error = ex.Message; }
+    }
+
+    private async Task CopyShownToken()
+    {
+        if (_shownToken == null) return;
+        try
+        {
+            await BrowserFiles.CopyToClipboardAsync(_shownToken);
+            _shownCopied = true;
+        }
+        catch
+        {
+            _error = "Copy failed. Select the key and copy it by hand.";
+            _showToken = false;
+        }
+    }
+
+    private async Task CopyNewToken()
+    {
+        if (_created == null) return;
+        try
+        {
+            await BrowserFiles.CopyToClipboardAsync(_created.Token);
+            _copied = true;
+        }
+        catch
+        {
+            _error = "Copy failed — select the key and copy it manually.";
+        }
+    }
+}

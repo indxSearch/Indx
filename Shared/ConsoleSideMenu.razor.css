@@ -1,0 +1,7 @@
+/* The Sidebar's footer in the admin area: the version, quiet, and under it a newer release as a
+   ghost micro Button, the security one in the ink (as SideMenu drew them under the group). */
+.side-foot { display: flex; flex-direction: column; min-width: 0; }
+.side-foot-note { padding: 0 10px; font: var(--text-2xs); color: var(--lv4); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.side-foot-update { padding: 4px 0 0; }
+.side-foot-update ::deep .indx-btn { color: var(--lv6); }
+.side-foot-update ::deep .indx-btn:hover, .side-foot-update-security ::deep .indx-btn { color: var(--lv8); }

@@ -1,0 +1,139 @@
+/* The profile editor: the modal form's rhythm (.indx-modal-form), its groups a legend over their
+   controls, the advanced part set in from the disclosure's edges. */
+.fp-form {
+    gap: 20px;
+}
+
+.fp-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    min-width: 0;
+}
+
+.fp-legend {
+    font: var(--text-sm);
+    font-weight: var(--med);
+    color: var(--lv7);
+}
+
+.fp-label {
+    font: var(--text-sm);
+    color: var(--lv7);
+}
+
+.fp-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+}
+
+.fp-hint {
+    margin: 0;
+    font: var(--text-xs);
+    color: var(--lv5);
+}
+
+/* What a weight of 0 does, with the warning icon in its own colour; the text stays in the ink. */
+.fp-warning {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 0;
+    font: var(--text-xs);
+    color: var(--lv7);
+}
+
+/* The tolerance's step names under the slider: three equal columns, so the middle name sits under
+   the middle mark whatever the names' widths. */
+/* Each step's name under its stop: the native thumb is 18px wide, so its centre runs from 9px
+   to the width less 9px; --at is the step's place, 0 to 1. The ends are aligned to the edges
+   rather than centred, so they do not stick out past the track. */
+.fp-steps {
+    position: relative;
+    height: 16px;
+    font: var(--text-xs);
+    color: var(--lv5);
+}
+
+.fp-steps > span {
+    position: absolute;
+    top: 0;
+    left: calc(9px + (100% - 18px) * var(--at));
+    transform: translateX(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+}
+
+.fp-steps > :first-child {
+    left: 0;
+    transform: none;
+}
+
+.fp-steps > :last-child {
+    left: auto;
+    right: 0;
+    transform: none;
+}
+
+.fp-step-on {
+    color: var(--lv8);
+    font-weight: var(--med);
+}
+
+.fp-advanced {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding: 12px 16px 16px;
+}
+
+/* A label with a tooltip: dotted underline and the help cursor, as .indx-stat-label--hint. */
+.fp-hinted {
+    cursor: help;
+    border-bottom: 1px dotted var(--lv3);
+}
+
+.fp-hinted:focus-visible {
+    outline: 2px solid var(--lv5);
+    outline-offset: 2px;
+}
+
+/* Delete at the far end of the actions, after Save and Cancel. */
+.fp-delete {
+    margin-left: auto;
+}
+
+/* A text rule is one line: From, the arrow, To, whether the original is kept, delete. */
+.fp-rule {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 20px minmax(0, 1fr) 96px auto;
+    align-items: center;
+    gap: 8px;
+}
+
+.fp-rule-head {
+    font: var(--text-xs);
+    color: var(--lv5);
+}
+
+.fp-rule-sign {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--lv6);
+}
+
+.fp-rule ::deep .fp-rule-text {
+    font-family: var(--font-mono);
+}
+
+/* The delete icon at its drawn size, 14 by 10: in a narrow grid cell the button squeezed it. */
+.fp-rule ::deep .indx-btn svg {
+    flex: none;
+    width: 14px;
+    height: 10px;
+}

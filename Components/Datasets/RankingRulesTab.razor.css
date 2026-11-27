@@ -1,0 +1,119 @@
+.boost-tab { margin-top: 16px; }
+.boost-intro { color: var(--lv5); font: var(--text-sm); margin-bottom: 12px; }
+.boost-rule-alert { margin-top: 8px; }
+.boost-summary { color: var(--lv6); font: var(--text-sm); margin: 0 0 12px; display: flex; gap: 14px; flex-wrap: wrap; }
+.boost-summary-expired { color: var(--CSignal); }
+.boost-rule--expired { border-color: var(--CSignal); }
+.boost-rules { display: flex; flex-direction: column; gap: 12px; }
+.boost-rule {
+    border: 1px solid var(--lv2);
+    border-radius: var(--radius);
+    padding: 16px;
+    background: var(--lv1);
+}
+.boost-rule-head { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
+.boost-grow { flex: 1; }
+.boost-value { min-width: 160px; }
+.boost-label { color: var(--lv5); font: var(--text-xs); white-space: nowrap; }
+.boost-w90 { width: 90px; }
+.boost-w130 { width: 130px; }
+.boost-w190 { width: 190px; }
+.boost-conditions {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding-left: 10px;
+    border-left: 2px solid var(--lv2);
+}
+.boost-condition { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.boost-schedule { margin-top: 12px; }
+.boost-dates { display: flex; gap: 20px; margin-top: 8px; }
+.boost-date-label { color: var(--lv5); font: var(--text-xs); display: block; margin-bottom: 2px; }
+.boost-hint { color: var(--lv4); font: var(--text-xs); display: block; margin-top: 4px; }
+.boost-note { color: var(--lv5); font: var(--text-xs); margin-top: 8px; }
+.boost-error { color: var(--CSignal); font: var(--text-sm); margin-top: 10px; }
+
+/* A narrow screen. Nothing here is hidden or moved to another place, the rows are only told
+   where to break, so that they break the same way every time:
+     head       [switch] [name ..........] [delete]   then   Strength: [select] [status]
+     condition  [field ..............] [delete]       then   between [min] and [max]
+   The children are reordered with `order`, since the delete buttons come last in the markup.
+   ::deep because the switch, the buttons and the chip are other components' elements. */
+@media (max-width: 768px) {
+    .boost-rule { padding: 12px; }
+
+    .boost-rule-head { flex-wrap: wrap; }
+    .boost-rule-head ::deep > * { order: 4; }
+    .boost-rule-head ::deep > :first-child { order: 1; }
+    .boost-rule-head ::deep > .boost-grow { order: 2; flex: 1 1 calc(100% - 110px); min-width: 0; }
+    .boost-rule-head ::deep > :last-child { order: 3; }
+
+    .boost-condition ::deep > * { order: 3; }
+    .boost-condition ::deep > .boost-w190 { order: 1; flex: 1 1 calc(100% - 50px); width: auto; min-width: 0; }
+    .boost-condition ::deep > .indx-btn { order: 2; }
+    .boost-condition ::deep > .boost-value { flex: 1 1 120px; min-width: 0; }
+
+    /* Two date pickers side by side when they fit, stacked when they do not, never past the card. */
+    .boost-dates { flex-wrap: wrap; gap: 12px 20px; }
+    .boost-dates > div { flex: 1 1 140px; min-width: 0; }
+}
+
+/* A rule's strength: one scale from Bury high to Boost high (Nov 2026), its current step named
+   beside it with the direction's icon. Six equal columns under the slider, so each name sits
+   under its step, and Bury and Boost over their halves. */
+.boost-strength {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    margin: 0 0 12px 10px;
+}
+
+.boost-strength-now {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 120px;
+    padding-top: 2px;
+    font: var(--text-xs);
+    font-weight: var(--med);
+    color: var(--lv7);
+}
+
+.boost-strength-scale {
+    width: 300px;
+    max-width: 100%;
+}
+
+.boost-strength-labels {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    font: var(--text-2xs);
+    color: var(--lv5);
+}
+
+.boost-strength-labels > span {
+    text-align: center;
+}
+
+.boost-strength-labels > :first-child {
+    text-align: left;
+}
+
+.boost-strength-labels > :last-child {
+    text-align: right;
+}
+
+.boost-strength-sides {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    font: var(--text-2xs);
+    color: var(--lv4);
+}
+
+.boost-strength-sides > :last-child {
+    text-align: right;
+}
+
+@media (max-width: 640px) {
+    .boost-strength { flex-direction: column; gap: 6px; }
+}

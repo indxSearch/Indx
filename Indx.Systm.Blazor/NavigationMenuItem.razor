@@ -1,0 +1,19 @@
+@* One entry of the list. Carries the identity its Trigger and Content share; pass Value to
+   name it, otherwise one is generated. *@
+
+<li class="indx-navmenu-item @Class">
+    <CascadingValue Value="this" IsFixed="true">
+        @ChildContent
+    </CascadingValue>
+</li>
+
+@code {
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+
+    /// <summary>Stable identity of the item; defaults to a generated one.</summary>
+    [Parameter] public string? Value { get; set; }
+
+    private readonly string _generated = Guid.NewGuid().ToString("N");
+    internal string Id => Value ?? _generated;
+}

@@ -1,0 +1,242 @@
+using Indx.Systm.Blazor;
+using IndxServer.Services;
+using IndxServer.Services.SearchOrAsk;
+using Microsoft.AspNetCore.Components;
+
+namespace IndxServer.Components.Datasets
+{
+    /// <summary>
+    /// The Statistics tab's Search or ask section: what was offered
+    /// and taken, the questions asked with the ones the content did not answer first, and the texts
+    /// offers were shown beside. Its own file so the tab's shared code changes by a few calls; the
+    /// markup is in the tab, whose scoped styles it uses. The section shows only once there are
+    /// judgements or asks in the window.
+    /// </summary>
+    public partial class StatisticsTab
+    {
+        private AskOverviewStat _ask;
+        private AskedAgainStat _askedAgain;
+        private List<AskRephrasingStat> _rephrased = [];
+        private List<AskNeedStat> _needs = [];
+        private (long Visits, long Repeated) _askRepeats;
+        private AskNeedStat? _need;
+
+        /// <summary>Why a wording is in its need, in words: how it joined which other wording. The
+        /// title is the one the others are traced back to.</summary>
+        private static string NeedWhy(AskNeedStat need, AskNeedWording w) => w.Link switch
+        {
+            AskNeedLink.AskedAgain => $"Asked again after \"{w.LinkedTo}\" in the same visit",
+            AskNeedLink.SameNeed => $"The same as \"{w.LinkedTo}\", asked in another visit",
+            _ when w.Text == need.Title => need.Wordings.Any(x => x.Landed > 0) ? "Named after it: it landed most" : "Named after it: it was asked most",
+            _ => "Through a question asked outside this period",
+        };
+
+        /// <summary>What the judge said of the link, for its tooltip.</summary>
+        private static string NeedJudged(AskNeedWording w) =>
+            $"The judge (Jev) gave {w.P:0.00} that the two ask for the same thing. From 0.50 up, they are one need.";
+
+        /// <summary>The need a question of the Questions list is, when it is one on the Needs list.</summary>
+        private AskNeedStat? NeedOf(AskQuestionStat q)
+        {
+            var key = SearchOrAskRephrasing.Normalise(q.Question);
+            return _needs.FirstOrDefault(n => n.Wordings.Any(w => SearchOrAskRephrasing.Normalise(w.Text) == key));
+        }
+
+        private List<(string A, string B, string DeniedBy, long Timestamp)> _needDenials = [];
+
+        private async Task UndoDenyNeedLinkAsync(string a, string b)
+        {
+            if (!Ctx.IsEditor || Stats.Store is not { } store) return;
+            store.UndoDenySameNeed(Ctx.TeamId, Ctx.Name, a, b);
+            await LoadAsync();
+        }
+
+        private void OpenNeed(AskNeedStat need)
+        {
+            _askView = "needs";
+            _need = need;
+        }
+
+        /// <summary>
+        /// An editor's "not the same" on one link of a need: that pair stops holding the need
+        /// together, the rest stand. The page reloads; the need opens again if it is still one.
+        /// </summary>
+        private async Task DenyNeedLinkAsync(AskNeedWording w)
+        {
+            if (!Ctx.IsEditor || w.LinkedTo is not { } other || Stats.Store is not { } store) return;
+            // Resolved here, not injected: the tab also renders where no one is signed in (its tests).
+            var auth = Services.GetService(typeof(Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider))
+                as Microsoft.AspNetCore.Components.Authorization.AuthenticationStateProvider;
+            var user = (auth == null ? null : (await auth.GetAuthenticationStateAsync()).User.Identity?.Name) ?? "unknown";
+            var title = _need?.Title;
+            store.DenySameNeed(Ctx.TeamId, Ctx.Name, w.Text, other, user);
+            await LoadAsync();
+            _need = _needs.FirstOrDefault(n => n.Title == title || n.Wordings.Any(x => x.Text == title));
+        }
+
+        /// <summary>At most this many cells in a need's row: a need asked in more visits shows its
+        /// shares across them, so a busy need does not widen the table.</summary>
+        private const int NeedCells = 24;
+
+        /// <summary>A need's visits as waffle cells, in the same tones as its bar.</summary>
+        private static IReadOnlyList<Waffle.Segment> NeedWaffle(AskNeedStat need)
+        {
+            var segments = new List<Waffle.Segment>();
+            void Add(string label, long n, string color) { if (n > 0) segments.Add(new(label, n, color)); }
+            Add("First try", need.FirstTry, "var(--lv8)");
+            Add("After asking again", need.AfterRewording, "var(--lv5)");
+            Add("Gave up", need.GaveUp, "var(--CSignal)");
+            return segments;
+        }
+
+        /// <summary>How a need's visits ended, as shares of one bar, the way the overview shows how
+        /// the asks ended: first try in the ink, after asking again down the ladder, given up in the
+        /// signal red.</summary>
+        private static IReadOnlyList<BarMeter.Segment> NeedSegments(AskNeedStat need)
+        {
+            var segments = new List<BarMeter.Segment>();
+            void Add(string label, long n, string? color = null) { if (n > 0) segments.Add(new(label, n, color)); }
+            Add("First try", need.FirstTry);
+            Add("After asking again", need.AfterRewording);
+            Add("Gave up", need.GaveUp, "var(--CSignal)");
+            return segments;
+        }
+        private AskBudgetStat _askBudget;
+        private List<AskQuestionStat> _askQuestions = [];
+        private List<AskOfferStat> _askOffers = [];
+        /// <summary>Full offers whose list did not hold what was asked (the judge's found below the
+        /// dataset's line), and the line read against.</summary>
+        private AskListMissedStat _listMissed;
+        private double _foundLine;
+        private string _askView = "overview";
+        // The section's pictures: the window day by day, the budget day by day, and when people ask.
+        private List<AskDayStat> _askDays = [];
+        private List<AskBudgetDayStat> _askBudgetDays = [];
+        private int _askBudgetToday;
+        private WeekHourStat? _askWeekHour;
+        private (long[] Calls, long[] Spent)? _askHours;
+
+        private long _askFromDay, _askToDay;
+
+        [Inject] private SearchOrAskService SearchOrAsk { get; set; } = default!;
+
+        /// <summary>Only while the instance shows the feature, and once there is something to show.</summary>
+        /// <summary>Whether the answers cite sources to open: documentation's do. A catalogue's answer
+        /// puts its list on the page instead, so a count of sources opened would always read 0.</summary>
+        private bool CitesSources => _citesSources;
+        private bool _citesSources = true;
+
+        private bool HasSearchOrAsk => SearchOrAsk.ShownFor(Ctx.TeamId, Ctx.Name) && (_ask.Judged > 0 || _ask.Asks > 0);
+
+        private IEnumerable<Tabs.TabItem> SearchOrAskSection =>
+            HasSearchOrAsk ? [new("Search or ask", "search-or-ask", DatasetIcons.SearchOrAsk)] : [];
+
+        // Overview first and the default, the pictures; Questions, what to write next; Offers.
+        private static readonly List<SegmentedControl.Item> AskViewItems =
+        [
+            new("overview", "Overview", DatasetIcons.AskOverview),
+            new("needs", "Needs", DatasetIcons.AskNeeds),
+            new("questions", "Questions", DatasetIcons.AskQuestions),
+            new("offers", "Offers", DatasetIcons.AskOffers),
+        ];
+
+        private void LoadSearchOrAsk(StatisticsStore store, string team, string ds, long fromDay, long toDay, string? source)
+        {
+            _citesSources = SearchOrAsk.Settings(team, ds).Kind != SearchOrAskRecipes.Catalogue;
+            _ask = store.AskOverview(team, ds, fromDay, toDay, source);
+            // The budget belongs to the dataset, not to a surface: the whole window whatever the source.
+            _askBudget = store.AskBudget(team, ds, fromDay, toDay);
+            _askQuestions = HasSearchOrAsk ? store.TopQuestions(team, ds, fromDay, toDay, 25, source) : [];
+            (_askedAgain, _rephrased) = HasSearchOrAsk ? store.AskedAgain(team, ds, fromDay, toDay, 25, source) : (default, []);
+            _needs = HasSearchOrAsk ? store.AskNeeds(team, ds, fromDay, toDay, 25, source) : [];
+            _needDenials = HasSearchOrAsk ? store.SameNeedDenials(team, ds) : [];
+            _askRepeats = HasSearchOrAsk ? store.AskRepeats(team, ds, fromDay, toDay, source) : default;
+            _askOffers = HasSearchOrAsk ? store.TopOffers(team, ds, fromDay, toDay, 25, source) : [];
+            // The dataset's line; off (0) reads against the default, since the count is about the
+            // list either way, not about whether the page dims it.
+            var line = SearchOrAsk.Settings(team, ds).Thresholds.Found;
+            _foundLine = line > 0 ? line : new SearchOrAskThresholds().Found;
+            _listMissed = HasSearchOrAsk ? store.ListMissed(team, ds, fromDay, toDay, _foundLine, source) : default;
+            (_askFromDay, _askToDay) = (fromDay, toDay);
+            _askDays = HasSearchOrAsk ? store.AsksByDay(team, ds, fromDay, toDay, source) : [];
+            _askBudgetDays = HasSearchOrAsk ? store.BudgetByDay(team, ds, fromDay, toDay) : [];
+            _askHours = HasSearchOrAsk ? store.BudgetCallsByHour(team, ds, Math.Max(fromDay, toDay - Stats.RetentionDays + 1), toDay) : null;
+            _askWeekHour = HasSearchOrAsk ? store.AsksByWeekHour(team, ds, Math.Max(fromDay, toDay - Stats.RetentionDays + 1), toDay, source) : null;
+            // The budget set now: the per-day chart's line where the window recorded none.
+            _askBudgetToday = SearchOrAsk.Settings(team, ds).DailyCallBudget;
+            if (!HasSearchOrAsk && _section == "search-or-ask") _section = "queries";
+        }
+
+        /// <summary>How the asks ended, as shares of one bar: answered in the ink, the rest down
+        /// the ladder, failed in the signal red. "Sources could not answer" is the unanswered less
+        /// the ones that found nothing, which are their own segment.</summary>
+        private IReadOnlyList<BarMeter.Segment> AskOutcomeSegments()
+        {
+            var segments = new List<BarMeter.Segment>();
+            void Add(string label, long n, string? color = null) { if (n > 0) segments.Add(new(label, n, color)); }
+            Add("Answered", _ask.Answered);
+            Add("Nothing found", _ask.NothingFound);
+            Add("Sources could not answer", Math.Max(0, _ask.Unanswered - _ask.NothingFound));
+            Add("Stopped", _ask.Stopped);
+            Add("Failed", _ask.Failed, "var(--CSignal)");
+            return segments;
+        }
+
+        /// <summary>Offers and asks, one value a day across the window, days with nothing as zero.</summary>
+        private (double[] Offers, double[] Asks, double[] Cost, string[] Labels) AskDaySeries()
+        {
+            int days = (int)(_askToDay - _askFromDay + 1);
+            var byDay = _askDays.ToDictionary(d => d.Day);
+            var offers = new double[days]; var asks = new double[days]; var cost = new double[days]; var labels = new string[days];
+            int epoch = DateOnly.Parse("1970-01-01").DayNumber;
+            for (int i = 0; i < days; i++)
+            {
+                var d = byDay.GetValueOrDefault(_askFromDay + i);
+                offers[i] = d.Offers; asks[i] = d.Asks; cost[i] = d.Cost;
+                labels[i] = DateOnly.FromDayNumber((int)(_askFromDay + i) + epoch).ToString("d MMM");
+            }
+            return (offers, asks, cost, labels);
+        }
+
+        /// <summary>The calls per day against the budget, the window's days in order; the budget
+        /// shown is the largest any day in the window had, since it can be changed under Options.</summary>
+        private (double[] Calls, int Budget, string[] Labels) AskBudgetSeries()
+        {
+            int days = (int)(_askToDay - _askFromDay + 1);
+            var byDay = _askBudgetDays.ToDictionary(d => d.Day);
+            var calls = new double[days]; var labels = new string[days];
+            int epoch = DateOnly.Parse("1970-01-01").DayNumber;
+            for (int i = 0; i < days; i++)
+            {
+                calls[i] = byDay.GetValueOrDefault(_askFromDay + i).Calls;
+                labels[i] = DateOnly.FromDayNumber((int)(_askFromDay + i) + epoch).ToString("d MMM");
+            }
+            int budget = _askBudgetDays.Count > 0 ? _askBudgetDays.Max(d => d.Budget) : _askBudgetToday;
+            return (calls, budget, labels);
+        }
+
+        private static string Usd(double usd) => usd == 0 ? "–" : usd < 0.01 ? "< $0.01" : usd.ToString("$#,##0.00");
+
+        private static string Seconds(long? ms) => ms is long m ? (m / 1000.0).ToString("0.0 s") : "–";
+
+        /// <summary>The Calls tile's foot, only when the budget ran out in the period: on how many days,
+        /// and the calls turned away. The busiest day against its budget was beside the number until
+        /// 16 Nov 2026; it squeezed the number in two in a tile of seven, and the offers-and-asks chart
+        /// draws it against the budget line already.</summary>
+        private string? BudgetRanOut =>
+            _askBudget.DaysRunOut > 0 ? $"Ran out on {_askBudget.DaysRunOut} {(_askBudget.DaysRunOut == 1 ? "day" : "days")}, {N(_askBudget.Refused)} turned away" : null;
+
+        private const string AnswerableColumnHelp = "Whether the sources the answer was written from could answer it, as the judge read them; below 0.50 the question counts as not answered.";
+        private const string FoundColumnHelp = "Whether what was asked about was in the list it was asked from, answer or not. Beside Answerable it says what to fix: found high and answerable low, the right record was there without the fact (add the field the answer reads, or Knowledge); both low, the search missed it or the content is not there. Marked below the dataset's line.";
+        private const string FoundOffersHelp = "The lowest found under an answer offer: whether what the visitor asked about was in the list. Marked below the dataset's line, the list missed it.";
+
+        private static string Score(double? p) => p is double v ? v.ToString("0.00") : "–";
+
+        /// <summary>How a question's asks ended, in words: the worst of them leads.</summary>
+        private static string QuestionOutcome(AskQuestionStat q) =>
+            q.NothingFound > 0 ? (q.NothingFound == q.Asks ? "Nothing found" : $"Nothing found {q.NothingFound} of {q.Asks}")
+            : q.Unanswered > 0 ? "Sources may not answer it"
+            : q.Answered == q.Asks ? "Answered"
+            : $"Answered {q.Answered} of {q.Asks}";
+    }
+}

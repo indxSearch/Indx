@@ -1,0 +1,51 @@
+.indx-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    color: var(--lv6);
+    background-color: var(--lv2);
+    font: var(--text-xs);
+    border-radius: 10px;
+    padding: 2px 6px;
+    white-space: nowrap;
+}
+
+/* Taller, more-padded badge — pairs well with a leading icon. Same font size. */
+.indx-chip-large {
+    padding: 3px 9px;
+}
+
+/* A toggle: a button that looks like the chip, a step darker when pointed at, ink when picked.
+   Its height is the label's: an app's own button rule (the console's app.css gives every button
+   40px) must not make it a button's. */
+.indx-chip--toggle {
+    height: auto;
+    min-height: 0;
+    border: none;
+    margin: 0;
+    cursor: pointer;
+    text-align: left;
+}
+
+.indx-chip--toggle:not(:disabled):hover {
+    background-color: var(--lv3);
+}
+
+.indx-chip--toggle:focus-visible {
+    outline: 1px solid var(--lv5);
+    outline-offset: 1px;
+}
+
+.indx-chip--toggle.indx-chip--selected {
+    background-color: var(--lv8);
+    color: var(--lv0);
+}
+
+.indx-chip--toggle.indx-chip--selected:not(:disabled):hover {
+    background-color: var(--lv7);
+}
+
+.indx-chip--toggle:disabled {
+    cursor: default;
+    opacity: 0.5;
+}

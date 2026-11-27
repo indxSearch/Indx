@@ -1,0 +1,44 @@
+@* The row above the field configuration: the field name filter and the two view toggles. Shared
+   by the analyzed-upload view and the Ready view. Export and import live under the table
+   (FieldConfigFileActions); what an import had to say is shown here, above the table, where it
+   cannot be missed and has room for field names. It stays until dismissed or the next import. *@
+
+@if (Ctx.FieldImportOutcome is { } outcome)
+{
+    <div class="indx-field-config-import-alert">
+        <Alert Variant="@(outcome.Failed ? "destructive" : "warning")">
+            <Title>@(outcome.Failed ? "Import failed" : outcome.NothingImported ? "Nothing was imported" : "Imported, with some fields skipped")</Title>
+            <Description>@outcome.Message</Description>
+            <ChildContent>
+                <div class="indx-field-config-import-alert-actions">
+                    <Button Variant="ghost" Size="micro" @onclick="() => Ctx.FieldImportOutcome = null">Dismiss</Button>
+                </div>
+            </ChildContent>
+        </Alert>
+    </div>
+}
+
+<div class="indx-field-config-toolbar indx-field-config-toolbar--split">
+    <div class="indx-field-config-filter">
+        <SearchField Size="micro" Placeholder="Filter fields" Value="@Filter" ValueChanged="FilterChanged" aria-label="Filter fields by name" />
+    </div>
+    <div class="indx-field-config-toolbar-group indx-field-config-toolbar-group--wide">
+        <ToggleSwitch Checked="@ShowUnused" CheckedChanged="ShowUnusedChanged" Label="Show unused fields" Elevated />
+        <ToggleSwitch Checked="@ShowAdvanced" CheckedChanged="ShowAdvancedChanged" Label="Show advanced settings" Elevated />
+        @ChildContent
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] public DatasetContext Ctx { get; set; } = default!;
+    /// <summary>The field name filter. The toolbar only holds the box; the owner passes the text
+    /// on to the table.</summary>
+    [Parameter] public string? Filter { get; set; }
+    [Parameter] public EventCallback<string?> FilterChanged { get; set; }
+    [Parameter] public bool ShowUnused { get; set; }
+    [Parameter] public EventCallback<bool> ShowUnusedChanged { get; set; }
+    [Parameter] public bool ShowAdvanced { get; set; }
+    [Parameter] public EventCallback<bool> ShowAdvancedChanged { get; set; }
+    /// <summary>What the Ready view adds at the end of the row: Observr's Review my setup.</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+}

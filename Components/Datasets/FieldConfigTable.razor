@@ -1,0 +1,657 @@
+@* The field-configuration editor table. Mutates the FieldProxy objects in place (they are the
+   context's shared working copy) and raises OnChanged so the owner can re-render. Used both
+   for a freshly analyzed upload (always editable) and a Ready dataset (editable for editors). *@
+@using System.Globalization
+@using Indx.Api
+@using IndxServer.Services
+
+@{ var rows = RenderRows(); }
+
+@* systm Table: the frame scrolls sideways and the field column stays pinned, so on a narrow
+   screen the reader always knows which field a checkbox belongs to. *@
+<div class="indx-fields-table @(ShowAdvanced ? "indx-fields-table--advanced" : null)">
+    @* The table reaches the right edge of the screen when it has to scroll: the page gutter plus
+       the 5px the dataset panel's surface adds. The left side stays at the page margin. *@
+    <Table Scrollable StickyFirstColumn BleedEnd="calc(var(--page-gutter) + 5px)" AriaLabel="Field configuration">
+        <thead>
+            <tr>
+                <th>Field and type</th>
+                <th class="indx-col-check indx-col-check-wide"><span class="indx-th-tip" data-tooltip="Matches the field by its whole words: exactly, within a typo or two, and by their start. A field is searched when WordMatching or PatternMatching is on, and at least one field must be.">WordMatching</span></th>
+                <th class="indx-col-check indx-col-check-wide"><span class="indx-th-tip" data-tooltip="Matches inside words: a query finds the field by any part of a word. With WordMatching too, the field is matched both ways. Leave it off for codes, identifiers and tags.">PatternMatching</span></th>
+                @if (ShowProfiles)
+                {
+                    <th class="indx-col-profile"><span class="indx-th-tip" data-tooltip="A searched field's search settings under a name many fields share: its typos, its weight in the reranker and its pattern setup. Each profile in the menu can be edited from there.">Profile</span></th>
+                }
+                <th class="indx-col-check"><span class="indx-th-tip" data-tooltip="Can be used to filter results by exact value or range.">Filterable</span></th>
+                <th class="indx-col-check"><span class="indx-th-tip" data-tooltip="Field values are counted and returned as facets for building filter UI.">Facetable</span></th>
+                <th class="indx-col-check"><span class="indx-th-tip" data-tooltip="Results can be sorted by this field's value.">Sortable</span></th>
+                @if (ShowAdvanced)
+                {
+                    <th class="indx-col-check indx-col-check-wide"><span class="indx-th-tip" data-tooltip="Field is included in vector embeddings for semantic and AI-powered search.">Embeddable</span></th>
+                }
+                <th class="@(ShowAdvanced ? "indx-col-num" : "indx-col-weight")"><span class="indx-th-tip" data-tooltip="BM25F's weight for this field: it decides which records are candidates and most of their order. The reranker's weight is the profile's RerankWeight. Typical: title 3.0, heading 2.0, metadata 1.5, body 1.0, from 0.5 to 3.0.">Weight</span></th>
+                @if (ShowAdvanced)
+                {
+                    <th class="indx-col-num"><span class="indx-th-tip" data-tooltip="Length normalisation (0–1). Higher values penalise longer fields more.">BM25b</span></th>
+                    <th class="indx-col-num"><span class="indx-th-tip" data-tooltip="@K1Tooltip">BM25k1</span></th>
+                }
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var row in rows)
+            {
+                var field = row.Field;
+                <tr class="@(row.IsContainer ? "indx-group-row" : null)"
+                    title="@(!Editable && !row.IsContainer && !HasNoValue(field) ? "Read-only. Editor access is required to change field configuration." : null)">
+                    <td>
+                        @* The depth is a variable, not a pixel value, so a narrow screen can use a
+                           smaller step per level. The name gives way from the left: its last part
+                           is what identifies a nested field, and the full name is in the tooltip. *@
+                        <div class="indx-cell-inner" style="@(row.Depth > 0 ? $"--depth:{row.Depth}" : null)">
+                            @FieldName(field)
+                            @* The type badge carries the detail: hovering it shows a sample of what the
+                               field holds, or for a container the nested fields its data lives on. *@
+                            <span class="indx-cell-value indx-sample-tip @(HasNoValue(field) ? "indx-cell-value-faint" : null)"><span class="indx-type-label">@FieldTypeLabel(field)</span>@if (TypeIcon(field) is { } typeIcon) { @typeIcon(14) }<span class="indx-field-pop">
+                                        @if (IsContainer(field))
+                                        {
+                                            <span class="indx-field-pop-value">@NestedNames(field)</span>
+                                        }
+                                        else if (field.SampleValue is { } sample)
+                                        {
+                                            <span class="indx-field-pop-value">@sample</span>
+                                        }
+                                        else if (HasNoValue(field))
+                                        {
+                                            <span class="indx-field-pop-note">No value read for this field in the dataset, so its type is unknown. Filterable and Sortable need a type and are not offered; WordMatching, PatternMatching and Facetable are, and ticking them prepares the field for records that do carry a value. Load data that carries one and analyze again to get the rest.</span>
+                                        }
+                                        @if (PopoverFlags(field) is { } flags)
+                                        {
+                                            <span class="indx-field-pop-flag">@flags</span>
+                                        }
+                                    </span></span>
+                        </div>
+                    </td>
+                    @if (row.IsContainer)
+                    {
+                        @* A container holds no value of its own, so every capability here would be
+                           an inert control. Ticking WordMatching on it indexes nothing: the text lives
+                           on the nested fields below, and those are what can be configured. *@
+                        <td colspan="@TrailingColumnCount" class="indx-group-note">Configured on the nested fields below</td>
+                    }
+                    else if (HasNoValue(field))
+                    {
+                        @* A field that was null in every record has no type, and a field with no
+                           type is not configurable (decided Sep 2026, with the library refusing it
+                           on its side). The row stays so the user can see the field exists, and the
+                           badge popover says why. *@
+                        <td colspan="@TrailingColumnCount" class="indx-group-note">Not configurable</td>
+                    }
+                    else
+                    {
+                    @foreach (var cap in VisibleCaps.Take(2))
+                    {
+                        <td class="indx-table-check @Mark(CapChanged(field, cap))">@CapBox(field, cap)</td>
+                    }
+                    @if (ShowProfiles)
+                    {
+                        <td class="indx-col-profile @Mark(ProfileChanged(field))">@ProfileCell(field)</td>
+                    }
+                    @foreach (var cap in VisibleCaps.Skip(2))
+                    {
+                        <td class="indx-table-check @Mark(CapChanged(field, cap))">@CapBox(field, cap)</td>
+                    }
+                    <td class="@Mark(Changed(field, f => f.Weight ?? 1f))">@WeightControl(field, "t")</td>
+                    @if (ShowAdvanced)
+                    {
+                        <td class="@Mark(Changed(field, f => f.BM25b))">@Bm25bControl(field, "t")</td>
+                        <td class="@Mark(Changed(field, f => f.BM25k1))">@Bm25k1Control(field, "t")</td>
+                    }
+                    }
+                </tr>
+            }
+            @if (rows.Count == 0)
+            {
+                <tr><td colspan="@(TrailingColumnCount + 1)" class="indx-group-note">@(FilterActive ? "No field matches the filter." : "No fields to show.")</td></tr>
+            }
+        </tbody>
+    </Table>
+</div>
+
+@* The same rows for a narrow screen (the stylesheet shows one or the other). An eleven-column
+   table cannot be read on a phone, pinned column or not, so each field is a row that opens onto
+   its own small table: label on the left, control on the right. Closed, a row says what is
+   switched on, which keeps a long list browsable. A closed row renders no controls at all, so
+   carrying both renderings costs little. Same row model, same fragments, same handlers as the
+   table above, so the two cannot drift. *@
+<div class="indx-fields-cards">
+    @foreach (var row in rows)
+    {
+        var field = row.Field;
+        <div class="indx-field-card" style="@(row.Depth > 0 ? $"--depth:{row.Depth}" : null)" @key="@($"card-{field.FieldName}")">
+            @if (row.IsContainer)
+            {
+                <div class="indx-field-card-heading">
+                    @FieldName(field)
+                    <span class="indx-cell-value">Object@(DatasetIcons.NestedObjectType(14))</span>
+                </div>
+            }
+            else if (HasNoValue(field))
+            {
+                <div class="indx-field-card-heading">
+                    @FieldName(field)
+                    <span class="indx-cell-value indx-cell-value-faint">Not configurable@(DatasetIcons.NoValueType(14))</span>
+                </div>
+            }
+            else
+            {
+                <Disclosure Open="@_open.Contains(field.FieldName)" OpenChanged="@(v => SetOpen(field.FieldName, v == true))">
+                    <Summary>
+                        <span class="indx-field-card-summary">
+                            <span class="indx-field-card-title">
+                                @FieldName(field)
+                                @if (TypeIcon(field) is { } icon) { <span class="indx-cell-value" title="@FieldTypeLabel(field)">@icon(14)</span> }
+                            </span>
+                            <span class="indx-field-card-state">@Summarize(field)</span>
+                        </span>
+                    </Summary>
+                    <ChildContent>
+                        <div class="indx-field-card-detail">
+                            <span>@FieldTypeLabel(field)@(PopoverFlags(field) is { } flags ? $", {flags}" : null)</span>
+                            @if (field.SampleValue is { } sample) { <span class="indx-field-card-sample">@sample</span> }
+                        </div>
+                        <Table AriaLabel="@($"Settings for {field.FieldName}")">
+                            <tbody>
+                                @foreach (var pair in VisibleCaps.Chunk(2))
+                                {
+                                    <TableRow>
+                                        @foreach (var cap in pair)
+                                        {
+                                            <TableCell Label="@cap.Label" Class="@Mark(CapChanged(field, cap))" colspan="@(pair.Length == 1 ? 2 : null)">@CapBox(field, cap)</TableCell>
+                                        }
+                                    </TableRow>
+                                }
+                                @if (ShowProfiles)
+                                {
+                                    <TableRow>
+                                        <TableCell Label="Profile" Class="@Mark(ProfileChanged(field))" colspan="2">@ProfileCell(field)</TableCell>
+                                    </TableRow>
+                                }
+                                <TableRow>
+                                    <TableCell Label="Weight" Class="@Mark(Changed(field, f => f.Weight ?? 1f))" colspan="2">@WeightControl(field, "c")</TableCell>
+                                </TableRow>
+                                @if (ShowAdvanced)
+                                {
+                                    <TableRow>
+                                        <TableCell Label="BM25b" Class="@Mark(Changed(field, f => f.BM25b))">@Bm25bControl(field, "c")</TableCell>
+                                        <TableCell Label="BM25k1" Class="@Mark(Changed(field, f => f.BM25k1))">@Bm25k1Control(field, "c")</TableCell>
+                                    </TableRow>
+                                }
+                            </tbody>
+                        </Table>
+                    </ChildContent>
+                </Disclosure>
+            }
+        </div>
+    }
+    @if (rows.Count == 0)
+    {
+        <p class="indx-fields-empty">@(FilterActive ? "No field matches the filter." : "No fields to show.")</p>
+    }
+</div>
+
+@implements IDisposable
+
+@code {
+    [Parameter, EditorRequired] public FieldProxy[] Fields { get; set; } = [];
+
+    /// <summary>Show only fields whose name matches this text (fuzzy, like the synonyms filter).
+    /// While a filter is active the unused-fields rule is ignored: looking for a field in order
+    /// to switch it on is the main reason to search, and that field is unused by definition.</summary>
+    [Parameter] public string? Filter { get; set; }
+
+    private bool FilterActive => !string.IsNullOrWhiteSpace(Filter);
+    private readonly FieldNameFilter _nameFilter = new();
+    public void Dispose() => _nameFilter.Dispose();
+
+    /// <summary>Which field rows are open in the narrow rendering. Kept by name, so it survives
+    /// a re-render, a filter change and an import.</summary>
+    private readonly HashSet<string> _open = new(StringComparer.Ordinal);
+    private void SetOpen(string name, bool open) { if (open) _open.Add(name); else _open.Remove(name); }
+
+    /// <summary>One capability: its label, whether it belongs to the advanced set, and how to
+    /// read and write it. Both renderings walk this list, in column order, so a capability added
+    /// here appears in both.</summary>
+    /// <remarks><c>NotOnAVector</c> marks the roles a vector field cannot have, and
+    /// <c>IsEmbeddable</c> the one that makes it a vector field: the engine refuses the two
+    /// together (DocumentFields.VectorFieldObjection), since a vector indexed as text, a filter
+    /// or a facet is indexed number by number.</remarks>
+    private sealed record Cap(string Label, bool Advanced, Func<FieldProxy, bool?> Get, Action<FieldProxy, bool> Put,
+        bool IsSearchable = false, bool NeedsType = false, bool NotOnAVector = false, bool IsEmbeddable = false);
+
+    private static readonly Cap[] Caps =
+    [
+        // The two ways a field is searched, each its own box (28 Oct 2026; one Searchable box before).
+        new("WordMatching", false, f => f.WordMatching, (f, v) => f.WordMatching = v, IsSearchable: true, NotOnAVector: true),
+        // Off, the index sizes and anchors the field had are not sent: they would apply to nothing.
+        new("PatternMatching", false, f => f.PatternMatching, (f, v) =>
+        {
+            f.PatternMatching = v;
+            if (!v) { f.IndexSizes = null; f.NumberOfStartCharacters = null; f.NumberOfStopCharacters = null; }
+        }, IsSearchable: true, NotOnAVector: true),
+        new("Filterable", false, f => f.Filterable, (f, v) => f.Filterable = v, NeedsType: true, NotOnAVector: true),
+        new("Facetable", false, f => f.Facetable, (f, v) => f.Facetable = v, NotOnAVector: true),
+        new("Sortable", false, f => f.Sortable, (f, v) => f.Sortable = v, NeedsType: true, NotOnAVector: true),
+        new("Embeddable", true, f => f.Embeddable, (f, v) => f.Embeddable = v, IsEmbeddable: true),
+    ];
+
+    /// <summary>Why this box cannot be ticked for this field, or null when it can. The same
+    /// rules the engine refuses a saved configuration by, shown where the choice is made
+    /// instead of as an error after Save. A box that is ticked is never refused: a
+    /// configuration from before a rule existed has to be something one can untick.</summary>
+    internal static string? WhyRefused(FieldProxy field, string capLabel)
+    {
+        var cap = Caps.First(c => c.Label == capLabel);
+        if (cap.Get(field) == true)
+            return null;
+        // FieldType == null, not HasNoValue: that excludes containers, and a container is untyped
+        // too - its data lives on the nested fields under it - so the engine refuses these two on
+        // it for the same reason.
+        if (cap.NeedsType && field.FieldType == null)
+            return $"{field.FieldName} has no type in this dataset, so it cannot be {cap.Label}. Those two are the only roles that need one.";
+        if (cap.NotOnAVector && field.Embeddable == true)
+            return $"{field.FieldName} is a vector field (Embeddable), which is used for vector search and nothing else. Untick Embeddable to give it another role.";
+        if (cap.IsEmbeddable)
+        {
+            if (field.IsArray != true || field.FieldType != "Number")
+                return $"{field.FieldName} cannot be Embeddable: a vector field holds an array of numbers.";
+            var others = Caps.Where(c => c.NotOnAVector && c.Get(field) == true).Select(c => c.Label).ToArray();
+            if (others.Length > 0)
+                return $"{field.FieldName} is {string.Join(", ", others)}. A vector field has no other role: untick {(others.Length == 1 ? "it" : "them")} to make the field Embeddable.";
+        }
+        return null;
+    }
+
+    private Cap[] VisibleCaps => ShowAdvanced ? Caps : Caps.Where(c => !c.Advanced).ToArray();
+
+    /// <summary>A box the engine would refuse is disabled, with the reason as its title
+    /// (<see cref="WhyRefused"/>). Filterable and Sortable are the only roles that read Field.Type, and a field that
+    /// was null in every analyzed document has none, so the engine refuses them. Disabled per column
+    /// rather than per row: WordMatching, PatternMatching and Facetable never read the type and stay
+    /// available, and the reason ticking them is still offered is that it prepares the field - a record inserted
+    /// later that does carry a value is indexed and found. The title sits on a wrapper because a
+    /// disabled control does not raise the hover.</summary>
+    private RenderFragment CapBox(FieldProxy field, Cap cap) => __builder =>
+    {
+        var why = WhyRefused(field, cap.Label);
+        var refused = why != null;
+        <span title="@why">
+            <Checkbox Checked="@(cap.Get(field) == true)" Disabled="@(!Editable || refused)" aria-label="@($"{cap.Label}: {field.FieldName}")"
+                      CheckedChanged="@(v => Set(() => { var was = FieldProfiles.IsSearched(field); cap.Put(field, v); if (cap.IsSearchable) { SearchableTouched = true; if (!was && Profiles != null) FieldProfiles.GiveDefault(field, Profiles); ReapplyProfile(field); } }))" />
+        </span>
+    };
+
+    /// <summary>The field name: dimmed parent path, then the leaf, giving way from the left.</summary>
+    private RenderFragment FieldName(FieldProxy field) => __builder =>
+    {
+        <Truncate Side="start" Title="@field.FieldName" Class="indx-field-name">@if (ParentPath(field.FieldName) is { } parentPath) { <span class="indx-field-path">@parentPath</span> }@LeafName(field.FieldName)</Truncate>
+    };
+
+    /// <summary>What a closed row says: the capabilities that are on, and the weight when it is
+    /// not the default.</summary>
+    private string Summarize(FieldProxy f)
+    {
+        var parts = Caps.Where(c => c.Get(f) == true).Select(c => c.Label).ToList();
+        if (f.Weight is { } w && Math.Abs(w - 1f) > 0.001f) parts.Add("Weight " + w.ToString("0.0#", CultureInfo.InvariantCulture));
+        return parts.Count == 0 ? "Unused" : string.Join(", ", parts);
+    }
+
+    private RenderFragment WeightControl(FieldProxy field, string scope) => __builder =>
+    {
+        @* The slider moves in quarter steps between 0.5 and 3; the number beside it takes any
+           value, typed or stepped by 0.1 with the arrow keys, and the slider follows as far as it
+           reaches (Nov 2026). Until then a value off the slider's grid swapped the slider for a
+           plain number box. *@
+        @if (!ShowAdvanced)
+        {
+            <div class="indx-weight-slider" @key="@($"{scope}-weight-{field.FieldName}")">
+                <SliderField Min="0.5" Max="3" Step="0.25" FieldMin="0" FieldStep="0.1" Format="0.0##"
+                             AriaLabel="@($"Weight: {field.FieldName}")" Disabled="@(!Editable)"
+                             Value="@(field.Weight ?? 1.0f)" ValueChanged="@(v => Set(() => field.Weight = (float)v))" />
+            </div>
+        }
+        else
+        {
+            <input class="indx-num-input" type="number" step="0.1" min="0" disabled="@(!Editable)" aria-label="@($"Weight: {field.FieldName}")"
+                   value="@(field.Weight.HasValue ? field.Weight.Value.ToString("0.0##", CultureInfo.InvariantCulture) : "")"
+                   @onchange="@(e => Set(() => field.Weight = ParseFloat(e.Value?.ToString(), 0f, null)))"
+                   @key="@($"{scope}-weight-{field.FieldName}-{_clampTick}")" />
+        }
+    };
+
+    private RenderFragment Bm25bControl(FieldProxy field, string scope) => __builder =>
+    {
+        <input class="indx-num-input" type="number" step="0.01" min="0" max="1" disabled="@(!Editable)" aria-label="@($"BM25b: {field.FieldName}")"
+               value="@(field.BM25b.HasValue ? field.BM25b.Value.ToString("G4", CultureInfo.InvariantCulture) : "")"
+               @onchange="@(e => Set(() => field.BM25b = ParseFloat(e.Value?.ToString(), 0f, 1f)))"
+               @key="@($"{scope}-bm25b-{field.FieldName}-{_clampTick}")" />
+    };
+
+    // In BM25F, the default, k1 is one value for the whole dataset (ScoringSetup.BM25FK1): every
+    // row shows it and none can change it, since the engine would refuse a changed one. Only a
+    // BM25PerField engine reads a field's own k1.
+    private RenderFragment Bm25k1Control(FieldProxy field, string scope) => __builder =>
+    {
+        @if (Scoring.Mode == ScoringMode.BM25F)
+        {
+            <input class="indx-num-input" type="number" disabled aria-label="@($"BM25k1: {field.FieldName}")"
+                   title="@K1Tooltip"
+                   value="@Scoring.BM25FK1.ToString("G4", CultureInfo.InvariantCulture)"
+                   @key="@($"{scope}-bm25k1-{field.FieldName}-engine")" />
+        }
+        else
+        {
+            <input class="indx-num-input" type="number" step="0.1" min="0" disabled="@(!Editable)" aria-label="@($"BM25k1: {field.FieldName}")"
+                   value="@(field.BM25k1.HasValue ? field.BM25k1.Value.ToString("G4", CultureInfo.InvariantCulture) : "")"
+                   @onchange="@(e => Set(() => field.BM25k1 = ParseFloat(e.Value?.ToString(), 0f, null)))"
+                   @key="@($"{scope}-bm25k1-{field.FieldName}-{_clampTick}")" />
+        }
+    };
+
+    private string K1Tooltip => Scoring.Mode == ScoringMode.BM25F
+        ? "Term saturation. This dataset scores with BM25F, which has one k1 for every field; it is set on the engine, not per field."
+        : "Term saturation for this field. Higher values give more weight to repeated terms.";
+
+    // Names that are the parent of at least one other field, e.g. "series" when "series.title"
+    // exists. Analyze flattens nested JSON onto dotted names and registers the parent itself with
+    // no type and no value, so without this a container row shows no type badge at all. Rebuilt
+    // whenever the field list changes; a set beats scanning every row against every other row.
+    private HashSet<string> _containers = new(StringComparer.Ordinal);
+    private FieldProxy[]? _containersBuiltFor;
+
+    protected override void OnParametersSet()
+    {
+        if (ReferenceEquals(_containersBuiltFor, Fields)) return;
+        _containersBuiltFor = Fields;
+        _containers = new HashSet<string>(StringComparer.Ordinal);
+        foreach (var f in Fields)
+        {
+            // Add every ancestor, so "a.b.c" marks both "a.b" and "a" as containers.
+            var dot = f.FieldName.LastIndexOf('.');
+            while (dot > 0)
+            {
+                _containers.Add(f.FieldName[..dot]);
+                dot = f.FieldName.LastIndexOf('.', dot - 1);
+            }
+        }
+    }
+
+    private bool IsContainer(FieldProxy f) => _containers.Contains(f.FieldName);
+
+    /// <summary>One table row: the field, how deep its dotted name sits, and whether it is a
+    /// container rather than something configurable.</summary>
+    private sealed record FieldRow(FieldProxy Field, int Depth, bool IsContainer);
+
+    /// <summary>
+    /// The rows to render, with every nested field placed directly under its container. Analyze
+    /// returns the flattened names in its own order and puts a container wherever it first saw one,
+    /// which can be after all its children, so the list has to be rebuilt rather
+    /// than filtered.
+    /// <para>A container is emitted only when at least one of its children is visible, so hiding
+    /// unused fields cannot leave an empty group behind. It is also synthesized when absent from
+    /// the field list: Analyze registers a parent name only if some document carried it as a
+    /// scalar or null, so most nested data has children with no parent field at all.</para>
+    /// </summary>
+    private List<FieldRow> RenderRows()
+    {
+        var byName = new Dictionary<string, FieldProxy>(StringComparer.Ordinal);
+        foreach (var f in Fields) byName[f.FieldName] = f;
+
+        var rows = new List<FieldRow>(Fields.Length);
+        var emitted = new HashSet<string>(StringComparer.Ordinal);
+
+        var matches = FilterActive
+            ? _nameFilter.Match(Fields.Where(f => !IsContainer(f)).Select(f => f.FieldName).ToList(), Filter!)
+            : null;
+
+        foreach (var f in Fields)
+        {
+            if (IsContainer(f)) continue;               // emitted above its children, not in place
+            if (matches != null) { if (!matches.Contains(f.FieldName)) continue; }
+            else if (!ShowUnused && IsUnused(f) && !UsedWhenSaved(f)) continue;
+
+            foreach (var ancestor in Ancestors(f.FieldName))
+            {
+                if (!emitted.Add(ancestor)) continue;
+                var parent = byName.TryGetValue(ancestor, out var existing)
+                    ? existing
+                    : new FieldProxy { FieldName = ancestor };
+                rows.Add(new FieldRow(parent, Depth(ancestor), true));
+            }
+
+            rows.Add(new FieldRow(f, Depth(f.FieldName), false));
+            emitted.Add(f.FieldName);
+        }
+        return rows;
+    }
+
+    /// <summary>"a.b.c" yields "a" then "a.b", outermost first, so a group opens before it nests.</summary>
+    private static IEnumerable<string> Ancestors(string name)
+    {
+        var dot = name.IndexOf('.');
+        while (dot > 0)
+        {
+            yield return name[..dot];
+            dot = name.IndexOf('.', dot + 1);
+        }
+    }
+
+    /// <summary>The dotted path up to and including the last dot ("cover.asset.metadata." for
+    /// "cover.asset.metadata.dimensions"), or null for a top-level name. Rendered dimmed so the
+    /// leaf, which is what the row configures, is what the eye lands on. The row is already
+    /// indented under its container; this keeps the full name readable without it competing.</summary>
+    private static string? ParentPath(string name)
+    {
+        var dot = name.LastIndexOf('.');
+        return dot > 0 ? name[..(dot + 1)] : null;
+    }
+
+    private static string LeafName(string name)
+    {
+        var dot = name.LastIndexOf('.');
+        return dot > 0 ? name[(dot + 1)..] : name;
+    }
+
+    private static int Depth(string name)
+    {
+        var depth = 0;
+        foreach (var ch in name) if (ch == '.') depth++;
+        return depth;
+    }
+
+    /// <summary>Columns after the first, for the container row's spanning cell.</summary>
+    private int TrailingColumnCount => (ShowAdvanced ? 10 : 6) + (ShowProfiles ? 1 : 0);
+
+    /// <summary>The badge icon: the type's own icon, the nested-object icon for a container, and
+    /// the stop icon for a field with no value, which has no type and cannot be configured.</summary>
+    private RenderFragment<int>? TypeIcon(FieldProxy f) =>
+        f.FieldType != null ? DatasetIcons.ForFieldType(f.FieldType, f.IsArray)
+        : IsContainer(f) ? DatasetIcons.NestedObjectType
+        : DatasetIcons.NoValueType;
+
+    /// <summary>The nested field names under a container, with the shared prefix removed:
+    /// "series" gives "partNumber, title". This is where a container's data actually lives.</summary>
+    private string NestedNames(FieldProxy f)
+    {
+        var prefix = f.FieldName + ".";
+        return string.Join(", ", Fields
+            .Where(o => o.FieldName.StartsWith(prefix, StringComparison.Ordinal))
+            .Select(o => o.FieldName[prefix.Length..]));
+    }
+    [Parameter] public bool Editable { get; set; } = true;
+    /// <summary>How the dataset's engine scores: decides whether k1 is per field or one value.</summary>
+    [Parameter] public ScoringSetup Scoring { get; set; } = ScoringSetup.Default;
+    /// <summary>Also list fields with no capability ticked.</summary>
+    [Parameter] public bool ShowUnused { get; set; }
+    /// <summary>Show the Embeddable / BM25 columns
+    /// and switch the weight control from slider to number input.</summary>
+    [Parameter] public bool ShowAdvanced { get; set; }
+    /// <summary>Set once the user has touched a WordMatching or PatternMatching box — the owner
+    /// uses it to decide when to show the "at least one searched field" error.</summary>
+    [Parameter] public bool SearchableTouched { get; set; }
+    [Parameter] public EventCallback<bool> SearchableTouchedChanged { get; set; }
+    /// <summary>Raised after any edit (the FieldProxy objects are mutated in place).</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    /// <summary>The dataset's profiles and which field has which (the context's working copy). Null
+    /// for an analyzed upload, which has no profiles yet: the column is left out.</summary>
+    [Parameter] public DatasetFieldProfiles? Profiles { get; set; }
+    /// <summary>The configuration as saved, and its profiles: a cell whose value differs from it is
+    /// outlined until Save or Cancel (Nov 2026). Null (an upload being configured) marks nothing.</summary>
+    [Parameter] public IReadOnlyList<FieldProxy>? Saved { get; set; }
+    [Parameter] public DatasetFieldProfiles? SavedProfiles { get; set; }
+
+    private FieldProxy? SavedOf(FieldProxy f) => Saved?.FirstOrDefault(s => s.FieldName == f.FieldName);
+    private static string? Mark(bool changed) => changed ? "indx-cell-changed" : null;
+    private bool Changed<T>(FieldProxy f, Func<FieldProxy, T> read) =>
+        SavedOf(f) is { } s && !EqualityComparer<T>.Default.Equals(read(s), read(f));
+    private bool CapChanged(FieldProxy f, Cap cap) => Changed(f, x => cap.Get(x) ?? false);
+    /// <summary>The profile chosen, or any value a profile sets: typos, rerank weight, pattern setup.</summary>
+    private bool ProfileChanged(FieldProxy f) =>
+        SavedOf(f) is { } s && (FieldProfiles.ProfileOf(s, SavedProfiles)?.Id != FieldProfiles.ProfileOf(f, Profiles)?.Id
+                                || !FieldProfiles.FromField(s).Equals(FieldProfiles.FromField(f)));
+    /// <summary>Edit on a row of a field's Profile menu: that profile, chosen for the field or not, or
+    /// with no id the field's own values while it is Custom.</summary>
+    [Parameter] public EventCallback<ProfileEdit> OnEditProfile { get; set; }
+
+    /// <summary>What Edit in a Profile menu asks for: the field it was opened on, and the profile;
+    /// a null id is the field's own values (Custom).</summary>
+    public sealed record ProfileEdit(FieldProxy Field, string? ProfileId);
+    /// <summary>"New profile" at the foot of a field's Profile menu, as the dataset switcher has
+    /// one: a new profile, which that field then has.</summary>
+    [Parameter] public EventCallback<FieldProxy> OnNewProfile { get; set; }
+
+    private bool ShowProfiles => Profiles != null;
+    private const string CustomProfile = "custom";
+
+    /// <summary>
+    /// A searched field's Profile cell: the menu of profiles by name, each with its edit button,
+    /// and "New profile" at its foot. A field whose values match no profile chosen for it shows
+    /// Custom until one is. Not
+    /// searched, the row note says so, in the tone of the table's other notes.
+    /// </summary>
+    private RenderFragment ProfileCell(FieldProxy field) => __builder =>
+    {
+        if (!FieldProfiles.IsSearched(field))
+        {
+            <span class="indx-group-note">Not searched</span>
+            return;
+        }
+        var current = FieldProfiles.ProfileOf(field, Profiles);
+        // Each profile with its typos as an icon, so the column shows them from the top (Nov 2026).
+        var options = FieldProfiles.All(Profiles)
+            .Select(p => new SelectField.SelectOption(p.Name, p.Id) { Icon = DatasetIcons.ForTolerance(p.Tolerance) }).ToList();
+        if (current == null)
+            options.Insert(0, new SelectField.SelectOption("Custom", CustomProfile) { Icon = DatasetIcons.ForTolerance(FieldProfiles.FromField(field).Tolerance) });
+        @* Every profile in the menu can be edited from there, chosen or not, and the field's own
+           settings while it is Custom; "New profile" at its foot. *@
+        <div class="indx-profile-cell">
+            <SelectField Size="micro" Variant="ghost" Value="@(current?.Id ?? CustomProfile)" Options="options" disabled="@(!Editable)"
+                         aria-label="@($"Profile: {field.FieldName}")" ValueChanged="@(v => ChooseProfile(field, v))"
+                         OptionActionIcon="@(Editable ? DatasetIcons.Edit : null)" OptionActionLabel="Edit"
+                         OnOptionAction="@(id => OnEditProfile.InvokeAsync(new ProfileEdit(field, id == CustomProfile ? null : id)))"
+                         ActionLabel="@(Editable ? "New profile" : null)" OnAction="() => OnNewProfile.InvokeAsync(field)" />
+        </div>
+    };
+
+    /// <summary>Gives the field the profile: its values written onto the field, and the choice kept.</summary>
+    private Task ChooseProfile(FieldProxy field, string? id)
+    {
+        if (Profiles == null || id is null or CustomProfile) return Task.CompletedTask;
+        if (FieldProfiles.All(Profiles).FirstOrDefault(p => p.Id == id) is not { } profile) return Task.CompletedTask;
+        return Set(() =>
+        {
+            Profiles.Assignments[field.FieldName] = id;
+            FieldProfiles.Apply(field, profile);
+        });
+    }
+
+    /// <summary>A field turned on for searching, or given PatternMatching, takes its profile's
+    /// values again: the pattern setup is written only while PatternMatching is on.</summary>
+    private void ReapplyProfile(FieldProxy field)
+    {
+        if (Profiles?.Assignments.TryGetValue(field.FieldName, out var id) != true) return;
+        if (FieldProfiles.All(Profiles).FirstOrDefault(p => p.Id == id) is { } profile && FieldProfiles.IsSearched(field))
+            FieldProfiles.Apply(field, profile);
+    }
+
+    private async Task Set(Action mutate)
+    {
+        var touchedBefore = SearchableTouched;
+        mutate();
+        if (SearchableTouched != touchedBefore) await SearchableTouchedChanged.InvokeAsync(SearchableTouched);
+        await OnChanged.InvokeAsync();
+    }
+
+    /// <summary>A field used in the configuration as saved stays in the list after its last role
+    /// is switched off, until Save or Cancel (8 Nov 2026): it vanished under the pointer.</summary>
+    private bool UsedWhenSaved(FieldProxy f) =>
+        Saved?.FirstOrDefault(s => s.FieldName == f.FieldName) is { } saved && !IsUnused(saved);
+
+    public static bool IsUnused(FieldProxy f) =>
+        f.WordMatching != true && f.PatternMatching != true && f.Filterable != true && f.Facetable != true &&
+        f.Sortable != true && f.Embeddable != true;
+
+    /// <summary>Parses a numeric cell, clamping to the range the scoring can represent. The
+    /// <c>min</c>/<c>max</c> attributes on <c>input type="number"</c> only constrain the steppers
+    /// and mark the element <c>:invalid</c>; a typed 2 in the BM25b cell still reaches here. The
+    /// engine refuses it (<c>ArgumentOutOfRangeException</c>, since IndxSearchLib 5.0.0-RC170926,
+    /// because out-of-range values silently corrupted rankings), which surfaces as a failed save
+    /// after the user has edited several fields. Clamping here means the cell shows what will
+    /// actually be applied, at the moment it is typed.</summary>
+    /// <summary>Bumped whenever a typed value was clamped, and part of each numeric input's
+    /// <c>@key</c>. Without it Blazor will not repaint a cell whose clamped value equals what it
+    /// last rendered — type 2 into a BM25b already at 1 and the model holds 1 while the box keeps
+    /// showing 2. Changing the key recreates the element, so the box shows what was applied.</summary>
+    private int _clampTick;
+
+    private float? ParseFloat(string? s, float? min = null, float? max = null)
+    {
+        if (string.IsNullOrWhiteSpace(s)) return null;
+        if (!float.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture, out var f)) return null;
+        if (float.IsNaN(f)) return null;
+        var clamped = f;
+        if (min.HasValue && clamped < min.Value) clamped = min.Value;
+        if (max.HasValue && clamped > max.Value) clamped = max.Value;
+        if (clamped != f) _clampTick++;
+        return clamped;
+    }
+
+    /// <summary>The flag line under the sample, or null when the field needs neither flag.
+    /// "Blank" means Analyze found no value anywhere, so there is nothing to sample; "Optional"
+    /// means it found the field missing or empty in at least one document. A field can be both.
+    /// <para>A container is never "Blank": holding no value of its own is what it is, not a gap
+    /// in the data, and its nested fields are listed instead.</para></summary>
+    private string? PopoverFlags(FieldProxy f)
+    {
+        var parts = new List<string>(2);
+        // "Blank" means the type is known but no usable value was ever read, which is worth saying.
+        // A container has no value of its own, and a field with no value at all says so in full
+        // above, so neither needs the flag as well.
+        if (f.SampleValue == null && !IsContainer(f) && !HasNoValue(f)) parts.Add("Blank");
+        if (f.Optional == true) parts.Add("Optional");
+        return parts.Count == 0 ? null : string.Join(", ", parts);
+    }
+
+    /// <summary>"String", "Array (Strings)", "Object" for a field whose value is the nested fields
+    /// under it, and "No value" for one that never carried a value in any analyzed document, which
+    /// is why Analyze could not learn a type for it.</summary>
+    private string FieldTypeLabel(FieldProxy f) =>
+        f.FieldType == null
+            ? (IsContainer(f) ? "Object" : "No value")
+            : f.IsArray == true ? $"Array ({f.FieldType}s)" : f.FieldType;
+
+    /// <summary>True when Analyze never saw a value for this field, so it has no type. Such a
+    /// field is not configurable: without a type there is nothing to index or filter on, and
+    /// the row renders a note in place of its controls, like a container.</summary>
+    private bool HasNoValue(FieldProxy f) => f.FieldType == null && !IsContainer(f);
+}

@@ -1,0 +1,301 @@
+@using System.Globalization
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div class="indx-datepicker-wrapper" @ref="_wrapper">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label for="@_inputId" class="indx-datepicker-label">@Label</label>
+    }
+    <div class="indx-datepicker-field">
+        <div class="@_inputBoxClass">
+            <button type="button"
+                    id="@_triggerId"
+                    class="indx-datepicker-icon"
+                    aria-label="Open calendar"
+                    aria-expanded="@(_open ? "true" : "false")"
+                    aria-controls="@_calendarId"
+                    disabled="@Disabled"
+                    @onclick="ToggleCalendar"
+                    @onkeydown="OnCalendarKeyDown">
+                <HourGlass Size="14" />
+            </button>
+            <input id="@_inputId"
+                   type="date"
+                   class="indx-datepicker-input"
+                   value="@(Value?.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture))"
+                   disabled="@Disabled"
+                   aria-label="@(string.IsNullOrEmpty(Label) ? AriaLabel : null)"
+                   aria-invalid="@(HasError ? "true" : "false")"
+                   aria-describedby="@(!string.IsNullOrEmpty(Error) ? _errorId : null)"
+                   @onchange="OnNativeChange" />
+        </div>
+
+        @if (_open)
+        {
+            <div class="indx-datepicker-backdrop" @onclick="CloseCalendar"></div>
+            <div id="@_calendarId" class="indx-datepicker-calendar" role="dialog" aria-modal="false" aria-labelledby="@_monthLabelId">
+                <div class="indx-datepicker-header">
+                    <button type="button" class="indx-datepicker-nav" aria-label="Previous month" @onclick="PrevMonth" @onkeydown="OnCalendarKeyDown">
+                        <ChevronLeft Size="14" />
+                    </button>
+                    <span id="@_monthLabelId" class="indx-datepicker-month">@Months[_viewMonth - 1] @_viewYear</span>
+                    <button type="button" class="indx-datepicker-nav" aria-label="Next month" @onclick="NextMonth" @onkeydown="OnCalendarKeyDown">
+                        <ChevronRight Size="14" />
+                    </button>
+                </div>
+                <div class="indx-datepicker-weekdays">
+                    @foreach (var w in Weekdays)
+                    {
+                        <span class="indx-datepicker-weekday">@w</span>
+                    }
+                </div>
+                <div class="indx-datepicker-grid" role="group" aria-labelledby="@_monthLabelId">
+                    @foreach (var d in BuildGrid(_viewYear, _viewMonth))
+                    {
+                        var outside = d.Month != _viewMonth;
+                        var selected = Value.HasValue && d == Value.Value;
+                        var isToday = d == _today;
+                        var dayClass = "indx-datepicker-day"
+                            + (outside ? " indx-datepicker-outside" : "")
+                            + (selected ? " indx-datepicker-selected" : "")
+                            + (isToday && !selected ? " indx-datepicker-today" : "");
+                        var day = d;
+                        <button id="@DayId(day)"
+                                type="button"
+                                class="@dayClass"
+                                aria-label="@FullDate(day)"
+                                aria-pressed="@(selected ? "true" : "false")"
+                                aria-current="@(isToday ? "date" : null)"
+                                tabindex="@(day == FocusedDate ? "0" : "-1")"
+                                @onclick="() => SelectDay(day)"
+                                @onkeydown="(args) => OnDayKeyDown(day, args)">@day.Day</button>
+                    }
+                </div>
+            </div>
+        }
+    </div>
+    @if (!string.IsNullOrEmpty(Error))
+    {
+        <span id="@_errorId" class="indx-datepicker-error-text" role="alert">@Error</span>
+    }
+</div>
+
+@code {
+    [Parameter] public DateOnly? Value { get; set; }
+    [Parameter] public EventCallback<DateOnly?> ValueChanged { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Error { get; set; }
+    [Parameter] public bool IsValid { get; set; } = true;
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Id { get; set; }
+    /// <summary>Names the date input when there is no <see cref="Label"/>, as in a table row.</summary>
+    [Parameter] public string? AriaLabel { get; set; }
+
+    private static readonly string[] Weekdays = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+    private static readonly string[] Months =
+    [
+        "January", "February", "March", "April", "May", "June",
+        "July", "August", "September", "October", "November", "December"
+    ];
+
+    private bool _open;
+    // Read each time: a circuit can outlive midnight.
+    private static DateOnly _today => DateOnly.FromDateTime(DateTime.Today);
+    private readonly string _generatedId = $"indx-datepicker-{Guid.NewGuid():N}";
+    private IJSObjectReference? _module;
+    private ElementReference _wrapper;
+    private DateOnly? _focusedDate;
+    private string? _pendingFocusId;
+    private int _viewYear;
+    private int _viewMonth; // 1-based (1..12)
+
+    protected override void OnInitialized()
+    {
+        var init = Value ?? _today;
+        _viewYear = init.Year;
+        _viewMonth = init.Month;
+    }
+
+    private bool HasError => !string.IsNullOrEmpty(Error) || !IsValid;
+    private string _id => Id ?? _generatedId;
+    private string _inputId => $"{_id}-input";
+    private string _triggerId => $"{_id}-trigger";
+    private string _calendarId => $"{_id}-calendar";
+    private string _monthLabelId => $"{_id}-month";
+    private string _errorId => $"{_id}-error";
+    private DateOnly FocusedDate => _focusedDate ?? Value ?? _today;
+
+    private string _inputBoxClass =>
+        "indx-datepicker-input-box" + (HasError ? " indx-datepicker-input-box-error" : "");
+
+    // Native <input type="date"> always reports its value as an ISO yyyy-MM-dd string.
+    private async Task OnNativeChange(ChangeEventArgs e)
+    {
+        var s = e.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(s))
+        {
+            await SetValue(null);
+        }
+        else if (DateOnly.TryParse(s, CultureInfo.InvariantCulture, DateTimeStyles.None, out var d))
+        {
+            _viewYear = d.Year;
+            _viewMonth = d.Month;
+            await SetValue(d);
+        }
+    }
+
+    private void ToggleCalendar()
+    {
+        if (Disabled) return;
+        _open = !_open;
+        if (_open)
+        {
+            _focusedDate = Value ?? _today;
+            _viewYear = FocusedDate.Year;
+            _viewMonth = FocusedDate.Month;
+            _pendingFocusId = DayId(FocusedDate);
+        }
+    }
+
+    private void CloseCalendar()
+    {
+        _open = false;
+        _pendingFocusId = _triggerId;
+    }
+
+    private void PrevMonth()
+    {
+        if (_viewMonth == 1) { _viewMonth = 12; _viewYear--; }
+        else _viewMonth--;
+    }
+
+    private void NextMonth()
+    {
+        if (_viewMonth == 12) { _viewMonth = 1; _viewYear++; }
+        else _viewMonth++;
+    }
+
+    // 6×7 grid (Monday-first), incl. leading/trailing days from adjacent months.
+    private static IEnumerable<DateOnly> BuildGrid(int year, int month)
+    {
+        var first = new DateOnly(year, month, 1);
+        var startOffset = ((int)first.DayOfWeek + 6) % 7; // Sun=0 → Mon-first index
+        var gridStart = first.AddDays(-startOffset);
+        for (var i = 0; i < 42; i++)
+        {
+            yield return gridStart.AddDays(i);
+        }
+    }
+
+    private async Task SelectDay(DateOnly d)
+    {
+        _open = false;
+        _focusedDate = d;
+        _pendingFocusId = _triggerId;
+        await SetValue(d);
+    }
+
+    private async Task SetValue(DateOnly? d)
+    {
+        if (ValueChanged.HasDelegate) await ValueChanged.InvokeAsync(d);
+    }
+
+    private string DayId(DateOnly day) => $"{_calendarId}-day-{day:yyyyMMdd}";
+
+    private static string FullDate(DateOnly day) => day.ToString("D", CultureInfo.CurrentCulture);
+
+    private void SetFocusedDate(DateOnly day)
+    {
+        _focusedDate = day;
+        _viewYear = day.Year;
+        _viewMonth = day.Month;
+        _pendingFocusId = DayId(day);
+    }
+
+    private Task OnDayKeyDown(DateOnly day, KeyboardEventArgs args)
+    {
+        DateOnly? next = args.Key switch
+        {
+            "ArrowLeft" => day.AddDays(-1),
+            "ArrowRight" => day.AddDays(1),
+            "ArrowUp" => day.AddDays(-7),
+            "ArrowDown" => day.AddDays(7),
+            "Home" => day.AddDays(-((int)day.DayOfWeek + 6) % 7),
+            "End" => day.AddDays(6 - ((int)day.DayOfWeek + 6) % 7),
+            "PageUp" when args.ShiftKey => day.AddYears(-1),
+            "PageUp" => day.AddMonths(-1),
+            "PageDown" when args.ShiftKey => day.AddYears(1),
+            "PageDown" => day.AddMonths(1),
+            _ => null,
+        };
+
+        if (next is { } target)
+        {
+            SetFocusedDate(target);
+            return Task.CompletedTask;
+        }
+
+        if (args.Key == "Escape")
+        {
+            CloseCalendar();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    private bool _disposed;
+
+    // An exception from here would end the circuit, so a lost connection or an element already
+    // gone is swallowed. The module is loaded once: a re-render while the import is pending must
+    // not start a second one.
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try
+        {
+            if (firstRender)
+            {
+                var module = await JS.InvokeAsync<IJSObjectReference>(
+                    "import", "./_content/Indx.Systm.Blazor/DatePicker.razor.js");
+                if (_disposed) { await module.DisposeAsync(); return; }
+                _module = module;
+                await _module.InvokeVoidAsync("init", _wrapper);
+            }
+            if (_module is null || _pendingFocusId is null) return;
+            var id = _pendingFocusId;
+            _pendingFocusId = null;
+            await _module.InvokeVoidAsync("focusById", id);
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (ObjectDisposedException) { }
+        catch (JSException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        if (_module is not null)
+        {
+            try
+            {
+                await _module.InvokeVoidAsync("dispose", _wrapper);
+                await _module.DisposeAsync();
+            }
+            catch (JSDisconnectedException) { }
+            catch (ObjectDisposedException) { }
+            catch (InvalidOperationException) { }
+            catch (TaskCanceledException) { }
+            catch (JSException) { } // element already gone on the client
+        }
+    }
+
+    // On the trigger and the month buttons only. The day buttons handle Escape themselves, and on
+    // the wrapper this heard every key typed into the date input and every arrow twice.
+    private void OnCalendarKeyDown(KeyboardEventArgs args)
+    {
+        if (_open && args.Key == "Escape") CloseCalendar();
+    }
+}

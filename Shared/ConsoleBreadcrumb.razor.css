@@ -1,0 +1,24 @@
+.indx-console-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+}
+
+.indx-console-trailing {
+    display: flex;
+    align-items: center;
+}
+
+.indx-console-dialog {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    min-width: min(360px, 80vw);
+}
+
+.indx-console-dialog-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}

@@ -1,0 +1,953 @@
+@* Dataset options for team admins, one section at a time chosen in a menu of its own, as Admin >
+   Settings has it (12 Nov 2026: the tab had grown to eight sections in one scroll): the description
+   for agents, memory (keep-alive, hibernate), statistics, Search or ask, the data (replace,
+   download) and the danger zone (transfer, rename, erase statistics, delete). The section is in the
+   address (?section=), so a refresh keeps it. *@
+@using Indx.Api
+@using IndxServer.Models
+@using IndxServer.Engine
+@inherits DatasetTabBase
+@inject DatasetMetadataStore DatasetMeta
+@inject IndxServer.Services.UploadLimit UploadLimit
+@inject StatisticsService Stats
+@inject IndxServer.Services.SearchOrAsk.SearchOrAskService SearchOrAsk
+@inject IndxServer.Services.SearchOrAsk.SearchOrAskStore SearchOrAskStore
+@inject NavigationManager Nav
+
+@if (!Active) { return; }
+
+<div class="opt-tab opt-layout">
+    <aside class="opt-side">
+        <SideMenu Groups="Menu" Active="@CurrentSection" OnSelect="SelectSection" />
+    </aside>
+    <div class="opt-main">
+    @{ var section = CurrentSection; }
+
+    @* ── Description (domain context for AI agents over MCP) ── *@
+    @if (section == "general" && Ctx.IsEditor)
+    {
+        <h3 class="indx-section-heading indx-section-heading--first">Description</h3>
+        <p class="indx-section-help">
+            Domain context shown to AI agents that use this dataset over MCP (<code>describe_dataset</code>) — e.g. what the records are and what key fields mean.
+        </p>
+        <div class="opt-narrow">
+            <Textarea @bind-Value="_descEdit" Rows="3" placeholder="What is this dataset? Any field caveats an agent should know?" />
+        </div>
+        @if (_descEdit != _descSaved)
+        {
+            <div class="opt-row opt-row--top">
+                <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" Loading="@_descSaving" @onclick="SaveDescriptionAsync">Save description</Button>
+                <Button Variant="ghost" Size="micro" Disabled="@_descSaving" @onclick="() => _descEdit = _descSaved">Cancel</Button>
+            </div>
+        }
+    }
+
+    @* ── Keep-alive (team admins manage their dataset's memory lifecycle) ── *@
+    @if (section == "memory")
+    {
+    <h3 class="indx-section-heading indx-section-heading--first">Keep-alive</h3>
+    <p class="indx-section-help">
+        Controls how long this dataset stays loaded in memory. <strong>Pinned</strong> keeps it always loaded; <strong>Off</strong> lets the client load it on demand; <strong>Timed</strong> unloads it after inactivity and reloads it automatically on next use.
+    </p>
+    var ka = Ctx.KeepAlive;
+    @if (_editingKeepAlive)
+    {
+        <div class="opt-row">
+            <div class="opt-w220"><SelectField @bind-Value="_keepAliveEditMode" Options="KeepAliveModes" /></div>
+            @if (_keepAliveEditMode == "timed")
+            {
+                <div class="opt-w80"><InputField @bind-Value="_keepAliveEditHours" placeholder="hours" /></div>
+            }
+            <Button Variant="primary" Size="micro" @onclick="SaveKeepAlive">Save</Button>
+            <Button Variant="ghost" Size="micro" @onclick="() => _editingKeepAlive = false">Cancel</Button>
+        </div>
+    }
+    else
+    {
+        <div class="opt-row">
+            <span class="opt-tabular">@KeepAliveLabel(ka?.KeepAliveTimeHrs ?? int.MaxValue)</span>
+            <span class="opt-muted">@RemainingLabel(ka)</span>
+            <Button Variant="ghost" Size="micro" @onclick="BeginEditKeepAlive">Edit</Button>
+        </div>
+    }
+    @if (!string.IsNullOrEmpty(_keepAliveError) && _editingKeepAlive)
+    {
+        <p class="opt-error">@_keepAliveError</p>
+    }
+
+    @* Manual hibernate — frees memory now. Only durable for Off (client-managed) datasets;
+       timed/pinned would auto-reload on the next access. *@
+    @if (Ctx.EngineState == SystemState.Ready)
+    {
+        @if (ka?.KeepAliveTimeHrs == 0)
+        {
+            <div class="opt-row opt-row--top10">
+                <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Hibernate" @onclick="HibernateAsync" Loading="@_hibernating">
+                    @(_hibernating ? "Hibernating…" : "Hibernate now")
+                </Button>
+                <span class="opt-muted">Unloads from memory; data stays on disk. Wake it from the Field configuration tab.</span>
+            </div>
+        }
+        else
+        {
+            <p class="opt-muted opt-row--top10">Set keep-alive to <strong>Off</strong> to hibernate this dataset manually.</p>
+        }
+    }
+
+    @* The filter cache (24 Nov 2026): the filters searches use are kept between them, up to a
+       limit in megabytes, and what they hold is the one part of a dataset's memory the engine
+       measures. A new limit rebuilds a loaded dataset from its store, as text rules do. *@
+    <h3 class="indx-section-heading opt-gap">Filter cache</h3>
+    <p class="indx-section-help">
+        Filters that searches use are kept between searches, so one used again is ready at once. The least recently used are let go when the cache is full. 0 keeps none. Changing it rebuilds the dataset in the background; searches go on meanwhile.
+    </p>
+    @if (_editingFilterCache)
+    {
+        <div class="opt-row">
+            <div class="opt-w80"><InputField @bind-Value="_filterCacheEdit" placeholder="MB" /></div>
+            <span class="opt-muted">MB</span>
+            <Button Variant="primary" Size="micro" Loading="@_filterCacheSaving" @onclick="SaveFilterCacheAsync">Save</Button>
+            <Button Variant="secondary" Size="micro" Disabled="@_filterCacheSaving" @onclick="() => _editingFilterCache = false">Cancel</Button>
+        </div>
+    }
+    else
+    {
+        <div class="opt-row">
+            <span class="opt-tabular">@FilterCacheLabel()</span>
+            @if (_filterCacheRebuilding)
+            {
+                <span class="opt-muted"><Spinner Size="14" /> Rebuilding with the new limit</span>
+            }
+            else if (Ctx.IsAdmin)
+            {
+                <Button Variant="ghost" Size="micro" @onclick="BeginEditFilterCache">Edit</Button>
+            }
+        </div>
+    }
+    @if (!string.IsNullOrEmpty(_filterCacheError))
+    {
+        <p class="opt-error">@_filterCacheError</p>
+    }
+    }
+
+    @* ── Statistics: whether each search's filter is stored (the Browsing report). A privacy
+       setting, so a team admin's call; editors see where it stands. ── *@
+    @* StatisticsShown holds Stats.Store, which the switch below reads. *@
+    @if (section == "statistics" && StatisticsShown)
+    {
+        <h3 class="indx-section-heading indx-section-heading--first">Statistics</h3>
+        <p class="indx-section-help">
+            The Statistics tab's Browsing report stores the filter of every search. On a dataset of
+            products that is catalogue vocabulary. On a dataset of people, a filter can hold a name
+            or a customer number, so switch it off there. Switching off stops the recording; filters
+            already recorded stay until they age out, or until you erase the statistics history in
+            the Danger Zone below.
+        </p>
+        <div class="opt-row">
+            <ToggleSwitch Label="Record filters for the Browsing report"
+                          Checked="Stats.Store!.RecordsFilters(Ctx.TeamId, Ctx.Name)"
+                          CheckedChanged="SetRecordFilters" Disabled="!Ctx.IsAdmin" />
+            @if (!Ctx.IsAdmin)
+            {
+                <span class="opt-muted">Team admins can change this.</span>
+            }
+        </div>
+        <p class="indx-section-help opt-gap">
+            Statistics name each document by one of its fields, beside its key: on the Statistics tab
+            and in the statistics API. Without a choice it is the first searchable field.
+        </p>
+        <div class="opt-row">
+            <div class="opt-w240">
+                <Combobox Size="micro" Label="Name documents by" Options="LabelFieldOptions" Search="q => _labelSearch.Find(LabelFieldOptions, q)"
+                          SearchPlaceholder="Search the fields" Value="@(_labelField ?? "")" ValueChanged="SetLabelField" Disabled="@(!Ctx.IsAdmin)" />
+            </div>
+        </div>
+        <p class="indx-section-help opt-gap">
+            Statistics count by day, and a day begins at midnight in this time zone. Changing it
+            counts the last @Stats.RetentionDays days again; days before that keep the zone they were counted in.
+        </p>
+        <div class="opt-row">
+            <div class="opt-w240">
+                <Combobox Size="micro" Label="Time zone" Options="TimeZoneOptions" Search="q => _zoneSearch.Find(TimeZoneOptions, q)"
+                          SearchPlaceholder="Search the zones" Value="@(_timeZone ?? "")" ValueChanged="SetTimeZone" Disabled="@(!Ctx.IsAdmin || _savingZone)" />
+            </div>
+            @if (_savingZone) { <span class="opt-muted">Counting the days again…</span> }
+        </div>
+    }
+
+    @* ── Search or ask (experimental): whether this dataset has it. A team admin's call, as the
+       statistics' privacy settings are; only while the instance shows the feature. ── *@
+    @if (section == "search-or-ask" && SearchOrAsk.Shown)
+    {
+        <h3 class="indx-section-heading indx-section-heading--first">Search or ask <span class="opt-muted">experimental</span></h3>
+        <p class="indx-section-help">
+            Offers to answer what visitors ask, or turns a description of what to list into filters, from
+            this dataset's records. Switching it on adds a Search or ask tab, where editors set it up, try it,
+            and take it live. What visitors type is then sent to the model provider this instance is set up with.
+        </p>
+        <div class="opt-row">
+            <ToggleSwitch Label="Search or ask on this dataset"
+                          Checked="SearchOrAsk.ShownFor(Ctx.TeamId, Ctx.Name)"
+                          CheckedChanged="SetSearchOrAskShown" Disabled="!Ctx.IsAdmin" />
+            @if (!Ctx.IsAdmin)
+            {
+                <span class="opt-muted">Team admins can change this.</span>
+            }
+        </div>
+    }
+
+    @* ── Replace data (atomic full reload) ── *@
+    @if (section == "data" && Ctx.IsEditor)
+    {
+        <h3 class="indx-section-heading indx-section-heading--first">Replace data</h3>
+        <p class="indx-section-help">
+            Atomically reload the whole dataset from a new JSON file. The current data keeps serving with zero downtime until the new index is ready; field configuration, boost rules and the description are preserved. If the new file fails to load, the current data is left untouched.
+        </p>
+        @if (_replaceBusy)
+        {
+            @* The steps of the shadow build, in order. The live engine keeps serving throughout;
+               the new one is only swapped in at the last step. *@
+            <Surface Class="opt-steps-surface">
+            <ol class="opt-steps" aria-live="polite">
+                @foreach (var (step, label) in ReplaceSteps)
+                {
+                    var state = StepState(step);
+                    <li class="opt-step opt-step--@state">
+                        <span class="opt-step-mark" aria-hidden="true">
+                            @if (state == "done") { <Check Size="14" /> }
+                            else if (state == "active") { <Spinner Name="circle-rotate" Size="14" /> }
+                            else { <span class="opt-step-dot"></span> }
+                        </span>
+                        <span class="opt-step-label">@label</span>
+                        @if (state == "active" && _replaceProgress?.Percent >= 0)
+                        {
+                            <span class="opt-step-pct">@_replaceProgress.Percent%</span>
+                        }
+                    </li>
+                }
+            </ol>
+            <div class="opt-row opt-steps-foot">
+                <p class="opt-muted opt-steps-note">Search keeps serving the current data until the new index is swapped in.</p>
+                @if (CanCancelReplace)
+                {
+                    <Button Variant="secondary" Size="micro" @onclick="CancelReplaceTransfer">Cancel</Button>
+                }
+                else
+                {
+                    <span class="opt-muted" title="The build runs on a separate engine; the current data is not affected until the swap.">Can't cancel after transfer</span>
+                }
+            </div>
+            </Surface>
+        }
+        else
+        {
+            <div class="opt-row">
+                <InputFile OnChange="OnReplaceFileSelected" accept=".json" style="display:none" id="@ReplaceInputId" />
+                <label for="@ReplaceInputId" class="indx-upload-label">
+                    <Json Size="14" />
+                    @if (_replaceFile != null)
+                    {
+                        <span>@_replaceFile.Name (@DatasetContext.FormatBytes(_replaceFile.Size))</span>
+                    }
+                    else
+                    {
+                        <span>Choose JSON…</span>
+                    }
+                </label>
+                @if (_replaceFile != null)
+                {
+                    <Button Variant="secondary" Size="micro" @onclick="() => _replaceOpen = true">Replace all data</Button>
+                    <Button Variant="ghost" Size="micro" @onclick="() => _replaceFile = null">Cancel</Button>
+                }
+            </div>
+        }
+        <ConfirmModal @bind-Open="_replaceOpen" Title="@($"Replace all data in {Ctx.Name}?")" Consequences="ReplaceConsequences"
+                      ConfirmLabel="Replace all data" OnConfirm="StartReplace" />
+        @if (!string.IsNullOrEmpty(_replaceResult))
+        {
+            <p class="opt-success">@_replaceResult</p>
+        }
+        @if (!string.IsNullOrEmpty(_replaceWarning))
+        {
+            <p class="opt-warning">@_replaceWarning</p>
+        }
+        @if (!string.IsNullOrEmpty(_replaceError))
+        {
+            <p class="opt-error opt-error--6">@_replaceError</p>
+        }
+    }
+
+    @* ── Download data (any member; a plain link, so the browser streams the file itself; DatasetDownloadButton shows how far) ── *@
+    @if (section == "data" && Ctx.TeamName is { } teamName)
+    {
+        <h3 class="indx-section-heading">Download data</h3>
+        <p class="indx-section-help">
+            Every document in the dataset as one JSON file, ordered by document key — the records as they were loaded or last updated, including fields that are not configured. Field configuration and boost rules are exported from their own tabs.
+        </p>
+        <div class="opt-row">
+            <DatasetDownloadButton Ctx="Ctx" TeamName="@teamName" ShowCount="true" />
+        </div>
+    }
+
+    @if (section == "danger")
+    {
+    @* ── Transfer to another team ── *@
+    var transferTargets = Ctx.MyTeams
+        .Where(t => t.Team.Id.ToString() != Ctx.TeamId && TeamRoles.CanAdmin(t.Role))
+        .ToList();
+    @if (transferTargets.Count > 0)
+    {
+        <h3 class="indx-section-heading indx-section-heading--first">Transfer to another team</h3>
+        <p class="indx-section-help">Move this dataset to another team you administer. The current team loses access.</p>
+        <Button Variant="secondary" Size="micro" @onclick="OpenTransfer">Transfer…</Button>
+
+        <ConfirmModal @bind-Open="_transferOpen" Title="@($"Transfer {Ctx.Name}")" Consequences="TransferConsequences"
+                      CanConfirm="@(!string.IsNullOrEmpty(_transferTargetTeamId))" ConfirmLabel="Transfer dataset" OnConfirm="TransferAsync">
+            <SelectField Label="To team" Placeholder="Select a team…" @bind-Value="_transferTargetTeamId"
+                         Options="@transferTargets.Select(t => new SelectField.SelectOption(t.Team.Name, t.Team.Id.ToString())).ToList()" />
+        </ConfirmModal>
+    }
+
+    @* ── Danger zone: rename and delete, each confirmed in a modal that says what breaks. Rename
+       is here, not with the settings, because the name is the dataset's address in the API. ── *@
+    <h3 class="indx-section-heading indx-section-heading--danger">Danger Zone</h3>
+    @if (Ctx.IsBusy)
+    {
+        <p class="opt-muted">Cannot rename or delete while an operation is in progress.</p>
+    }
+    else
+    {
+        <div class="opt-row">
+            <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Tag" @onclick="OpenRename">Rename dataset</Button>
+            @if (Ctx.IsAdmin && Stats.Enabled && Stats.Store != null)
+            {
+                @* Here rather than on the Statistics tab: it cannot be undone, and it sits with the
+                   other things that cannot. *@
+                <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Erase" @onclick="() => _purgeOpen = true">Erase statistics history</Button>
+            }
+            @if (Ctx.IsAdmin)
+            {
+                <DeleteDatasetButton Ctx="Ctx" TriggerVariant="secondary" />
+            }
+        </div>
+    }
+    @* A delete that fails says so in its modal; this keeps it on the page after the modal closes. *@
+    @if (Ctx.IsAdmin && !string.IsNullOrEmpty(Ctx.OperationError))
+    {
+        <p class="opt-error">@Ctx.OperationError</p>
+    }
+
+    <ConfirmModal @bind-Open="_purgeOpen" Title="@($"Erase the statistics history of {Ctx.Name}")" Consequences="PurgeConsequences"
+                  ConfirmLabel="Erase statistics history" ConfirmIcon="DatasetIcons.Erase" OnConfirm="PurgeStatisticsAsync" />
+
+    <ConfirmModal @bind-Open="_renameOpen" Title="@($"Rename {Ctx.Name}")" Consequences="RenameConsequences"
+                  CanConfirm="RenameReady" ConfirmLabel="Rename dataset" ConfirmIcon="DatasetIcons.Tag" OnConfirm="RenameAsync">
+        <InputField Label="New name" @bind-Value="_renameInput" Immediate />
+    </ConfirmModal>
+    }
+    </div>
+</div>
+
+@code {
+    /// <summary>The section asked for in the address, else the parameter (a test's), else the first.</summary>
+    [Parameter] public string? Section { get; set; }
+    private const string SectionQuery = "section";
+
+    private bool StatisticsShown => Stats.Enabled && Stats.Store != null;
+
+    private static readonly RenderFragment<int> _iconDanger = DatasetIcons.Warning;
+
+    /// <summary>The sections that apply here: Statistics only where the instance keeps them,
+    /// Search or ask only where the instance shows it.</summary>
+    private IReadOnlyList<SideMenuGroup> Menu
+    {
+        get
+        {
+            var items = new List<SideMenuItem>
+            {
+                new("general", "General", DatasetIcons.Sliders),
+                new("memory", "Memory", DatasetIcons.Ram),
+            };
+            if (StatisticsShown) items.Add(new("statistics", "Statistics", DatasetIcons.Statistics));
+            if (SearchOrAsk.Shown) items.Add(new("search-or-ask", "Search or ask", DatasetIcons.SearchOrAsk, Experimental: true));
+            items.Add(new("data", "Data", DatasetIcons.Json));
+            items.Add(new("danger", "Danger zone", _iconDanger));
+            return [new SideMenuGroup("Options", items)];
+        }
+    }
+
+    /// <summary>The section chosen in the menu; until a choice, the one the address asks for (a
+    /// refresh, a link), else the parameter (a test's), else General. Kept here rather than read
+    /// back from the address: a change of the query alone does not render the tab again, so the
+    /// menu changed nothing until a refresh (12 Nov 2026).</summary>
+    private string? _chosen;
+
+    private string CurrentSection
+    {
+        get
+        {
+            var asked = _chosen ?? (Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(new Uri(Nav.Uri).Query)
+                .TryGetValue(SectionQuery, out var v) ? v.ToString() : Section);
+            return Menu[0].Items.Any(i => i.Key == asked) ? asked! : "general";
+        }
+    }
+
+    /// <summary>Shows the section, and puts it in the address, replacing it, so a refresh keeps it
+    /// and Back still leaves the dataset as it does for the tabs.</summary>
+    private void SelectSection(string key)
+    {
+        _chosen = key;
+        StateHasChanged();
+        Nav.NavigateTo(Nav.GetUriWithQueryParameter(SectionQuery, key == "general" ? null : key), replace: true);
+    }
+
+    private void SetSearchOrAskShown(bool shown)
+    {
+        if (!Ctx.IsAdmin) return;
+        var settings = SearchOrAskStore.Load(Ctx.TeamId, Ctx.Name) ?? new IndxServer.Services.SearchOrAsk.SearchOrAskSettings();
+        settings.Shown = shown;
+        SearchOrAskStore.Save(Ctx.TeamId, Ctx.Name, settings);
+        // The tab bar reads it: tell the panel.
+        Ctx.NotifyChanged();
+    }
+
+    private bool _purgeOpen;
+
+    private static readonly IReadOnlyList<string> PurgeConsequences =
+    [
+        "Every search, click and conversion recorded for this dataset is deleted, with the daily totals.",
+        "The history of changes made to the dataset is deleted too.",
+        "Statistics otherwise survive deleting and recreating the dataset; this is the one way to start clean.",
+        "The Browsing setting is kept.",
+    ];
+
+    private async Task<string?> PurgeStatisticsAsync()
+    {
+        var store = Stats.Store;
+        if (store == null || !Ctx.IsAdmin) return "Statistics are not available.";
+        await Task.Run(() => store.PurgeDataset(Ctx.TeamId, Ctx.Name));
+        return null;
+    }
+
+    private string? _labelField;
+    private bool _labelFieldLoaded;
+    // The two long pickers search with Indx: a micro index each, built on the first search.
+    private readonly IndxServer.Components.Shared.OptionSearch _labelSearch = new(), _zoneSearch = new();
+
+    /// <summary>"First searchable field (title)" and the dataset's fields, vector fields left out.
+    /// From the engine only when it is loaded (never woken for this); asleep, the choice made
+    /// before is still listed.</summary>
+    private List<SelectField.SelectOption> LabelFieldOptions
+    {
+        get
+        {
+            if (!_labelFieldLoaded && Stats.Store != null)
+            {
+                _labelField = Stats.Store.LabelField(Ctx.TeamId, Ctx.Name);
+                _labelFieldLoaded = true;
+            }
+            var engine = Ctx.FindEngine();
+            var fields = engine is { IsDisposed: false } ? engine.GetFieldConfiguration() ?? [] : [];
+            var first = fields.FirstOrDefault(f => f.WordMatching == true || f.PatternMatching == true)?.FieldName;
+            var names = fields.Where(f => f.Embeddable != true).Select(f => f.FieldName).ToList();
+            if (_labelField != null && !names.Contains(_labelField)) names.Insert(0, _labelField);
+            return [new(first == null ? "First searchable field" : $"First searchable field ({first})", ""),
+                    .. names.Select(n => new SelectField.SelectOption(n, n))];
+        }
+    }
+
+    private string? _timeZone;
+    private bool _timeZoneLoaded, _savingZone;
+
+    /// <summary>The instance default first, then every zone this host knows by its IANA name,
+    /// west to east, with today's offset in front.</summary>
+    private List<SelectField.SelectOption> TimeZoneOptions
+    {
+        get
+        {
+            if (!_timeZoneLoaded && Stats.Store != null)
+            {
+                _timeZone = Stats.Store.TimeZoneName(Ctx.TeamId, Ctx.Name);
+                _timeZoneLoaded = true;
+            }
+            var fallback = StatisticsDays.NameOf(Stats.Store?.DefaultTimeZone ?? TimeZoneInfo.Utc);
+            var now = DateTime.UtcNow;
+            var zones = TimeZoneInfo.GetSystemTimeZones()
+                .Select(z => (Name: StatisticsDays.NameOf(z), Offset: z.GetUtcOffset(now)))
+                .Where(z => z.Name.Contains('/') && !z.Name.StartsWith("Etc/", StringComparison.Ordinal))
+                .DistinctBy(z => z.Name)
+                .OrderBy(z => z.Offset).ThenBy(z => z.Name, StringComparer.Ordinal)
+                .Select(z => new SelectField.SelectOption(
+                    $"UTC{(z.Offset < TimeSpan.Zero ? "−" : "+")}{Math.Abs(z.Offset.Hours):00}:{Math.Abs(z.Offset.Minutes):00} {z.Name}", z.Name));
+            return [new($"Instance default ({fallback})", ""), new("UTC", "UTC"), .. zones];
+        }
+    }
+
+    private async Task SetTimeZone(string? value)
+    {
+        var store = Stats.Store;
+        if (store == null || !Ctx.IsAdmin) return;
+        _timeZone = string.IsNullOrEmpty(value) ? null : value;
+        _savingZone = true;
+        StateHasChanged();
+        try { await Task.Run(() => store.SetTimeZone(Ctx.TeamId, Ctx.Name, _timeZone)); }
+        finally { _savingZone = false; }
+    }
+
+    private async Task SetLabelField(string? value)
+    {
+        var store = Stats.Store;
+        if (store == null || !Ctx.IsAdmin) return;
+        _labelField = string.IsNullOrEmpty(value) ? null : value;
+        await Task.Run(() => store.SetLabelField(Ctx.TeamId, Ctx.Name, _labelField));
+    }
+
+    private async Task SetRecordFilters(bool on)
+    {
+        var store = Stats.Store;
+        if (store == null || !Ctx.IsAdmin) return;
+        await Task.Run(() => store.SetRecordsFilters(Ctx.TeamId, Ctx.Name, on));
+    }
+
+
+    private static readonly IEnumerable<SelectField.SelectOption> KeepAliveModes =
+    [
+        new("∞ Pinned — always loaded", "max"),
+        new("Off — client-managed", "0"),
+        new("Timed — idle eviction", "timed"),
+    ];
+
+    private string ReplaceInputId => $"replace-input-{Ctx.Name}";
+
+    // Description
+    private bool _descLoaded;
+    private string _descEdit = "";
+    private string _descSaved = "";
+
+    // Keep-alive
+    private bool _editingKeepAlive;
+    private string _keepAliveEditMode = "max";   // "max" (∞ pinned) | "0" (manual) | "timed"
+    private string _keepAliveEditHours = "24";
+    private string? _keepAliveError;
+    private bool _hibernating;
+
+    // Filter cache
+    private bool _editingFilterCache, _filterCacheSaving, _filterCacheRebuilding, _disposedFilterCache;
+    private string _filterCacheEdit = "";
+    private string? _filterCacheError;
+
+    // Replace
+    private IBrowserFile? _replaceFile;
+    private bool _replaceBusy;
+    private string? _replaceResult;
+    private string? _replaceWarning;
+    private string? _replaceError;
+    private ReplaceProgress? _replaceProgress;
+    private CancellationTokenSource? _replacePollCts;
+    private CancellationTokenSource? _replaceTransferCts;
+    private bool CanCancelReplace => _replaceProgress?.Step == ReplaceStep.Uploading;
+
+    private void CancelReplaceTransfer() => _replaceTransferCts?.Cancel();
+
+    private static readonly (ReplaceStep Step, string Label)[] ReplaceSteps =
+    [
+        (ReplaceStep.Uploading,   "Transfer the file to the server"),
+        (ReplaceStep.Preparing,   "Prepare a new engine"),
+        (ReplaceStep.Analyzing,   "Analyze the new file's fields"),
+        (ReplaceStep.Reconciling, "Carry over field configuration and key field"),
+        (ReplaceStep.Loading,     "Load documents"),
+        (ReplaceStep.Indexing,    "Build the index"),
+        (ReplaceStep.Swapping,    "Swap in and dispose the old engine"),
+    ];
+
+    private string StepState(ReplaceStep step)
+    {
+        var current = _replaceProgress?.Step ?? ReplaceStep.Uploading;
+        if (current == ReplaceStep.Done || step < current) return "done";
+        return step == current ? "active" : "pending";
+    }
+
+    // Transfer
+    private string _transferTargetTeamId = "";
+
+    protected override void OnParametersSet()
+    {
+        if (Active && Ctx.IsEditor && !_descLoaded)
+        {
+            _descLoaded = true;
+            _descEdit = _descSaved = DatasetMeta.Load(Ctx.TeamId, Ctx.Name);
+        }
+    }
+
+    // ── Description ──────────────────────────────────────────────────────────
+
+    private bool _descSaving;
+
+    private async Task SaveDescriptionAsync()
+    {
+        if (_descSaving) return;
+        _descSaving = true;
+        try
+        {
+            var text = _descEdit ?? "";
+            await Task.Run(() => DatasetMeta.Save(Ctx.TeamId, Ctx.Name, text));
+            _descSaved = text;
+        }
+        finally { _descSaving = false; }
+    }
+
+    // ── Keep-alive ───────────────────────────────────────────────────────────
+
+    private static string KeepAliveLabel(int hrs) => hrs switch
+    {
+        int.MaxValue => "∞ pinned",
+        0 => "Off (manual)",
+        _ => $"{hrs} h",
+    };
+
+    private static string RemainingLabel(IndxServerInternalApi.KeepAliveInfo? ka)
+    {
+        if (ka is null || ka.KeepAliveTimeHrs is int.MaxValue or 0) return "";
+        if (!ka.Ready) return "(not loaded)";
+        if (ka.Remaining is { } rem)
+            return rem.TotalHours >= 1 ? $"~{(int)rem.TotalHours}h {rem.Minutes}m left" : $"~{rem.Minutes}m left";
+        return "";
+    }
+
+    private void BeginEditKeepAlive()
+    {
+        _keepAliveError = null;
+        (_keepAliveEditMode, _keepAliveEditHours) = (Ctx.KeepAlive?.KeepAliveTimeHrs ?? int.MaxValue) switch
+        {
+            int.MaxValue => ("max", "24"),
+            0 => ("0", "24"),
+            var h => ("timed", h.ToString()),
+        };
+        _editingKeepAlive = true;
+    }
+
+    private void SaveKeepAlive()
+    {
+        _keepAliveError = null;
+
+        int hrs;
+        switch (_keepAliveEditMode)
+        {
+            case "max": hrs = int.MaxValue; break;
+            case "0": hrs = 0; break;
+            default:
+                if (!int.TryParse((_keepAliveEditHours ?? "").Trim(), out hrs) || hrs < 1)
+                {
+                    _keepAliveError = $"\"{_keepAliveEditHours}\" is not a valid number of hours — enter a whole number of 1 or more.";
+                    return;
+                }
+                break;
+        }
+
+        // Team-scoped: SetKeepAliveHrs only affects this team's dataset; the Options tab is
+        // already gated to team Admins.
+        if (Ctx.Engines.SetKeepAliveHrs(Ctx.Name, Ctx.TeamId, hrs))
+        {
+            _editingKeepAlive = false;
+            Ctx.RefreshStatus();
+            Ctx.NotifyChanged();
+        }
+        else
+        {
+            _keepAliveError = $"Could not update keep-alive for \"{Ctx.Name}\".";
+        }
+    }
+
+    /// <summary>What the cache holds against its limit while the dataset is loaded; the limit alone
+    /// while it is not, read from the dataset's settings.</summary>
+    private string FilterCacheLabel()
+    {
+        int setting = IndxServerInternalApi.FilterCacheMBFor(Ctx.Name, Ctx.TeamId);
+        if (setting == 0) return "Off";
+        if (Ctx.Status is { FilterCacheLimitBytes: > 0 } s && Ctx.EngineState == SystemState.Ready)
+            return $"{DatasetContext.FormatBytes(s.FilterCacheBytes)} of {setting:N0} MB, {s.FilterCacheFilters:N0} filters";
+        return $"{setting:N0} MB";
+    }
+
+    private void BeginEditFilterCache()
+    {
+        _filterCacheError = null;
+        _filterCacheEdit = IndxServerInternalApi.FilterCacheMBFor(Ctx.Name, Ctx.TeamId).ToString();
+        _editingFilterCache = true;
+    }
+
+    private async Task SaveFilterCacheAsync()
+    {
+        _filterCacheError = null;
+        if (!int.TryParse((_filterCacheEdit ?? "").Trim(), out int megabytes) || megabytes < 0)
+        {
+            _filterCacheError = $"\"{_filterCacheEdit}\" is not a number of megabytes. Enter a whole number, 0 for none.";
+            return;
+        }
+        _filterCacheSaving = true;
+        try
+        {
+            var manager = IndxServerInternalApi.Manager;
+            string? refused = null;
+            bool rebuilding = false;
+            await Task.Run(() => refused = manager.SetFilterCacheMB(Ctx.Name, Ctx.TeamId, megabytes, out rebuilding));
+            if (refused != null) { _filterCacheError = refused; return; }
+            _editingFilterCache = false;
+            _filterCacheSaving = false;
+            if (!rebuilding) return;
+
+            _filterCacheRebuilding = true;
+            StateHasChanged();
+            // The rebuild is claimed before SetFilterCacheMB returns; its outcome is the status's.
+            while (!_disposedFilterCache && manager.IsShadowBuildInProgress(Ctx.Name, Ctx.TeamId))
+                await Task.Delay(1000);
+            if (_disposedFilterCache) return;
+            if (manager.ShadowBuildError(Ctx.Name, Ctx.TeamId) is { Length: > 0 } failed)
+                _filterCacheError = $"The rebuild failed, and the limit is as it was: {failed}";
+            Ctx.RefreshStatus();
+        }
+        catch (Exception ex)
+        {
+            _filterCacheError = $"Could not save: {ex.Message}";
+        }
+        finally
+        {
+            _filterCacheSaving = false;
+            _filterCacheRebuilding = false;
+        }
+    }
+
+    private async Task HibernateAsync()
+    {
+        _hibernating = true;
+        StateHasChanged();
+        try
+        {
+            await Ctx.HibernateAsync();
+        }
+        finally
+        {
+            _hibernating = false;
+            Ctx.NotifyChanged();
+        }
+    }
+
+    // ── Replace ──────────────────────────────────────────────────────────────
+
+    private void OnReplaceFileSelected(InputFileChangeEventArgs e)
+    {
+        _replaceFile = e.File;
+        _replaceResult = _replaceWarning = _replaceError = null;
+    }
+
+    private bool _replaceOpen;
+
+    private IReadOnlyList<string> ReplaceConsequences =>
+    [
+        Ctx.KeepAlive?.RecordCount is > 0 and var n
+            ? $"All {n.ToString("N0", System.Globalization.CultureInfo.InvariantCulture)} documents in {Ctx.Name} are replaced by the contents of {_replaceFile?.Name} ({DatasetContext.FormatBytes(_replaceFile?.Size ?? 0)})."
+            : $"The documents in {Ctx.Name} are replaced by the contents of {_replaceFile?.Name} ({DatasetContext.FormatBytes(_replaceFile?.Size ?? 0)}).",
+        "Field configuration, boost rules, synonyms and the description are kept.",
+        "Search keeps serving the current data until the new index is ready. If the file fails to load, nothing changes.",
+        "The current documents can't be brought back afterwards. Download the data first if you may need it.",
+    ];
+
+    // The replace reports its own progress on the page, so the modal only starts it and closes.
+    private Task<string?> StartReplace()
+    {
+        _ = RunReplaceAsync();
+        return Task.FromResult<string?>(null);
+    }
+
+    private async Task RunReplaceAsync()
+    {
+        if (_replaceFile == null) return;
+        var file = _replaceFile;
+        _replaceFile = null;
+        _replaceResult = _replaceWarning = _replaceError = null;
+        // Said before a byte is sent: past the limit the browser stream fails with an IO error.
+        if (UploadLimit.Refusal(file.Size) is { } tooLarge) { _replaceError = tooLarge; return; }
+        _replaceBusy = true;
+        _replaceProgress = new ReplaceProgress(ReplaceStep.Uploading, 0);
+        _replaceTransferCts?.Dispose();
+        _replaceTransferCts = new CancellationTokenSource();
+        StateHasChanged();
+
+        // Poll the build's step/percent while the replace runs off the circuit. During the
+        // transfer the manager has no progress yet, so the local Uploading state stands.
+        _replacePollCts?.Dispose();
+        _replacePollCts = new CancellationTokenSource();
+        var pollTask = ProgressPoller.RunAsync(TimeSpan.FromMilliseconds(200),
+            () => { _replaceProgress = Ctx.Engines.GetReplaceProgress(Ctx.Name, Ctx.TeamId) ?? _replaceProgress; return true; },
+            () => InvokeAsync(StateHasChanged), _replacePollCts.Token);
+
+        FileStream? fs = null;
+        try
+        {
+            // Stream the browser file to a temp file in chunks, reporting transfer progress. This
+            // is the one phase the user can cancel: nothing has touched the engine yet.
+            var tempPath = Path.Combine(Path.GetTempPath(), $"indx-replace-{Guid.NewGuid():N}.tmp");
+            fs = new FileStream(tempPath, FileMode.Create, FileAccess.ReadWrite, FileShare.None, 65536, FileOptions.DeleteOnClose);
+            var buffer = new byte[65536];
+            long totalRead = 0;
+            var ct = _replaceTransferCts.Token;
+            await using (var stream = file.OpenReadStream(maxAllowedSize: UploadLimit.Bytes, ct))
+            {
+                int read;
+                while ((read = await stream.ReadAsync(buffer, ct)) > 0)
+                {
+                    await fs.WriteAsync(buffer.AsMemory(0, read), ct);
+                    totalRead += read;
+                    var pct = file.Size > 0 ? (int)(100L * totalRead / file.Size) : 0;
+                    if (pct != _replaceProgress?.Percent)
+                        _replaceProgress = new ReplaceProgress(ReplaceStep.Uploading, pct);
+                }
+            }
+            fs.Position = 0;
+            _replaceProgress = new ReplaceProgress(ReplaceStep.Preparing, -1);
+
+            var localFs = fs;
+            var summary = await Task.Run(() => Ctx.Engines.RunReplaceFromJson(Ctx.Name, Ctx.TeamId, localFs));
+
+            Ctx.RefreshStatus();
+            // The shadow build re-ran Init and reconciled the field config against the new schema:
+            // fields that survived keep their roles, new fields arrive unconfigured. Pull that
+            // result into the Fields tab, otherwise it keeps showing the pre-replace working copy.
+            Ctx.RefreshFieldsFromEngine();
+            Ctx.NotifyDocumentsReplaced(); // preview now points at stale docs
+
+            var parts = new List<string>();
+            if (summary.Added.Count > 0) parts.Add($"added {string.Join(", ", summary.Added)}");
+            if (summary.Removed.Count > 0) parts.Add($"removed {string.Join(", ", summary.Removed)}");
+            if (summary.TypeChanged.Count > 0) parts.Add($"type changed {string.Join(", ", summary.TypeChanged)}");
+            _replaceResult = parts.Count > 0
+                ? $"Data replaced. Schema changes: {string.Join("; ", parts)}."
+                  + (summary.Added.Count > 0 ? " New fields are not searchable or filterable until you configure them in Field configuration." : "")
+                : "Data replaced.";
+            // A configured field that vanished is a behaviour change, not a schema footnote:
+            // searches, filters and boost rules that relied on it now silently miss.
+            var warnings = new List<string>();
+            if (summary.LostRoles.Count > 0)
+                warnings.Add($"Configured fields no longer in the data: {string.Join("; ", summary.LostRoles)}. Searches and filters that used them will no longer match; boost rules referencing them are dormant.");
+            if (summary.KeyFieldFallback != null)
+                warnings.Add(summary.KeyFieldFallback + " Change it under Field configuration → Document key if that is not what you want.");
+            _replaceWarning = warnings.Count > 0 ? string.Join(" ", warnings) : null;
+        }
+        catch (OperationCanceledException)
+        {
+            _replaceResult = "Replace cancelled during transfer. The dataset is unchanged.";
+        }
+        catch (Exception ex)
+        {
+            _replaceError = $"Replace failed: {ex.Message}";
+        }
+        finally
+        {
+            _replacePollCts?.Cancel();
+            try { await pollTask; } catch { }
+            fs?.Dispose();
+            _replaceBusy = false;
+            _replaceProgress = null;
+            Ctx.NotifyChanged();
+        }
+    }
+
+    public override void Dispose()
+    {
+        _disposedFilterCache = true;
+        base.Dispose();
+        _labelSearch.Dispose();
+        _zoneSearch.Dispose();
+        _replaceTransferCts?.Cancel();
+        _replaceTransferCts?.Dispose();
+        _replacePollCts?.Cancel();
+        _replacePollCts?.Dispose();
+    }
+
+    // ── Rename ───────────────────────────────────────────────────────────────
+
+    private string _renameInput = "";
+    private bool _renameOpen;
+
+    private bool RenameReady => !string.IsNullOrWhiteSpace(_renameInput) && _renameInput.Trim() != Ctx.Name;
+
+    private void OpenRename()
+    {
+        _renameInput = Ctx.Name;
+        _renameOpen = true;
+    }
+
+    private IReadOnlyList<string> RenameConsequences =>
+    [
+        $"Its address in the API changes from /api/teams/{Ctx.TeamName}/datasets/{Ctx.Name} to …/datasets/{(RenameReady ? _renameInput.Trim() : "(new name)")}.",
+        "Websites, apps, scripts and MCP clients that use the old name get errors until they are updated.",
+        "API keys limited to this dataset by name lose it. Keys for the whole team keep working.",
+        "A loaded dataset is reloaded under the new name, which takes as long as an index build.",
+    ];
+
+    /// <summary>Null on success (the host then navigates to the new name), else the reason.</summary>
+    private async Task<string?> RenameAsync()
+    {
+        try
+        {
+            return await Ctx.RenameAsync(_renameInput);
+        }
+        catch (Exception ex)
+        {
+            return $"Rename failed: {ex.Message}";
+        }
+    }
+
+    // ── Transfer ─────────────────────────────────────────────────────────────
+
+    private bool _transferOpen;
+
+    private void OpenTransfer()
+    {
+        _transferTargetTeamId = "";
+        _transferOpen = true;
+    }
+
+    private IReadOnlyList<string> TransferConsequences
+    {
+        get
+        {
+            var target = Ctx.MyTeams.FirstOrDefault(t => t.Team.Id.ToString() == _transferTargetTeamId).Team?.Name ?? "(the team you choose)";
+            return
+            [
+                $"{Ctx.Name} moves from {Ctx.TeamName} to {target}, with its documents, field configuration, boost rules and synonyms. Members of {Ctx.TeamName} lose it.",
+                $"Its address in the API changes from /api/teams/{Ctx.TeamName}/datasets/{Ctx.Name} to /api/teams/{target}/datasets/{Ctx.Name}. Websites and apps calling the old address get errors until they are updated.",
+                $"API keys for {Ctx.TeamName} no longer reach it. {target} needs keys of its own.",
+            ];
+        }
+    }
+
+    /// <summary>Null on success (the dataset leaves this view), else the reason, shown in the modal.</summary>
+    private async Task<string?> TransferAsync()
+    {
+        if (string.IsNullOrEmpty(_transferTargetTeamId)) return "Choose a team.";
+        var target = _transferTargetTeamId;
+        try
+        {
+            // (Name, team) is the dataset's primary key, so a target team that already has this
+            // name fails on the constraint mid-transaction and surfaces as raw SQL. Rename
+            // pre-checks its target; do the same here, while the dataset is still untouched.
+            var taken = await Task.Run(() => Ctx.Engines.GetTeamDataSets(target));
+            if (taken.Any(n => string.Equals(n, Ctx.Name, StringComparison.OrdinalIgnoreCase)))
+                return $"That team already has a dataset called '{Ctx.Name}'. Rename one of them first.";
+
+            // TransferOwnership evicts the source engine (can be slow) — run off the circuit.
+            await Task.Run(() => Ctx.Engines.TransferOwnership(Ctx.Name, Ctx.TeamId, target));
+        }
+        catch (Exception ex)
+        {
+            return $"Transfer failed: {ex.Message}";
+        }
+        _transferTargetTeamId = "";
+        await Ctx.NotifyDatasetListChangedAsync(); // dataset now belongs to another team — drops off this view
+        return null;
+    }
+
+    // ── Delete ───────────────────────────────────────────────────────────────
+
+}

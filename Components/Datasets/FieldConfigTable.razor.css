@@ -1,0 +1,449 @@
+.indx-fields-table {
+    margin-bottom: 12px;
+}
+
+/* The frame is systm Table's: it scrolls sideways inside itself, so the table can never push
+   the page wider. It is switched off only where the table is sure to fit, because a scrolling
+   frame becomes the header row's sticky container and stops it from sticking to the page. Where
+   that is depends on the mode, since the columns have set widths (below):
+     simple    710px of columns + a field column of 300px + the page gutters  ->  1100px
+     advanced 1150px of columns + a field column of 270px + the page gutters  ->  1500px
+   Below those the header is static, for the same reason. */
+@media (min-width: 1100px) {
+    .indx-fields-table:not(.indx-fields-table--advanced) ::deep .indx-table-scroll {
+        overflow-x: visible;
+    }
+}
+
+@media (min-width: 1500px) {
+    .indx-fields-table--advanced ::deep .indx-table-scroll {
+        overflow-x: visible;
+    }
+}
+
+@media (max-width: 1099px) {
+    .indx-fields-table .indx-table thead {
+        position: static;
+    }
+}
+
+@media (max-width: 1499px) {
+    .indx-fields-table--advanced .indx-table thead {
+        position: static;
+    }
+}
+
+.indx-num-input {
+    width: 70px;
+    padding: 10px;
+    height: 30px;
+    font: var(--text-xs);
+    background: transparent;
+    border: 1px solid var(--lv3);
+    border-radius: var(--radius);
+    color: var(--lv7);
+    box-sizing: border-box;
+}
+
+.indx-num-input:hover {
+    border-color: var(--lv5);
+}
+
+.indx-num-input:focus {
+    outline: none;
+    border-color: var(--lv5);
+}
+
+.indx-num-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.indx-num-input::-webkit-inner-spin-button,
+.indx-num-input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+.indx-num-input {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+.indx-weight-slider {
+    min-width: 110px;
+}
+
+
+.indx-table-check {
+    text-align: center;
+}
+
+/* Every column but the first has a set width, so the first one takes whatever is left. Without
+   this the automatic table layout shares the width out by content, and the whole table shifts
+   whenever the rows change: toggling unused fields, typing in the filter, or a long nested name
+   scrolling into the list. The widths fit the longest header (PatternMatching) and the controls:
+   a checkbox, the weight slider with its value, a number box. */
+.indx-col-check {
+    width: 130px;
+    white-space: nowrap;
+}
+
+.indx-col-weight {
+    width: 190px;
+    white-space: nowrap;
+}
+
+/* Advanced mode has eleven columns after the first, so it runs tighter: less cell padding, and
+   widths cut to what each header needs. 4 x 100 + 4 x 120 + 3 x 90 = 1150px, which leaves the
+   field column room inside the page width. At the simple widths it came to 1370px, more than the
+   page can ever give it. */
+.indx-fields-table--advanced .indx-table th,
+.indx-fields-table--advanced .indx-table td {
+    padding: 0 10px;
+}
+
+.indx-fields-table--advanced .indx-col-check {
+    width: 100px;
+}
+
+.indx-fields-table--advanced .indx-col-check-wide {
+    width: 120px;
+}
+
+.indx-col-num {
+    width: 90px;
+    white-space: nowrap;
+}
+
+/* A container row opens a group: its nested fields follow, indented. It carries no controls,
+   because it holds no value of its own and every capability on it would be inert. It is styled
+   like every other row on purpose; the indent under it is what shows the grouping, and a tinted
+   header band would read as a section of the table rather than as a field. The class stays as a
+   hook for tests and for anything that needs to find these rows. */
+
+.indx-group-note {
+    font: var(--text-xs);
+    font-weight: var(--book);
+    color: var(--lv4);
+}
+
+/* The parent path of a nested name ("cover.asset.metadata." before "dimensions") reads a step
+   fainter than the leaf, so the part the row configures stands out and the path is there when
+   needed. Same tone as .indx-cell-value, the type badge next to it. */
+.indx-field-path {
+    color: var(--lv5);
+    font-weight: var(--book);
+}
+
+/* Column header tooltips */
+.indx-th-tip {
+    position: relative;
+    cursor: default;
+}
+
+.indx-th-tip::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    top: calc(100% + 6px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--lv7);
+    color: var(--lv1);
+    font: var(--text-xs);
+    font-weight: var(--book);
+    padding: 6px 10px;
+    border-radius: var(--radius);
+    white-space: normal;
+    width: 200px;
+    z-index: 100;
+    pointer-events: none;
+    /* display:none when hidden, never opacity:0, for the reason spelled out at the type badge's
+       panel below: an invisible box is still laid out and still counts toward the scroll frame's
+       overflow. The last column's tip is 200px wide on a 90px column, so it added 44px of empty
+       scroll past the table's right edge. */
+    display: none;
+    line-height: 1.4;
+}
+
+.indx-th-tip:hover::after {
+    display: block;
+}
+
+/* The last column's tip opens leftward from the column's right edge. Centred, it would reach
+   past the table while shown and give the frame a scrollbar for as long as the pointer rests. */
+th:last-child .indx-th-tip::after {
+    left: auto;
+    right: 0;
+    transform: none;
+}
+
+/* Hover panel on the type badge, showing a sample of the field's content and its flags.
+   Two constraints shape it, both from sitting in a table body cell rather than in the header:
+
+   1. It is display:none when hidden, never opacity:0. An opacity:0 box is still laid out and
+      still counts toward the scroll container's overflow, which put a scrollbar on the table
+      permanently without anyone hovering. That rules out a fade, and a fade is not worth a
+      scrollbar.
+   2. It opens to the right, centred on its row, except on the last rows where it opens upward.
+      See the nth-last-child rule below for why. */
+.indx-sample-tip {
+    position: relative;
+    cursor: help;
+}
+
+/* A real element rather than a ::after: the panel holds a value and a flag line, and a single
+   attr() string cannot carry both. */
+.indx-field-pop {
+    display: none;
+    position: absolute;
+    top: 50%;
+    left: calc(100% + 8px);
+    transform: translateY(-50%);
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 3px;
+    /* lv5 rather than the lv7 the column-header tips use: this one carries sampled data and is on
+       screen while reading a table, so it should sit back. No border, the tone separates it from
+       the row, in keeping with the design's no-elevation rule. lv1 on lv5 clears AA in both
+       themes (the scale inverts, so this stays an inverted chip either way). */
+    background: var(--lv5);
+    color: var(--lv1);
+    padding: 7px 10px;
+    border-radius: var(--radius);
+    text-align: left;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    width: 280px;
+    z-index: 100;
+    pointer-events: none;
+}
+
+.indx-sample-tip:hover .indx-field-pop {
+    display: flex;
+}
+
+/* The panel lives in the first column, which StickyFirstColumn pins with z-index 1. A z-index on a
+   positioned element makes a stacking context, so the panel's own z-index only ranks it inside its
+   cell: against the next row's first cell, which is another z-index 1 painted later in document
+   order, the whole cell loses and the row below covers the panel. Raising the hovered cell instead
+   ranks the cells against each other, which is where the contest actually is. 3 clears the header
+   cell's 2 as well, so a panel opening upward from the last rows is not clipped by the header
+   either. Only while hovered, so the pinned column keeps its usual order the rest of the time. */
+td:first-child:hover {
+    z-index: 3;
+}
+
+/* The last rows open the panel upward instead of centring it. Below 1440px the wrap sets
+   overflow-x:auto, which makes the computed overflow-y auto as well, so anything reaching past the
+   final row adds scroll height and shows a scrollbar. Overflow above a scroll container's origin
+   is not scrollable, so growing upward costs nothing, and the panel lands over the rows above
+   rather than below the table. This replaces padding on the wrap, which worked but left a gap
+   under the table whether or not anyone hovered. */
+.indx-table tbody tr:nth-last-child(-n + 2) .indx-field-pop {
+    top: auto;
+    bottom: -6px;
+    transform: none;
+}
+
+/* Capped at three lines to keep the panel a readable size. A 160-character sample would otherwise
+   run to five or six lines, which reads as a wall rather than as a sample. */
+.indx-field-pop-value {
+    font: var(--text-sm);
+    font-weight: var(--book);
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+/* The same muted role as .indx-group-note, but a tone that works on this panel: the note sits on
+   the table background where lv4 reads as secondary, while the panel's ground is lv5, and lv4 on
+   lv5 is almost the same tone. lv3 is the equivalent step down from the panel's own text colour. */
+.indx-field-pop-note {
+    font: var(--text-xs);
+    font-weight: var(--book);
+    color: var(--lv3);
+}
+
+.indx-field-pop-flag {
+    font: var(--text-xs);
+    font-weight: var(--med);
+    color: var(--lv3);
+}
+
+.indx-cell-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    min-width: 0;
+    padding-left: calc(var(--depth, 0) * var(--indent, 18px));
+}
+
+/* The field name: systm Truncate, start side. It may shrink, but never to nothing. */
+.indx-cell-inner ::deep .indx-field-name {
+    flex: 0 1 auto;
+    min-width: 6ch;
+}
+
+/* Three renderings by width. Wide: the plain table. Narrower than it fits: the same table in
+   a scrolling frame with the field column pinned, and that column kept modest. 768px and under:
+   the table gives way to the list of rows that open, since no amount of pinning makes twelve
+   columns readable on a phone. */
+.indx-fields-cards {
+    display: none;
+}
+
+@media (max-width: 1100px) {
+    .indx-table td:first-child,
+    .indx-table th:first-child {
+        max-width: 220px;
+    }
+}
+
+@media (max-width: 768px) {
+    .indx-fields-table {
+        display: none;
+    }
+
+    .indx-fields-cards {
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 12px;
+    }
+}
+
+/* One field. Nested fields step in a little under their container's heading. Neighbours share
+   a border, so the list reads as one surface. */
+.indx-field-card {
+    margin-left: calc(var(--depth, 0) * 8px);
+    min-width: 0;
+}
+
+.indx-field-card + .indx-field-card {
+    margin-top: -0.5px;
+}
+
+.indx-field-card-heading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    min-height: 40px;
+    padding: 0 15px;
+    font: var(--text-sm);
+    border: 0.5px solid var(--lv3);
+    background: var(--lv1);
+    min-width: 0;
+}
+
+.indx-field-card-summary {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+}
+
+.indx-field-card-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.indx-field-card-state {
+    font: var(--text-xs);
+    font-weight: var(--book);
+    color: var(--lv5);
+}
+
+.indx-field-card-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 8px 15px;
+    font: var(--text-xs);
+    font-weight: var(--book);
+    color: var(--lv5);
+}
+
+/* What the hover popover shows on a wide screen, in reach of a finger here. */
+.indx-field-card-sample {
+    color: var(--lv6);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+}
+
+/* The settings table inside an open row: the label column needs less than systm's default half,
+   and the weight slider wants the room. */
+.indx-field-card ::deep .indx-table-cell-label {
+    min-width: 0;
+}
+
+.indx-field-card ::deep .indx-table td {
+    padding: 0 12px;
+}
+
+.indx-field-card ::deep .indx-weight-slider {
+    min-width: 150px;
+}
+
+.indx-fields-empty {
+    font: var(--text-xs);
+    color: var(--lv4);
+    padding: 12px 0;
+}
+
+
+.indx-cell-value {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    font: var(--text-xs);
+    font-weight: var(--book);
+    color: var(--lv5);
+    white-space: nowrap;
+}
+
+/* A field Analyze found no value for reads a step fainter than a detected type, the same tone as
+   .indx-group-note. Both say the row is real but there is nothing behind it to configure against
+   yet. lv4 is the fainter of the two in both themes, since the scale inverts. */
+.indx-cell-value-faint {
+    color: var(--lv4);
+}
+
+/* The Profile column: the menu and the edit button beside it (Nov 2026). */
+.indx-col-profile {
+    width: 240px;
+    min-width: 200px;
+}
+
+.indx-profile-cell {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    min-width: 0;
+}
+
+.indx-profile-cell ::deep .indx-select-wrapper {
+    flex: 1;
+    min-width: 0;
+}
+
+/* The menu's button fills the column, its caret at the far end, rather than sizing to its value. */
+.indx-profile-cell ::deep .indx-select {
+    width: 100%;
+    justify-content: space-between;
+}
+
+/* A cell whose value is not the saved one, until Save or Cancel: the confirmed accent (blue in
+   the light theme, teal in the dark), as an outline inside the cell, since the design has no shadows. */
+::deep .indx-cell-changed {
+    outline: 1.5px solid var(--CConfirmed);
+    outline-offset: -3px;
+}

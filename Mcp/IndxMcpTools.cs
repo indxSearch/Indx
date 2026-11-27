@@ -1,0 +1,781 @@
+using IndxServer.Engine;
+using System.Globalization;
+using System.Security.Claims;
+using System.Text.Json.Nodes;
+using Indx.Api;
+using Indx.Http;
+using IndxServer.Data;
+using IndxServer.Models;
+using IndxServer.Services;
+using ModelContextProtocol.Server;
+
+namespace IndxServer.Mcp
+{
+    /// <summary>
+    /// Read-only MCP tools over the Indx search engine. Each call is authenticated by the bearer
+    /// token (an API key) on the /mcp request; access is scoped to the caller's teams. Searches run
+    /// in-process through <see cref="IndxServerInternalApi.Manager"/>, so the dataset's saved boost
+    /// rules apply automatically, and hibernated datasets auto-wake (ResolveEngine).
+    /// </summary>
+    [McpServerToolType]
+    public sealed class IndxMcpTools(
+        IHttpContextAccessor http,
+        TeamService teams,
+        DatasetMetadataStore metadata,
+        ColdStore cold)
+    {
+        // Default match semantics for agents: precise near-exact only (EditDistance reranked, the
+        // fallback and the rest off). A query with no near-exact hit returns nothing rather than
+        // fuzzy noise. EditDistance is chosen here whatever the dataset's mode: an agent's search is
+        // judged on whether it found the thing, not on a visitor's ordering.
+        private const int DefaultLimit = 10;
+        private const int MaxResponseBytes = 80_000; // size guardrail for the context window
+        private const int MaxFacetValues = 25;
+
+        // ── Tools ─────────────────────────────────────────────────────────────
+
+        [McpServerTool(Name = "list_datasets", UseStructuredContent = false, ReadOnly = true)]
+        [System.ComponentModel.Description("START HERE. Lists the datasets this API key can reach, each with its team name, document count and state. " +
+                     "State is one of: Ready (searchable now); Asleep (the documents are on disk but not loaded - searching it wakes it, " +
+                     "which on a large dataset takes time, so expect the first call to be slow); Loading or Indexing (being prepared, " +
+                     "try again shortly); Error (it failed to load and searching will not fix it - tell the user rather than retrying); " +
+                     "Empty (created but nothing uploaded yet). " +
+                     "Every other tool needs the team and dataset pair from this list. A dataset whose state is not Ready " +
+                     "cannot be searched yet.")]
+        public async Task<McpDatasetSummary[]> ListDatasets()
+        {
+            var scope = Scope();
+            // Read, as the HTTP listings need: which datasets a team has is not for a Search key,
+            // the one that is put in public pages.
+            if (scope != null && !scope.AllowsLevel(ApiKeyLevel.Read))
+                throw new McpToolException($"This API key is limited to {ApiKeyScope.Describe(scope.Level)}; listing datasets needs at least " +
+                    $"{ApiKeyScope.Describe(ApiKeyLevel.Read)}. Search with the team and dataset names you were given, or ask whoever issued the key.");
+            var result = new List<McpDatasetSummary>();
+            foreach (var (team, role) in await CallerTeamsAsync(scope))
+            {
+                if (scope != null && !scope.AllowsTeam(team.Id)) continue;
+                var ownerKey = team.Id.ToString();
+                foreach (var ds in IndxServerInternalApi.Manager.GetTeamDataSets(ownerKey))
+                {
+                    if (scope != null && !scope.AllowsDataset(ds)) continue;
+                    var ka = IndxServerInternalApi.Manager.GetKeepAliveInfo(ds, ownerKey);
+                    result.Add(new McpDatasetSummary
+                    {
+                        Team = team.Name,
+                        Dataset = ds,
+                        Role = role,
+                        DocumentCount = ka.RecordCount,
+                        State = DescribeState(ds, ownerKey, ka),
+                    });
+                }
+            }
+            return result.ToArray();
+        }
+
+        [McpServerTool(Name = "describe_dataset", UseStructuredContent = false, ReadOnly = true)]
+        [System.ComponentModel.Description("CALL THIS BEFORE SEARCHING. Reports the fields you can search, filter, facet and sort on, the real values " +
+                     "those fields hold (distinct values for facetable fields, min and max for numeric ones), an owner-written " +
+                     "description, and one sample document. Use it so you filter with values that exist instead of guessing: " +
+                     "a filter naming a field that is not filterable, or a value that never occurs, returns nothing. " +
+                     "Fields the owner has not made searchable, filterable, facetable or sortable are not listed, " +
+                     "because they cannot be used in a query.")]
+        public async Task<McpDatasetSchema> DescribeDataset(
+            [System.ComponentModel.Description("Team name that owns the dataset.")] string team,
+            [System.ComponentModel.Description("Dataset name.")] string dataset)
+        {
+            var ownerKey = await ResolveOwnerKey(team, dataset, ApiKeyLevel.Read);
+            var engine = ResolveEngine(dataset, ownerKey);
+
+            var ka = IndxServerInternalApi.Manager.GetKeepAliveInfo(dataset, ownerKey);
+            var schema = new McpDatasetSchema
+            {
+                Team = team,
+                Dataset = dataset,
+                Description = NullIfEmpty(metadata.Load(ownerKey, dataset)),
+                DocumentCount = ka.RecordCount,
+                State = engine.Status.SystemState.ToString(),
+            };
+
+            var fieldCfg = engine.GetFieldConfiguration();
+            // Configured fields only (those with at least one role) — the queryable surface.
+            var configured = fieldCfg
+                .Where(f => (f.WordMatching ?? false) || (f.PatternMatching ?? false) || (f.Filterable ?? false) || (f.Facetable ?? false) || (f.Sortable ?? false))
+                .ToList();
+
+            // One match-all faceted search → facet value hints for all facetable fields + a sample doc.
+            var facetable = configured.Where(f => f.Facetable == true).Select(f => f.FieldName).ToHashSet();
+            Result? probe = TryMatchAll(dataset, ownerKey, fieldCfg, withFacets: facetable.Count > 0);
+
+            foreach (var f in configured)
+            {
+                var info = new McpFieldInfo
+                {
+                    Name = f.FieldName,
+                    Type = (f.FieldType ?? "String").ToLowerInvariant(),
+                    WordMatching = f.WordMatching ?? false,
+                    PatternMatching = f.PatternMatching ?? false,
+                    Filterable = f.Filterable ?? false,
+                    Facetable = f.Facetable ?? false,
+                    Sortable = f.Sortable ?? false,
+                };
+
+                if (f.Facetable == true && probe?.Facets != null
+                    && probe.Facets.TryGetValue(f.FieldName, out var facetVals) && facetVals.Length > 0)
+                {
+                    var labels = facetVals.Take(MaxFacetValues).Select(v => v.Key).ToArray();
+                    info.Values = labels.Select(l => Coerce(l, info.Type)).ToArray();
+                    if (info.Type == "number")
+                    {
+                        var nums = labels
+                            .Select(l => double.TryParse(l, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : (double?)null)
+                            .Where(d => d.HasValue).Select(d => d!.Value).ToList();
+                        if (nums.Count > 0) info.Range = new McpRange { Min = nums.Min(), Max = nums.Max() };
+                    }
+                }
+                schema.Fields.Add(info);
+            }
+
+            // Sample document from the probe (first record).
+            if (probe is { Records.Length: > 0 })
+                schema.Sample = ParseJson(engine.GetJsonDataOfKey(probe.Records[0].DocumentKey));
+
+            // The cold storage the records hold, by name and how many records hold one: read with get_cold.
+            var names = await ColdAccessAsync(team) is { } access ? cold.Names(ownerKey, dataset, access) : [];
+            if (names.Count > 0)
+                schema.Cold = names.Select(n => new McpColdName
+                {
+                    Name = n.Name,
+                    Records = n.Records,
+                    Description = n.Description.Length > 0 ? n.Description : null,
+                }).ToList();
+
+            return schema;
+        }
+
+        [McpServerTool(Name = "get_cold", UseStructuredContent = false, ReadOnly = true)]
+        [System.ComponentModel.Description("Read a record's cold storage: texts kept beside it that are not searched but help answer, such as a " +
+                     "book's table of contents or a review. A search hit's cold lists the names its record holds; describe_dataset lists " +
+                     "the names in use. Name the items you want, or get them all. Slower than a search. Needs a Read or Full key.")]
+        public async Task<List<McpColdItem>> GetCold(
+            [System.ComponentModel.Description("Team name that owns the dataset.")] string team,
+            [System.ComponentModel.Description("Dataset name.")] string dataset,
+            [System.ComponentModel.Description("The record's key, taken from a search hit (a text, or a number).")] System.Text.Json.JsonElement record,
+            [System.ComponentModel.Description("The names of the items to read, as listed; omit for every one.")] string[]? names = null,
+            [System.ComponentModel.Description("A language tag (nb, nn, en): the item in that language where there is one, else the one there is.")] string? language = null)
+        {
+            var ownerKey = await ResolveOwnerKey(team, dataset, ApiKeyLevel.Search);
+            var engine = ResolveEngine(dataset, ownerKey);
+            string recordKey = KeyText(record, "record");
+            // A record that is not there (deleted where its cold storage was not told) has none.
+            if (engine.GetKeyNumber(recordKey) is not long number)
+                return [];
+            var access = await ColdAccessAsync(team)
+                ?? throw new McpToolException("Cold storage is not read with a Search key over MCP. Use a Read key.");
+            var found = cold.List(new ColdScope(ownerKey, dataset, number), withContent: true, access, names)
+                // One per name: the asked language's, else the one without a language, else the first.
+                .GroupBy(n => n.Name)
+                .Select(g => g.FirstOrDefault(n => language != null && n.Language == language)
+                             ?? g.FirstOrDefault(n => n.Language.Length == 0) ?? g.First())
+                .ToList();
+            var result = new List<McpColdItem>();
+            int budget = MaxResponseBytes;
+            foreach (var n in found)
+            {
+                var note = new McpColdItem
+                {
+                    Name = n.Name,
+                    Language = n.Language.Length > 0 ? n.Language : null,
+                    Description = n.Description.Length > 0 ? n.Description : null,
+                    ContentType = n.ContentType,
+                    Length = n.Content.Length,
+                };
+                note.Content = n.Content.Length <= budget ? n.Content : n.Content[..Math.Max(0, budget)];
+                note.Truncated = note.Content.Length < n.Content.Length;
+                budget -= note.Content.Length;
+                result.Add(note);
+            }
+            return result;
+        }
+
+        /// <summary>What the caller may read of cold storage over MCP (<see cref="ColdValues.AccessFor"/>):
+        /// nothing with a Search key, the rest by the key or the caller's role in the team.</summary>
+        private async Task<ColdAccess?> ColdAccessAsync(string team)
+        {
+            var scope = Scope();
+            var role = (await CallerTeamsAsync(scope)).FirstOrDefault(t => string.Equals(t.Team.Name, team, StringComparison.OrdinalIgnoreCase)).Role;
+            return ColdValues.AccessFor(scope, role, viaMcp: true);
+        }
+
+        [McpServerTool(Name = "search", UseStructuredContent = false, ReadOnly = true)]
+        [System.ComponentModel.Description("Search a dataset and return ranked documents with relevance scores. Call describe_dataset first so you " +
+                     "know the field names and the values that exist. An empty result is meaningful here: matching is precise by " +
+                     "default (near-exact only, incl. typo tolerance) — an empty result means nothing matches well, " +
+                     "which is a trustworthy 'not found' (don't retry with looser wording unless you set broaden=true). " +
+                     "count is the hits returned, total how many documents hold every query word (report total as the number of matches), " +
+                     "matched how: exact, or within oneEdit or twoEdits of the words, which you should check mean what was asked. " +
+                     "With broaden=true, isFallback true means no document held every word: the hits are the nearest, not matches. " +
+                     "Saved boost rules are applied. Use filters for structured constraints on filterable fields, and filter " +
+                     "(an expression) for OR, NOT, IN or open ranges (get valid fields/values from describe_dataset).")]
+        public async Task<McpSearchResult> Search(
+            [System.ComponentModel.Description("Team name that owns the dataset.")] string team,
+            [System.ComponentModel.Description("Dataset name.")] string dataset,
+            [System.ComponentModel.Description("What to search for, in the user's own words. Matched against every searchable field; do not add field names, " +
+                         "operators or quotes, and do not stem or normalise the words yourself. Leave it EMPTY to list everything " +
+                         "the filters match: words here narrow the list to documents that contain them, so a word repeating what a " +
+                         "filter already says (\"school\" beside a school-type filter) only loses results.")] string query,
+            [System.ComponentModel.Description("Constraints combined with AND. Each is {field, value} for an exact match or {field, min, max} for a numeric range. " +
+                         "The field must be one describe_dataset lists as filterable, and the value should be one it reports; " +
+                         "an unknown field is an error and an unseen value simply matches nothing.")] McpFilter[]? filters = null,
+            [System.ComponentModel.Description("A filter expression, for what the filters list cannot say (OR, NOT, IN, open ranges, positions); ANDed with filters. " +
+                         "Comparisons: field = value, !=, <, <=, >, >=, field IN [v1, v2], field BETWEEN a AND b, within(field, lat, lon, meters). " +
+                         "Combine with AND, OR, NOT and parentheses (NOT binds tightest, then AND). Text in double quotes, numbers bare; " +
+                         "text compares case-insensitively unless followed by MATCHCASE; a field name with spaces goes in backticks. " +
+                         "Example: brand IN [\"nike\", \"puma\"] AND (price < 500 OR NOT category = \"outlet\"). " +
+                         "Fields must be filterable (describe_dataset). An expression with errors is refused with each error and its position.")] string? filter = null,
+            [System.ComponentModel.Description("How many documents to return. Default 10, maximum 100. Ask for what you will actually read.")] int limit = DefaultLimit,
+            [System.ComponentModel.Description("If set, return only these top-level fields from each document.")] string[]? fields = null,
+            [System.ComponentModel.Description("Set true to include looser character-pattern matches, below the near-exact ones, and when nothing matches near-exactly. Default false, which is near-exact only. Worth one retry when a " +
+                         "query you expected to match returns nothing; it trades precision for recall, so prefer the default.")] bool broaden = false,
+            [System.ComponentModel.Description("Set true to also return counts per value for facetable fields. Use them to offer the user a way to narrow the " +
+                         "search, or to pick the filter for your next call.")] bool facets = false,
+            [System.ComponentModel.Description(FacetFieldsHelp)] string[]? facetFields = null,
+            [System.ComponentModel.Description(FacetLimitHelp)] int facetLimit = DefaultFacetLimit,
+            [System.ComponentModel.Description(OffsetHelp)] int offset = 0,
+            [System.ComponentModel.Description(CountsHelp)] Dictionary<string, string>? counts = null,
+            [System.ComponentModel.Description(FacetSelectionsHelp)] Dictionary<string, string[]>? facetSelections = null)
+        {
+            var ownerKey = await ResolveOwnerKey(team, dataset, ApiKeyLevel.Search);
+            var engine = ResolveEngine(dataset, ownerKey);
+            return RunSearch(engine, ownerKey, dataset, new McpSearchRequest
+            {
+                Query = query, Filters = filters, Filter = filter, Limit = limit, Fields = fields, Broaden = broaden,
+                Facets = facets, FacetFields = facetFields, FacetLimit = facetLimit, Offset = offset,
+                Counts = counts, FacetSelections = facetSelections,
+            }, MaxResponseBytes, await ColdAccessAsync(team));
+        }
+
+        private const string CountsHelp = "Named counts in the same search: a name and a filter expression each, such as " +
+            "{\"authors\": \"contentType = \\\"contributor\\\"\", \"events\": \"contentType = \\\"event\\\"\"}. The answer's counts says how many of " +
+            "the matches (total) each lets through: how many of each kind there are, without a search per kind. Same expression " +
+            "rules as filter.";
+        private const string FacetSelectionsHelp = "Values chosen on facets, by facetable field: {\"format\": [\"Paperback\", \"Audiobook\"]}. " +
+            "The hits hold one of a field's values (OR within a field, AND between fields and with the filters), and with " +
+            "facets, a chosen field's counts leave out its own choice: you see what the other values would give, to suggest " +
+            "or widen the choice. Use filters instead when the other values do not matter.";
+
+        private const string FacetFieldsHelp = "With facets: count only these facetable fields (as describe_dataset lists them); omit to count " +
+            "every one. Name the ones you will use: counting fewer is cheaper and keeps the answer short.";
+        private const string FacetLimitHelp = "With facets: the most values returned per field, the commonest first. Default 20; 0 returns every " +
+            "value. facetStats (the lowest and highest value of each number field) is of every value either way.";
+        private const string OffsetHelp = "How many ranked hits to pass over before the first returned, to page: offset 10 with limit 10 returns " +
+            "the 11th to the 20th. Only ranked hits can be returned, so a page past total may come back empty.";
+        private const int DefaultFacetLimit = 20;
+
+        /// <summary>The most searches one search_many call takes.</summary>
+        public const int MaxSearchesPerCall = 10;
+
+        [McpServerTool(Name = "search_many", UseStructuredContent = false, ReadOnly = true)]
+        [System.ComponentModel.Description("Run several searches of one dataset in one call, answered in the order given: each as the search tool runs it, " +
+                     "with the same settings. Use it when you already know the searches you need (two spellings, a title and an author, " +
+                     "the same words under different filters) instead of calling search once for each: one call costs less than several. " +
+                     "A search that fails answers with its error in its place; the others are answered. At most 10 searches; the " +
+                     "response size is shared between them, so ask each for the hits you will read.")]
+        public async Task<List<McpSearchManyResult>> SearchMany(
+            [System.ComponentModel.Description("Team name that owns the dataset.")] string team,
+            [System.ComponentModel.Description("Dataset name.")] string dataset,
+            [System.ComponentModel.Description("The searches, each with the search tool's settings: query, and as you need them filters, filter, limit, " +
+                         "fields, broaden, facets, facetFields, facetLimit, offset, counts and facetSelections.")] McpSearchRequest[] searches)
+        {
+            if (searches is not { Length: > 0 })
+                throw new McpToolException("searches must list one or more searches.");
+            if (searches.Length > MaxSearchesPerCall)
+                throw new McpToolException($"{searches.Length} searches; one call takes at most {MaxSearchesPerCall}. Split them over two calls.");
+            var ownerKey = await ResolveOwnerKey(team, dataset, ApiKeyLevel.Search);
+            var engine = ResolveEngine(dataset, ownerKey);
+            int budget = MaxResponseBytes / searches.Length;
+            var access = await ColdAccessAsync(team);
+            var answers = new List<McpSearchManyResult>(searches.Length);
+            foreach (var search in searches)
+            {
+                try
+                {
+                    answers.Add(new McpSearchManyResult { Result = RunSearch(engine, ownerKey, dataset, search ?? new McpSearchRequest(), budget, access) });
+                }
+                catch (McpToolException ex)
+                {
+                    answers.Add(new McpSearchManyResult { Error = ex.Message });
+                }
+            }
+            return answers;
+        }
+
+        /// <summary>One search as the search tool runs it, for search and search_many alike: one way
+        /// in. <paramref name="budget"/> is the most bytes of documents it may answer with;
+        /// <paramref name="coldAccess"/> what the caller may read of cold storage, none when null.</summary>
+        private McpSearchResult RunSearch(IServerSearchEngine engine, string ownerKey, string dataset, McpSearchRequest request, int budget,
+            ColdAccess? coldAccess)
+        {
+            string query = request.Query ?? "";
+            var filters = request.Filters;
+            string? filter = request.Filter;
+            bool broaden = request.Broaden;
+            if (request.Offset < 0)
+                throw new McpToolException($"offset is {request.Offset}; it is 0 or more.");
+            if (request.FacetLimit < 0)
+                throw new McpToolException($"facetLimit is {request.FacetLimit}; it is 0 (every value) or more.");
+            if (request.FacetFields is { Length: > 0 } named)
+            {
+                var facetable = engine.GetFacetableFieldList().Select(f => f.Name).ToHashSet();
+                if (named.Where(n => !facetable.Contains(n)).ToList() is { Count: > 0 } unknown)
+                    throw new McpToolException($"Not a facetable field: {string.Join(", ", unknown)}. Call describe_dataset for the facetable fields.");
+            }
+            if (request.FacetSelections is { Count: > 0 } chosen)
+            {
+                var facetable = engine.GetFacetableFieldList().Select(f => f.Name).ToHashSet();
+                if (chosen.Keys.Where(n => !facetable.Contains(n)).ToList() is { Count: > 0 } unknown)
+                    throw new McpToolException($"facetSelections names a field that is not facetable: {string.Join(", ", unknown)}. " +
+                        "Call describe_dataset for the facetable fields, or use filters.");
+            }
+            foreach (var (name, expression) in request.Counts ?? [])
+            {
+                // As the filter below: every error with its place in one message, not the first as a 400.
+                if (string.IsNullOrWhiteSpace(expression))
+                    throw new McpToolException($"The count '{name}' has no filter expression.");
+                if (engine.CreateFilter(expression, out var errors) == null)
+                    throw new McpToolException($"The count '{name}' makes no filter: " +
+                        string.Join(" ", errors.Select(e => $"At position {e.Start}: {e.Message}")) +
+                        " Call describe_dataset for the fields that can be filtered and the values they hold.");
+            }
+
+            // An empty query is a browse: "everything matching the filters". The engine only
+            // serves it with facets on, so enable them regardless of what the agent asked for —
+            // otherwise a filter-only call returns zero hits and looks like a trustworthy no-match.
+            var isBrowse = string.IsNullOrWhiteSpace(query);
+            var queryProxy = new QueryProxy
+            {
+                Text = query,
+                MaxNumberOfRecordsToReturn = Math.Clamp(request.Limit, 1, 100),
+                Offset = request.Offset,
+                FacetFields = request.FacetFields,
+                FacetValueLimit = request.FacetLimit,
+                Mode = SearchMode.EditDistance,
+                // An agent's text is finished: no word in it is being typed, so none is met as the
+                // start of a longer one (6.0 reads an open last word as typed, and "mel" found
+                // melon before the flour on a large catalogue, 5 Nov 2026).
+                Match = new MatchProxy { CursorAt = 0 },
+                // broaden: the pattern matches below the counted (Rest, 3 Nov 2026) and, when nothing
+                // is counted, the fallback's.
+                Candidates = new CandidateProxy { Fallback = broaden, Rest = broaden },
+                EnableFacets = request.Facets || isBrowse,
+                Counts = request.Counts is { Count: > 0 } ? request.Counts : null,
+                FacetSelections = request.FacetSelections is { Count: > 0 } ? request.FacetSelections : null,
+            };
+
+            if (filters is { Length: > 0 })
+            {
+                Filter? combined = null;
+                foreach (var c in filters)
+                {
+                    var built = FilterConditionBuilder.Build(engine, c.Field, c.Value, c.Min, c.Max, out var filterError);
+                    if (built == null)
+                        throw new McpToolException((filterError ?? $"Filter field '{c.Field}' is not filterable, or the condition is empty.") +
+                            " Call describe_dataset for the fields that can be filtered and the values they hold.");
+                    combined = combined == null ? built : combined & built;
+                }
+                if (combined != null)
+                    queryProxy.Filter = new FilterProxy(combined.SerializedKey);
+            }
+
+            if (!string.IsNullOrWhiteSpace(filter))
+            {
+                // Compiled here rather than handed on as QueryProxy.FilterExpression, so the agent
+                // gets every error with its place in one message and not the first as a 400.
+                var byExpression = engine.CreateFilter(filter, out var errors);
+                if (byExpression == null)
+                    throw new McpToolException("The filter expression makes no filter: " +
+                        string.Join(" ", errors.Select(e => $"At position {e.Start}: {e.Message}")) +
+                        " Call describe_dataset for the fields that can be filtered and the values they hold.");
+                queryProxy.FilterExpression = filter;
+            }
+
+            var res = IndxServerInternalApi.Manager.Search(queryProxy, dataset, ownerKey);
+            // A refusal (a facet field, an offset) is the agent's to fix, said as an error, not an empty answer.
+            if (res.Reason is { } reason && res.Records.Length == 0)
+                throw new McpToolException(reason.Message);
+            var shaped = ShapeResult(engine, res, request.Fields, broaden, budget);
+            // Which hits hold cold storage this caller may read, from memory: what get_cold reads.
+            var held = coldAccess is { } access
+                ? cold.NamesOf(ownerKey, dataset, shaped.Hits.Select(h => IndxServer.Controllers.DocumentsController.KeyNumber(engine, h.Key)), access) : [];
+            foreach (var hit in shaped.Hits)
+                hit.Cold = held.GetValueOrDefault(IndxServer.Controllers.DocumentsController.KeyNumber(engine, hit.Key));
+            return shaped;
+        }
+
+        [McpServerTool(Name = "get_document", UseStructuredContent = false, ReadOnly = true)]
+        [System.ComponentModel.Description("Fetch one document in full, by the key a search hit reported. Use it when a search result is truncated or omits " +
+                     "fields you need; it does not search, so the key has to come from search first.")]
+        public async Task<JsonNode?> GetDocument(
+            [System.ComponentModel.Description("Team name that owns the dataset.")] string team,
+            [System.ComponentModel.Description("Dataset name.")] string dataset,
+            [System.ComponentModel.Description("The document key, taken from a search hit (a text, or a number). Keys are not guessable: search first.")] System.Text.Json.JsonElement key)
+        {
+            var ownerKey = await ResolveOwnerKey(team, dataset, ApiKeyLevel.Search);
+            var engine = ResolveEngine(dataset, ownerKey);
+            return ParseJson(engine.GetJsonDataOfKey(KeyText(key, "key")));
+        }
+
+        /// <summary>A key an agent sent: a text, or a number key as a number (20 Nov 2026: keys are
+        /// text, a number as its text).</summary>
+        private static string KeyText(System.Text.Json.JsonElement key, string name) => key.ValueKind switch
+        {
+            System.Text.Json.JsonValueKind.String => key.GetString() ?? string.Empty,
+            System.Text.Json.JsonValueKind.Number => key.GetRawText(),
+            _ => throw new McpToolException($"{name} is a text or a number, as a search hit gives it."),
+        };
+
+        [McpServerTool(Name = "get_synonyms", UseStructuredContent = false, ReadOnly = true)]
+        [System.ComponentModel.Description("Get a dataset's synonym list (an experimental feature), or an empty entries list when it has none. " +
+                     "Searches widen through these entries: a query word that matches an entry also finds the records holding " +
+                     "the entry's other terms, ranked below those holding the words as typed, so this explains why a search " +
+                     "matched more than its literal words. " +
+                     "Multidirectional entries expand from any of their terms; OneWay entries expand only from their Source " +
+                     "term. Read-only — synonyms are edited in the portal or via PUT .../synonyms.")]
+        public async Task<JsonNode?> GetSynonyms(
+            [System.ComponentModel.Description("Team name that owns the dataset.")] string team,
+            [System.ComponentModel.Description("Dataset name.")] string dataset)
+        {
+            var ownerKey = await ResolveOwnerKey(team, dataset, ApiKeyLevel.Read);
+            if (IndxServerInternalApi.Manager.ResolveEngine(dataset, ownerKey) == null)
+                throw new McpToolException($"Dataset '{dataset}' not found, or this API key cannot reach it. " +
+                    "Call list_datasets for the datasets available to this key.");
+            var list = IndxServerInternalApi.Manager.GetSynonyms(dataset, ownerKey);
+            // A bare null serialises to no content at all on the MCP wire, which agents read as an
+            // empty (failed) response. Return an explicit, parseable "no list" object instead.
+            return list == null
+                ? new JsonObject { ["entries"] = new JsonArray(), ["note"] = "This dataset has no synonym list." }
+                : ParseJson(list.GetSerialized());
+        }
+
+        // ── Setup tools ───────────────────────────────────────────────────────
+        // The three tools above answer "what can I search"; these answer "why is it not working
+        // yet", which is the question during setup. They deliberately do NOT go through
+        // ResolveEngine: that throws unless the dataset is Ready, and a dataset that is not Ready
+        // is exactly when an agent needs to look.
+
+        [McpServerTool(Name = "get_status", UseStructuredContent = false, ReadOnly = true)]
+        [System.ComponentModel.Description("Dataset state and health: whether it is indexed and ready, document count, scoring mode, " +
+                     "any error message, and flags for truncated text or a refused query. Call this when a dataset is " +
+                     "not behaving as expected, or while waiting for an index build to finish.")]
+        public async Task<JsonObject> GetStatus(
+            [System.ComponentModel.Description("Team name that owns the dataset.")] string team,
+            [System.ComponentModel.Description("Dataset name.")] string dataset)
+        {
+            var ownerKey = await ResolveOwnerKey(team, dataset, ApiKeyLevel.Read);
+            var status = IndxServerInternalApi.Manager.GetState(dataset, ownerKey)
+                ?? throw new McpToolException($"Dataset '{dataset}' not found, or this API key cannot reach it. " +
+                    "Call list_datasets for the datasets available to this key.");
+
+            var o = new JsonObject
+            {
+                ["dataset"] = dataset,
+                ["team"] = team,
+                ["state"] = status.SystemState.ToString(),
+                ["ready"] = status.SystemState == SystemState.Ready,
+                ["documentCount"] = status.DocumentCount,
+                ["secondsToIndex"] = status.SecondsToIndex,
+                ["lastIndexBuildUtc"] = status.TimeOfLastIndexBuild == default
+                    ? null : status.TimeOfLastIndexBuild.ToString("o", CultureInfo.InvariantCulture),
+                ["shadowBuildInProgress"] = IndxServerInternalApi.Manager.IsShadowBuildInProgress(dataset, ownerKey),
+            };
+
+            // How the last rebuild ended. A field configuration change that needs one answers
+            // before it is done, so this is where its outcome is read.
+            if (IndxServerInternalApi.Manager.ShadowBuildFinishedUtc(dataset, ownerKey) is { } finished)
+                o["shadowBuildFinishedUtc"] = finished.ToString("o", CultureInfo.InvariantCulture);
+            if (IndxServerInternalApi.Manager.ShadowBuildError(dataset, ownerKey) is { } buildError)
+                o["shadowBuildError"] = buildError;
+
+            if (!string.IsNullOrWhiteSpace(status.ErrorMessage)) o["errorMessage"] = status.ErrorMessage;
+            if (status.TooLongSearchText) o["tooLongSearchText"] = true;
+            if (status.IndexedTextTruncated) o["indexedTextTruncated"] = true;
+            if (status.InvalidState) o["invalidState"] = true;
+            if (status.InvalidArgument) o["invalidArgument"] = true;
+            if (status.UnrecoverableErrors.Count > 0)
+                o["unrecoverableErrors"] = new JsonArray(status.UnrecoverableErrors
+                    .Select(e => (JsonNode?)e.ToString()).ToArray());
+
+            // Only readable once the engine exists; skipped rather than failing the whole call.
+            try
+            {
+                var engine = IndxServerInternalApi.Manager.ResolveEngine(dataset, ownerKey);
+                if (engine != null)
+                {
+                    o["scoringMode"] = engine.Scoring.Mode.ToString();
+                    // BM25F has one k1 for the dataset; in BM25PerField each field has its own,
+                    // in get_field_configuration.
+                    if (engine.Scoring.Mode == ScoringMode.BM25F) o["bm25fK1"] = engine.Scoring.BM25FK1;
+                }
+            }
+            catch { /* state is the answer here; a scoring mode we cannot read is not an error */ }
+
+            o["nextStep"] = status.SystemState switch
+            {
+                SystemState.Ready => "Ready to search.",
+                SystemState.Indexing => "An index build is running. Poll this tool until state is Ready.",
+                _ => $"State is {status.SystemState}. A dataset becomes searchable after analyze, load and index have all run.",
+            };
+            return o;
+        }
+
+        [McpServerTool(Name = "get_field_configuration", UseStructuredContent = false, ReadOnly = true)]
+        [System.ComponentModel.Description("The full field configuration, including fields that are currently switched off: every " +
+                     "capability flag, weight and BM25 parameter, whether a field was ever blank or missing, and a sample " +
+                     "of its real content. Use this when configuring a dataset; use describe_dataset when writing a query.")]
+        public async Task<JsonObject> GetFieldConfigurationTool(
+            [System.ComponentModel.Description("Team name that owns the dataset.")] string team,
+            [System.ComponentModel.Description("Dataset name.")] string dataset)
+        {
+            var ownerKey = await ResolveOwnerKey(team, dataset, ApiKeyLevel.Read);
+            var engine = IndxServerInternalApi.Manager.ResolveEngine(dataset, ownerKey)
+                ?? throw new McpToolException($"Dataset '{dataset}' not found, or this API key cannot reach it. " +
+                    "Call list_datasets for the datasets available to this key.");
+            var cfg = engine.GetFieldConfiguration();
+
+            var fields = new JsonArray();
+            foreach (var f in cfg)
+            {
+                var jf = new JsonObject
+                {
+                    ["name"] = f.FieldName,
+                    ["type"] = f.FieldType,
+                    ["isArray"] = f.IsArray,
+                    ["wordMatching"] = f.WordMatching,
+                    ["filterable"] = f.Filterable,
+                    ["facetable"] = f.Facetable,
+                    ["sortable"] = f.Sortable,
+                    ["weight"] = f.Weight,
+                    ["bm25b"] = f.BM25b,
+                    ["bm25k1"] = f.BM25k1,
+                    // Matched inside words, with these sizes and anchors; a field is searched with
+                    // either this or wordMatching, or both.
+                    ["patternMatching"] = f.PatternMatching,
+                    ["indexSizes"] = f.IndexSizes is { } sizes ? new JsonArray(sizes.Select(s => (JsonNode)s).ToArray()) : null,
+                    ["startCharacters"] = f.NumberOfStartCharacters,
+                    ["stopCharacters"] = f.NumberOfStopCharacters,
+                };
+                // Optional means some document lacked a value; a null sample means no document ever
+                // had one. Both change whether a field is worth making searchable, and neither is
+                // visible from the type alone.
+                if (f.Optional == true) jf["optional"] = true;
+                if (!string.IsNullOrEmpty(f.SampleValue)) jf["sample"] = f.SampleValue;
+                else jf["blank"] = true;
+                fields.Add(jf);
+            }
+
+            var searchable = cfg.Count(f => f.WordMatching == true || f.PatternMatching == true);
+            return new JsonObject
+            {
+                ["dataset"] = dataset,
+                ["fields"] = fields,
+                ["searchableFieldCount"] = searchable,
+                ["note"] = searchable == 0
+                    ? "No field is searchable, so every search returns nothing. Make at least one text field searchable, then re-index."
+                    : "Weight is a float (default 1.0); BM25b must be within [0, 1] and BM25k1 non-negative, or the engine refuses the configuration. "
+                      + "indexSizes (default [3]; [2, 3] lets short values such as codes match by two characters), startCharacters and stopCharacters take effect at the next index.",
+            };
+        }
+
+
+        /// <summary>
+        /// What state a dataset is in, told so an agent knows what to do about it.
+        ///
+        /// <para>This used to be <c>Ready</c> or <c>Asleep</c> and nothing else, so a dataset that
+        /// had failed to load read the same as one merely hibernated — an agent could not tell
+        /// "search this and it will wake" from "this is broken", and would keep trying.</para>
+        ///
+        /// <para>Read without resolving the engine, deliberately: resolving auto-loads a
+        /// hibernated dataset, and listing them all must not drag every dataset on disk into
+        /// memory. Same reason the admin dataset list and the terminal monitor read this way.</para>
+        /// </summary>
+        internal static string DescribeState(string dataSetName, string ownerKey,
+                                            IndxServerInternalApi.KeepAliveInfo keepAlive)
+        {
+            if (keepAlive.Ready)
+                return "Ready";
+
+            var engine = IndxServerInternalApi.Manager.FindSearchEngine(dataSetName, ownerKey);
+            var state = engine is { IsDisposed: false } ? engine.Status.SystemState : (SystemState?)null;
+
+            return state switch
+            {
+                SystemState.Error => "Error",
+                SystemState.Loading => "Loading",
+                SystemState.Indexing => "Indexing",
+                SystemState.Loaded => "Indexing",
+                // Documents on disk but no engine holding them: searching it wakes it, which can
+                // take a while on a large one.
+                _ when keepAlive.RecordCount > 0 => "Asleep",
+                _ => "Empty",
+            };
+        }
+
+        // ── Helpers ───────────────────────────────────────────────────────────
+
+        /// <summary>
+        /// The teams this caller reaches: the user's, or a team key's own team. A principal that is
+        /// neither a user nor a team key is refused.
+        /// </summary>
+        private Task<List<(Team Team, string Role)>> CallerTeamsAsync(ApiKeyScope? scope)
+        {
+            var userId = http.HttpContext?.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+            if (string.IsNullOrEmpty(userId) && scope?.IsTeamKey != true)
+                throw new McpToolException("Not authenticated.");
+            return teams.GetTeamsForCallerAsync(userId, scope);
+        }
+
+        private ApiKeyScope? Scope() => ApiKeyScope.FromPrincipal(http.HttpContext?.User);
+
+        /// <summary>
+        /// The team's owner key, after the same checks the HTTP API applies: membership, then a scoped
+        /// key's team, datasets and level (ApiKeyScopeFilter does this for MVC; MCP tools are not MVC
+        /// actions, so every tool comes through here). A key outside its scope gets the not-found
+        /// answer rather than a different one, so it cannot probe for teams or datasets.
+        /// </summary>
+        private async Task<string> ResolveOwnerKey(string team, string dataset, ApiKeyLevel required)
+        {
+            var scope = Scope();
+            var match = (await CallerTeamsAsync(scope))
+                .FirstOrDefault(t => string.Equals(t.Team.Name, team, StringComparison.OrdinalIgnoreCase));
+            if (match.Team == null || (scope != null && !scope.AllowsTeam(match.Team.Id)))
+                throw new McpToolException($"Team '{team}' not found, or this API key cannot reach it. " +
+                    "Call list_datasets for the team and dataset names this key can use.");
+            if (scope != null && !scope.AllowsDataset(dataset))
+                throw new McpToolException($"Dataset '{dataset}' not found, or this API key cannot reach it. " +
+                    "Call list_datasets for the datasets available to this key.");
+            if (scope != null && !scope.AllowsLevel(required))
+                throw new McpToolException($"This API key is limited to {ApiKeyScope.Describe(scope.Level)}; this tool needs at least " +
+                    $"{ApiKeyScope.Describe(required)}. Ask whoever issued the key, or use the tools the key does reach.");
+            return match.Team.Id.ToString();
+        }
+
+        private static IServerSearchEngine ResolveEngine(string dataset, string ownerKey)
+        {
+            var engine = IndxServerInternalApi.Manager.ResolveEngine(dataset, ownerKey); // auto-wakes if hibernated
+            if (engine == null)
+                throw new McpToolException($"Dataset '{dataset}' not found, or this API key cannot reach it. " +
+                    "Call list_datasets for the datasets available to this key.");
+            if (engine.Status.SystemState != SystemState.Ready)
+                throw new McpToolException($"Dataset '{dataset}' is not ready (state: {engine.Status.SystemState}), so it cannot " +
+                    "be searched yet. list_datasets shows which datasets are Ready.");
+            return engine;
+        }
+
+        /// <summary>The documents holding every word: the tolerance counts at the counted rung,
+        /// Result.Count where the search had no word lookup to count with.</summary>
+        private static int CountedOf(Result res) => res.ToleranceCounts is { } t && res.CountedTolerance is { } at
+            ? at switch { Tolerance.Exact => t.Exact, Tolerance.OneEdit => t.OneEdit ?? t.Exact, Tolerance.TwoEdits => t.TwoEdits ?? t.OneEdit ?? t.Exact, _ => t.ThreeEdits ?? t.TwoEdits ?? t.OneEdit ?? t.Exact }
+            : res.Count;
+
+        /// <summary>Match-all via an empty query sorted by any sortable field (empty text alone returns nothing).</summary>
+        private static Result? TryMatchAll(string dataset, string ownerKey, FieldProxy[] fieldCfg, bool withFacets)
+        {
+            var sortable = fieldCfg.FirstOrDefault(f => f.Sortable == true)?.FieldName;
+            if (sortable == null) return null; // no sortable field → can't enumerate; skip hints/sample
+            var q = new QueryProxy
+            {
+                Text = "",
+                MaxNumberOfRecordsToReturn = 1,
+                SortBy = sortable,
+                SortAscending = true,
+                EnableFacets = withFacets,
+                Mode = SearchMode.EditDistance,
+            };
+            return IndxServerInternalApi.Manager.Search(q, dataset, ownerKey);
+        }
+
+        private static McpSearchResult ShapeResult(IServerSearchEngine engine, Result res, string[]? fields, bool broaden = false,
+            int maxBytes = MaxResponseBytes)
+        {
+            var outp = new McpSearchResult();
+            int bytes = 0;
+            foreach (var rec in res.Records)
+            {
+                var doc = ParseJson(engine.GetJsonDataOfKey(rec.DocumentKey));
+                if (doc != null && fields is { Length: > 0 }) doc = Project(doc, fields);
+                int sz = doc?.ToJsonString().Length ?? 0;
+                if (bytes + sz > maxBytes && outp.Hits.Count > 0)
+                {
+                    outp.Truncated = true;
+                    outp.Note = $"Truncated to {outp.Hits.Count} hits to fit the response size limit.";
+                    break;
+                }
+                bytes += sz;
+                outp.Hits.Add(new McpSearchHit { Key = rec.Key ?? engine.GetKeyText(rec.DocumentKey), Score = rec.Score, Document = doc });
+            }
+            outp.Count = outp.Hits.Count;
+            // How many documents hold every word (the counted set, 2 Nov 2026), beyond the hits
+            // returned: what an agent says when it reports "N matches". Not Result.Count, which with
+            // broaden also takes in the rest, or is the fallback's count when nothing was counted.
+            // Said only when the hits are the fallback's: without broaden the fallback is off and an
+            // empty list is the answer (the library reports IsFallback for any search that counted nothing).
+            outp.IsFallback = res.IsFallback && broaden;
+            outp.Total = res.IsFallback ? 0 : CountedOf(res);
+            // So an agent knows what it holds: every word as written, or within edits it should check.
+            outp.Matched = res.IsFallback ? null : res.CountedTolerance switch
+            {
+                Tolerance.Exact => "exact",
+                Tolerance.OneEdit => "oneEdit",
+                Tolerance.TwoEdits => "twoEdits",
+                Tolerance.ThreeEdits => "threeEdits",
+                _ => null,
+            };
+
+            if (res.Facets != null)
+            {
+                outp.Facets = res.Facets.ToDictionary(
+                    kv => kv.Key,
+                    kv => kv.Value.ToDictionary(p => p.Key, p => p.Value));
+            }
+            outp.FacetStats = res.FacetStats;
+            // Of the set Result.Count counts: the matches, and with broaden the looser ones below them;
+            // 0 each where nothing was counted, as total is.
+            outp.Counts = res.Counts is { Count: > 0 } counts
+                ? (res.IsFallback ? counts.ToDictionary(kv => kv.Key, _ => 0) : new Dictionary<string, int>(counts))
+                : null;
+            return outp;
+        }
+
+        private static JsonNode? Project(JsonNode doc, string[] fields)
+        {
+            if (doc is not JsonObject obj) return doc;
+            var keep = new JsonObject();
+            foreach (var f in fields)
+                if (obj.TryGetPropertyValue(f, out var v))
+                    keep[f] = v?.DeepClone();
+            return keep;
+        }
+
+        private static JsonNode? ParseJson(string? json)
+        {
+            if (string.IsNullOrEmpty(json)) return null;
+            try { return JsonNode.Parse(json); } catch { return null; }
+        }
+
+        private static object Coerce(string label, string type) => type switch
+        {
+            "number" => double.TryParse(label, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : label,
+            "boolean" => bool.TryParse(label, out var b) ? b : label,
+            _ => label,
+        };
+
+        private static string? NullIfEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s;
+    }
+
+    /// <summary>An error surfaced to the MCP client as a tool failure with a clean message.</summary>
+    /// <summary>
+    /// A tool error the agent should read. Deriving from McpException is what makes the SDK pass
+    /// the message to the client; a plain Exception reaches the agent only as "An error occurred
+    /// invoking 'tool'", which hid every not-found, not-ready and key-scope reason.
+    /// </summary>
+    public sealed class McpToolException(string message) : ModelContextProtocol.McpException(message);
+}

@@ -1,0 +1,171 @@
+.soa-tab { margin-top: 0; }
+/* The text and the chip as wide as a settings group; the row goes on to the page's right edge,
+   where Observr's action sits (ObservrPageAction). */
+.soa-intro { display: flex; align-items: flex-start; gap: 10px; }
+.soa-intro p { flex: 0 1 510px; margin: 0 0 calc(var(--spacing) * 2); }
+/* On a narrow screen the chip goes above the text, so the text gets the full width. */
+@media (max-width: 768px) {
+    .soa-intro { flex-direction: column-reverse; }
+    .soa-intro p { flex: none; }
+}
+::deep .soa-table { max-width: 640px; margin-bottom: 24px; }
+/* Two columns: the settings on the left, one under the other, as wide as a settings group; the
+   tester on the right, sticky under the header, so it stays in view while a setting is changed.
+   A container query, not a media query: the tab sits inside a page with its own gutters. On a
+   narrow tab the two stack, the tester first. */
+.soa-tab { container-type: inline-size; }
+.soa-layout {
+    display: grid;
+    /* Equal halves: a settings group is never wider than 640px anyway, and the tester needs
+       the room for an answer. */
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0 24px;
+    align-items: start;
+    max-width: 1304px;
+}
+.soa-settings { min-width: 0; }
+.soa-group { min-width: 0; break-inside: avoid; }
+.soa-preview {
+    min-width: 0;
+    position: sticky;
+    /* Taller than the window it scrolls inside itself, so the field stays reachable. */
+    max-height: calc(100dvh - var(--header-height, 60px) - 40px);
+    overflow-y: auto;
+    /* The page scrolls inside the shell's content area, which begins under the header, so the
+       offset is the page's own top gap, not the header's height (measured: the header's height
+       here put the tester 76px below the header's edge). */
+    top: 20px;
+}
+@container (max-width: 899px) {
+    .soa-layout { grid-template-columns: minmax(0, 1fr); }
+    .soa-preview { position: static; order: -1; }
+}
+/* The widest windows: the settings in two balanced columns (multi-column, so a long group
+   leaves no hole under a short one), the tester in a third. Three groups' widths plus the gaps. */
+@container (min-width: 1500px) {
+    .soa-layout { grid-template-columns: 2fr 1fr; max-width: 1968px; }
+    .soa-settings { columns: 2; column-gap: 24px; column-fill: balance; }
+}
+::deep .soa-cell { padding: 12px 15px; }
+
+.soa-label { display: block; font: var(--text-sm); color: var(--lv7); }
+::deep .soa-row--set .soa-label { color: var(--lv8); font-weight: var(--med); }
+/* The tooltip around a name is inline-flex, which put the name in a line box of its own, below
+   where the icon beside it is placed. As a block-level row of the name's width it sits as the name
+   did alone. */
+.soa-row-body ::deep .indx-tooltip-wrapper { display: flex; width: fit-content; }
+/* A name with a fuller explanation in its tooltip: a dotted underline, as a definition reads. */
+.soa-label--explained { text-decoration: underline dotted var(--lv4); text-underline-offset: 3px; cursor: help; }
+.soa-help { display: block; font: var(--text-xs); color: var(--lv5); margin-top: 2px; }
+.soa-control { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; margin-top: 10px; min-height: 28px; }
+.soa-control > ::deep * { min-width: 0; }
+.soa-control ::deep textarea { width: 100%; }
+.soa-select { min-width: 260px; }
+.soa-number { width: 110px; }
+.soa-error { color: var(--CSignal); font: var(--text-sm); margin-top: 10px; }
+
+/* The tester: a visitor's search box, drawn like the Search preview's panel, filling its column. */
+.soa-try {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    box-sizing: border-box;
+    margin-bottom: 24px;
+    padding: 12px;
+    background: var(--lv0);
+    border: 0.5px solid var(--lv3);
+    border-radius: var(--radius);
+}
+.soa-try-head { display: flex; flex-direction: column; gap: 2px; margin-bottom: 2px; }
+.soa-try-head-row { display: flex; align-items: center; gap: 12px; }
+/* The hits, as the judge reads them: title, section, one line of snippet. */
+.soa-try-results { display: flex; flex-direction: column; gap: 6px; }
+.soa-try-results-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.soa-try-hits { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+.soa-try-hit { font: var(--text-xs); color: var(--lv6); }
+.soa-try-hit-title { color: var(--lv8); font: var(--text-sm); }
+.soa-try-hit-section { margin-left: 8px; color: var(--lv5); }
+.soa-try-hit-snippet { display: block; color: var(--lv6); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.soa-try-title { font: var(--text-sm); font-weight: var(--med); color: var(--lv8); }
+.soa-try-off { margin-top: 0; }
+/* intrface's offer row: always this tall, so an offer appearing moves nothing under it. */
+/* As tall as a micro button (30px), whatever it holds, so the offer arriving moves nothing. */
+.soa-try-offer { display: flex; align-items: center; gap: 10px; min-height: 30px; min-width: 0; flex-wrap: wrap; }
+/* "No offer" drawn as StreamStatus draws its line, the flat spectrum where the spinner was. */
+.soa-try-none { display: flex; align-items: center; gap: 8px; font: var(--text-xs); color: var(--lv5); }
+.soa-try-none-icon { display: inline-flex; color: var(--lv4); }
+.soa-try-hint { display: inline-flex; align-items: center; gap: 4px; font: var(--text-xs); color: var(--lv4); }
+.soa-kbd { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px; padding: 0 5px; font: var(--text-2xs); color: var(--lv5); background: var(--lv2); border-radius: 3px; }
+/* The judge's scores, quiet, with the tester's own tools at the end. */
+.soa-try-scores { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding-top: 8px; border-top: 1px solid var(--lv2); }
+.soa-try-spacer { flex: 1; }
+.soa-try-score { display: inline-flex; flex-wrap: wrap; align-items: center; row-gap: 6px; font: var(--text-xs); color: var(--lv6); font-variant-numeric: tabular-nums; }
+::deep .soa-offer--strong { background: var(--CPositive); color: var(--lv0); }
+::deep .soa-offer--invite { background: var(--lv3); color: var(--lv8); }
+::deep .soa-offer--none { background: var(--lv2); color: var(--lv6); }
+.soa-state {
+    margin: 0;
+    padding: 12px;
+    background: var(--lv1);
+    border-radius: 6px;
+    font: var(--text-xs);
+    font-family: var(--font-mono, monospace);
+    color: var(--lv7);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    max-height: 360px;
+    overflow: auto;
+}
+.soa-try-filters { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; }
+/* The answer on its way: the step, then skeleton lines where it will land, as the Agent panel. */
+.soa-try-pending-lines { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; max-width: 420px; }
+/* The answer as a chat turn, as intrface's AskPanel shows it. */
+.soa-try-turn { display: flex; flex-direction: column; gap: 16px; padding-top: 12px; border-top: 1px solid var(--lv2); }
+.soa-sources { margin: 4px 0 0; padding-left: 20px; font: var(--text-xs); color: var(--lv6); }
+.soa-key { color: var(--lv5); margin-left: 6px; font-variant-numeric: tabular-nums; }
+
+/* A setting's row: its icon beside the name, help and control. */
+.soa-row { display: flex; gap: 12px; align-items: flex-start; }
+/* 14px: a pixl icon is a 7x5 grid, sharp only at a multiple of 7 (16 put each cell on 2.29 screen
+   pixels, uneven on a 1x screen). Two pixels down to sit level with the name, as 16 did at one. */
+.soa-icon { color: var(--lv5); flex: none; margin-top: 2px; display: inline-flex; }
+::deep .soa-row--set .soa-icon { color: var(--lv8); }
+.soa-row-body { flex: 1; min-width: 0; }
+
+/* The 0 to 1 scale above the thresholds: nothing, invitation, offer. */
+.soa-scale { margin-top: 12px; }
+/* A line its switch has turned off: still there, read as not in use. */
+.soa-threshold--off .soa-threshold-label, .soa-threshold--off .soa-threshold-value { color: var(--lv5); }
+.soa-scale-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--lv2); }
+.soa-scale-none { background: var(--lv2); }
+.soa-scale-hint { background: var(--lv3); }
+.soa-scale-invite { background: var(--lv4); }
+.soa-scale-strong { background: var(--CPositive); }
+.soa-scale-ticks { position: relative; display: flex; justify-content: space-between; margin-top: 6px;
+    font: var(--text-xs); color: var(--lv5); font-variant-numeric: tabular-nums; }
+.soa-scale-mark { position: absolute; transform: translateX(-50%); color: var(--lv7); }
+
+/* One offer's pair of sliders. */
+.soa-thresholds { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.soa-threshold { display: grid; grid-template-columns: 120px 1fr 40px; align-items: center; gap: 10px; width: 100%; }
+.soa-threshold-label { font: var(--text-xs); color: var(--lv6); }
+.soa-threshold-value { font: var(--text-sm); color: var(--lv8); font-variant-numeric: tabular-nums; text-align: right; }
+.soa-threshold ::deep .soa-slider { width: 100%; }
+
+
+/* Knowledge: the markdown as typed, and as it reads, below it. */
+.soa-knowledge { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+.soa-knowledge-preview { font: var(--text-sm); color: var(--lv7); padding: 10px 12px; background: var(--lv1); border: 0.5px solid var(--lv3); border-radius: var(--radius); }
+.soa-knowledge-preview ::deep p { margin: 0 0 6px; }
+.soa-knowledge-preview ::deep :last-child { margin-bottom: 0; }
+.soa-knowledge-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.soa-knowledge-files { display: flex; gap: 4px; }
+
+/* The mode: the five side by side, and what the chosen one does under them, a size up from the
+   other settings' help, since it is the setting that decides most. */
+/* The full width up to its cap, whatever the help under it says: it sized to the text before. */
+.soa-mode { display: flex; flex-direction: column; gap: 8px; width: 100%; max-width: 520px; }
+.soa-mode-help { margin: 0; font: var(--text-sm); color: var(--lv6); }
+
+/* A judge's score in the tester: its name, the meter with its thresholds, its value, on one line. */
+.soa-score { display: inline-flex; align-items: center; gap: 6px; margin-right: 12px; white-space: nowrap; }

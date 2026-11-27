@@ -1,0 +1,386 @@
+@* The dataset's own text rules (17 Nov 2026, DatasetTextRuleStore): how text is read before it is
+   matched, as rows of From, a sign and To. Replacements are strings in their order; folds are
+   letters, with one direction for the whole table, shown as the sign of every row: an arrow when
+   both letters are kept (one-way), an equals sign when they are one. Indx's own tables are shown
+   and can be switched off one by one. Drawn as the query parameters' groups are, a table with a
+   setting in each row: its name, its help and its control under them. Unlike them this is built
+   into the index, so it has its own Save, which rebuilds the dataset from its store in the
+   background; the dataset must be Ready. A field's own replacements are in its profile. The
+   shortest word (18 Nov 2026) is the tokenizer's, not the normalizer's, but saved and rebuilt the
+   same way, so it is a row here. *@
+@using Indx.Api
+@using IndxServer.Engine
+@using IndxServer.Services
+@implements IDisposable
+
+<div class="tr-panel">
+    <ReadOnlyArea Editable="@CanEdit">
+    <Table AriaLabel="Text" Class="tr-table">
+        <thead>
+            <tr><th>Text</th></tr>
+        </thead>
+        <tbody>
+            <TableRow Class="@(_replacements.Count > 0 ? "tr-row--set" : null)">
+                <TableCell Class="tr-cell">
+                    <span class="tr-label">Replacements</span>
+                    <span class="tr-help">Strings replaced in every searched field before it is indexed and before a search is read: "&" to "og" makes Ole & Dole and Ole og Dole the same. Read in this order, before Indx's own. Write them in small letters; an empty To removes the text. A field's own are in its profile.</span>
+                    <div class="tr-control">
+                        @foreach (var row in _replacements)
+                        {
+                            <div class="tr-row" @key="row">
+                                <InputField @bind-Value="row.From" Immediate aria-label="From" placeholder="&" class="tr-text" disabled="@(!CanEdit)" />
+                                <span class="tr-sign"><Indx.Systm.Blazor.Icons.ArrowRight Size="14" Color="currentColor" /></span>
+                                <InputField @bind-Value="row.To" Immediate aria-label="To" placeholder="og" class="tr-text" disabled="@(!CanEdit)" />
+                                <Tooltip Content="Delete the replacement"><Button Variant="ghost" IconLeft="DatasetIcons.Erase" aria-label="Delete the replacement" Disabled="@(!CanEdit)" @onclick="@(() => _replacements.Remove(row))" /></Tooltip>
+                            </div>
+                        }
+                        <div><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.ShowMore" Disabled="@(!CanEdit)" @onclick="@(() => _replacements.Add(new Row()))">Add replacement</Button></div>
+                    </div>
+                </TableCell>
+            </TableRow>
+
+            <TableRow Class="@(_folds.Count > 0 ? "tr-row--set" : null)">
+                <TableCell Class="tr-cell">
+                    <span class="tr-label">Folds</span>
+                    <span class="tr-help">One letter read as another, in every searched field. A row for a letter Indx already folds takes the place of Indx's.</span>
+                    <div class="tr-control">
+                        @foreach (var row in _folds)
+                        {
+                            <div class="tr-row tr-row--fold" @key="row">
+                                <InputField @bind-Value="row.From" Immediate aria-label="Letter" maxlength="1" placeholder="é" class="tr-text" disabled="@(!CanEdit)" />
+                                <span class="tr-sign" title="@(_oneWay ? "One-way: both letters are kept" : "Both ways: one letter")">
+                                    @if (_oneWay) { <Indx.Systm.Blazor.Icons.ArrowRight Size="14" Color="currentColor" /> }
+                                    else { <Indx.Systm.Blazor.Icons.Equal Size="14" Color="currentColor" /> }
+                                </span>
+                                <InputField @bind-Value="row.To" Immediate aria-label="Read as" maxlength="1" placeholder="e" class="tr-text" disabled="@(!CanEdit)" />
+                                <Tooltip Content="Delete the fold"><Button Variant="ghost" IconLeft="DatasetIcons.Erase" aria-label="Delete the fold" Disabled="@(!CanEdit)" @onclick="@(() => _folds.Remove(row))" /></Tooltip>
+                            </div>
+                        }
+                        <div><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.ShowMore" Disabled="@(!CanEdit)" @onclick="@(() => _folds.Add(new Row()))">Add fold</Button></div>
+                    </div>
+                </TableCell>
+            </TableRow>
+
+            <TableRow Class="@(!_oneWay ? "tr-row--set" : null)">
+                <TableCell Class="tr-cell">
+                    <span class="tr-label">One-way folds</span>
+                    <span class="tr-help">@(_oneWay
+                        ? "On: both letters are kept. \"gra\" finds grå, and \"grå\" still means grå. Indx's own folds are read the same way."
+                        : "Off: they are one letter. \"grå\" and \"gra\" are the same search, in less memory. Indx's own folds are read the same way.")</span>
+                    <div class="tr-control">
+                        <ToggleSwitch Label="One-way" Variant="positive" Checked="@_oneWay" CheckedChanged="@(v => _oneWay = v)" Disabled="@(!CanEdit)" />
+                    </div>
+                </TableCell>
+            </TableRow>
+
+            <TableRow Class="@(_minimumWordSize != null ? "tr-row--set" : null)">
+                <TableCell Class="tr-cell">
+                    <span class="tr-label">Shortest word</span>
+                    <span class="tr-help">A word shorter than this is not looked up as a word, and is found only as part of a longer one. 1 makes single letters and digits words, for codes and sizes such as "a 4"; 3 leaves two-letter words to the pattern matching.</span>
+                    <div class="tr-control">
+                        <div class="tr-size"><SelectField Size="micro" Options="MinimumWordSizes" Value="@((_minimumWordSize ?? TokenizerSetup.Default.MinimumWordSize).ToString())"
+                                     ValueChanged="@(v => _minimumWordSize = int.TryParse(v, out var n) && n != TokenizerSetup.Default.MinimumWordSize ? n : null)" /></div>
+                    </div>
+                </TableCell>
+            </TableRow>
+
+            @* Indx's own tables, shown and switched off one by one: a letter or a string taken out
+               is read as it is written. Drawn only when opened: the tables are long. *@
+            <TableRow Class="@(_removedFolds.Count + _removedReplacements.Count > 0 ? "tr-row--set" : null)">
+                <TableCell Class="tr-cell">
+                    <span class="tr-label">Indx's own rules</span>
+                    <span class="tr-help">What Indx does by itself, before the rows above. Click one to switch it off for this dataset: å taken out keeps å apart from a.
+                        @if (_removedFolds.Count + _removedReplacements.Count > 0) { <span> @(_removedFolds.Count + _removedReplacements.Count) switched off.</span> }</span>
+                    <div class="tr-control">
+                        <div>
+                            <Button Variant="ghost" Size="micro" IconRight="@(_showOwn ? DatasetIcons.ChevronDown : DatasetIcons.ChevronRight)" @onclick="@(() => _showOwn = !_showOwn)">
+                                @($"{ShippedFolds.Sum(g => g.Letters.Length)} letters folded, {ShippedRules.Length} replacements")
+                            </Button>
+                        </div>
+                        @if (_showOwn)
+                        {
+                            <span class="tr-sublegend">Folds, by the letter they are read as</span>
+                            <div class="tr-own">
+                                @foreach (var g in ShippedFolds)
+                                {
+                                    <div class="tr-own-row">
+                                        <span class="tr-own-to">@g.ReadAs</span>
+                                        <span class="tr-chips">
+                                            @foreach (var letter in g.Letters)
+                                            {
+                                                var on = !letter.Patterns.Any(_removedFolds.Contains);
+                                                <Chip Class="tr-chip" Selected="@on" Disabled="@(!CanEdit)" Title="@letter.Title"
+                                                      OnClick="@(() => ToggleFoldLetter(letter.Patterns, on))">@letter.Shown</Chip>
+                                            }
+                                        </span>
+                                    </div>
+                                }
+                            </div>
+                            <span class="tr-sublegend">Replacements</span>
+                            <div class="tr-chips">
+                                @* The characters that draw nothing as one chip a kind, which
+                                   switches the kind off whole; the rest one chip each. *@
+                                @foreach (var g in InvisibleGroups)
+                                {
+                                    var on = !g.Patterns.Any(_removedReplacements.Contains);
+                                    <Chip Class="tr-chip tr-chip--group" Selected="@on" Disabled="@(!CanEdit)" Title="@g.Examples"
+                                          OnClick="@(() => ToggleGroup(g.Patterns, on))">@g.Name (@g.Patterns.Length) → @Shown(g.To)</Chip>
+                                }
+                                @foreach (var (from, to) in VisibleRules)
+                                {
+                                    <Chip Class="tr-chip" Selected="@(!_removedReplacements.Contains(from))" Disabled="@(!CanEdit)"
+                                          OnClick="@(() => Toggle(_removedReplacements, from))">@Shown(from) → @Shown(to)</Chip>
+                                }
+                            </div>
+                        }
+                    </div>
+                </TableCell>
+            </TableRow>
+        </tbody>
+    </Table>
+    </ReadOnlyArea>
+
+    <p class="tr-hint">Text is built into the index: saving rebuilds it in the background, and searches use the old rules until it is done.</p>
+    @if (Editable && !Ready)
+    {
+        <p class="tr-hint">The dataset must be loaded and ready to change these: wake it up first.</p>
+    }
+    @if (_rebuilding)
+    {
+        <p class="tr-status"><Spinner Size="14" /> <span>Rebuilding the index with the new rules. Searches use the old ones until it is done.</span></p>
+    }
+    else if (!string.IsNullOrEmpty(_done))
+    {
+        <p class="tr-status">@DatasetIcons.Yes(14) <span>@_done</span></p>
+    }
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <p class="tr-error">@_error</p>
+    }
+    @if (IsDirty && CanEdit)
+    {
+        <div class="indx-form-actions tr-actions">
+            <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" Loading="@_saving" @onclick="SaveAsync">Save and rebuild</Button>
+            <Button Variant="secondary" Size="micro" Disabled="@_saving" @onclick="Load">Cancel</Button>
+        </div>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string TeamId { get; set; } = "";
+    [Parameter, EditorRequired] public string DataSetName { get; set; } = "";
+    /// <summary>Whether the viewer may change the dataset.</summary>
+    [Parameter] public bool Editable { get; set; }
+    /// <summary>Whether the dataset is loaded and ready: the rules are changed only then.</summary>
+    [Parameter] public bool Ready { get; set; }
+
+    /// <summary>A replacement or a fold while it is edited; one with no From is left out when saving.</summary>
+    private sealed class Row
+    {
+        public string? From { get; set; }
+        public string? To { get; set; }
+    }
+
+    private List<Row> _replacements = [];
+    private List<Row> _folds = [];
+    private HashSet<string> _removedFolds = new(StringComparer.Ordinal);
+    private HashSet<string> _removedReplacements = new(StringComparer.Ordinal);
+    private bool _showOwn;
+
+    private static void Toggle(HashSet<string> removed, string what)
+    {
+        if (!removed.Remove(what)) removed.Add(what);
+    }
+
+    /// <summary>A letter of Indx's own fold table as one chip: its small form shown, its capital
+    /// with it (17 Nov 2026). In a case-insensitive field, the default, text is lower-cased before
+    /// it is folded, so the capital's fold does nothing on its own; as two chips, "Å" came first
+    /// and was switched off in place of "å", and å went on being read as a. In a case-sensitive
+    /// field both folds apply, and the chip switches both.</summary>
+    internal sealed record FoldLetter(string Shown, string[] Patterns, string Title);
+
+    /// <summary>Indx's own folds, a chip per letter, grouped by the letter they are read as.</summary>
+    internal static readonly (char ReadAs, FoldLetter[] Letters)[] ShippedFolds = MakeShippedFolds();
+
+    private static (char, FoldLetter[])[] MakeShippedFolds()
+    {
+        var c = TextNormalizer.Default.CharReplacer;
+        var folds = c.ToBeReplaced.Zip(c.ReplaceBy).ToList();
+        var inTable = folds.Select(p => p.First).ToHashSet();
+        return folds
+            .GroupBy(p => char.ToLowerInvariant(p.First))
+            .Select(g =>
+            {
+                var letters = g.Select(p => p.First).OrderBy(l => char.IsUpper(l)).ToArray();
+                var readAs = char.ToLowerInvariant(g.OrderBy(p => char.IsUpper(p.First)).First().Second);
+                var shown = inTable.Contains(g.Key) ? g.Key : letters[0];
+                var title = string.Join(", ", letters.Select(l => $"{l} U+{(int)l:X4}"));
+                return (ReadAs: readAs, Letter: new FoldLetter(shown.ToString(), letters.Select(l => l.ToString()).ToArray(), title));
+            })
+            .GroupBy(x => x.ReadAs, x => x.Letter)
+            .OrderBy(g => g.Key)
+            .Select(g => (g.Key, g.OrderBy(l => l.Shown, StringComparer.Ordinal).ToArray()))
+            .ToArray();
+    }
+
+    /// <summary>A letter switched off with its capital when it is on, else on again with it.</summary>
+    private void ToggleFoldLetter(string[] patterns, bool on)
+    {
+        foreach (var p in patterns)
+            if (on) _removedFolds.Add(p); else _removedFolds.Remove(p);
+    }
+
+    /// <summary>Indx's own replacements, in their order.</summary>
+    private static readonly (string From, string To)[] ShippedRules =
+        TextNormalizer.Default.StringReplacer.ToReplace.Zip(TextNormalizer.Default.StringReplacer.ReplaceBy, (f, t) => (f, t ?? "")).ToArray();
+
+    /// <summary>Indx's own replacements whose text can be read, one chip each.</summary>
+    internal static readonly (string From, string To)[] VisibleRules = ShippedRules.Where(r => !r.From.All(IsInvisible)).ToArray();
+
+    /// <summary>A kind of character that draws nothing, with what Indx makes of it, and the
+    /// patterns of its replacements: one chip, switched off whole. A tab, a soft hyphen or a
+    /// combining accent is never one anybody wants back alone.</summary>
+    internal sealed record InvisibleGroup(string Name, string To, string[] Patterns, string Examples);
+
+    internal static readonly InvisibleGroup[] InvisibleGroups = ShippedRules
+        .Where(r => r.From.All(IsInvisible))
+        .GroupBy(r => (Kind: KindOf(r.From), r.To))
+        .Select(g => new InvisibleGroup(g.Key.Kind, g.Key.To, g.Select(r => r.From).ToArray(),
+            string.Join(", ", g.Take(6).Select(r => Shown(r.From))) + (g.Count() > 6 ? ", …" : "")))
+        .OrderByDescending(g => g.Patterns.Length)
+        .ToArray();
+
+    private static string KindOf(string pattern)
+    {
+        var c = char.GetUnicodeCategory(pattern[0]);
+        return c switch
+        {
+            System.Globalization.UnicodeCategory.NonSpacingMark or System.Globalization.UnicodeCategory.EnclosingMark => "Combining accents",
+            System.Globalization.UnicodeCategory.Control => "Control characters",
+            System.Globalization.UnicodeCategory.Format => pattern[0] == '\u200B' ? "Zero-width space" : "Invisible marks",
+            _ => "Other spaces",
+        };
+    }
+
+    private static bool IsInvisible(char ch)
+    {
+        var cat = char.GetUnicodeCategory(ch);
+        return char.IsWhiteSpace(ch) || char.IsControl(ch)
+            || cat is System.Globalization.UnicodeCategory.Format or System.Globalization.UnicodeCategory.NonSpacingMark
+                or System.Globalization.UnicodeCategory.EnclosingMark;
+    }
+
+    /// <summary>A kind switched off whole when it is on, else on again whole.</summary>
+    private void ToggleGroup(string[] patterns, bool on)
+    {
+        foreach (var p in patterns)
+            if (on) _removedReplacements.Add(p); else _removedReplacements.Remove(p);
+    }
+
+    /// <summary>A string as it can be read: a space, nothing, and a character that draws nothing
+    /// by its code point.</summary>
+    private static string Shown(string s)
+    {
+        if (s.Length == 0) return "nothing";
+        if (s == " ") return "space";
+        var sb = new System.Text.StringBuilder();
+        foreach (var ch in s)
+        {
+            var cat = char.GetUnicodeCategory(ch);
+            bool drawn = !char.IsWhiteSpace(ch) && !char.IsControl(ch) && !char.IsSurrogate(ch)
+                && cat is not (System.Globalization.UnicodeCategory.Format or System.Globalization.UnicodeCategory.NonSpacingMark
+                    or System.Globalization.UnicodeCategory.EnclosingMark or System.Globalization.UnicodeCategory.OtherNotAssigned
+                    or System.Globalization.UnicodeCategory.PrivateUse);
+            sb.Append(drawn ? ch.ToString() : $"U+{(int)ch:X4}");
+        }
+        return sb.ToString();
+    }
+    private bool _oneWay = true;
+    /// <summary>The shortest word, null for Indx's own (2): choosing 2 is choosing none.</summary>
+    private int? _minimumWordSize;
+
+    private static readonly SelectField.SelectOption[] MinimumWordSizes = Enumerable
+        .Range(DatasetTextRuleStore.LowestMinimumWordSize, DatasetTextRuleStore.HighestMinimumWordSize - DatasetTextRuleStore.LowestMinimumWordSize + 1)
+        .Select(n => new SelectField.SelectOption(
+            n == TokenizerSetup.Default.MinimumWordSize ? $"{n} characters (Indx's)" : n == 1 ? "1 character" : $"{n} characters", n.ToString()))
+        .ToArray();
+
+    private DatasetTextRules _saved = new();
+    private string? _loadedFor;
+    private bool _saving, _rebuilding, _disposed;
+    private string? _error, _done;
+
+    private bool CanEdit => Editable && Ready && !_rebuilding;
+
+    private DatasetTextRules Edited => new()
+    {
+        // KeepOriginal is a field's (its profile): here a replacement replaces.
+        Replacements = _replacements.Where(r => !string.IsNullOrEmpty(r.From)).Select(r => new TextRule(r.From!, r.To ?? "")).ToList(),
+        Folds = _folds.Where(r => !string.IsNullOrEmpty(r.From) || !string.IsNullOrEmpty(r.To)).Select(r => new TextFold(r.From ?? "", r.To ?? "")).ToList(),
+        OneWay = _oneWay,
+        RemovedFolds = [.. _removedFolds],
+        RemovedReplacements = [.. _removedReplacements],
+        MinimumWordSize = _minimumWordSize,
+    };
+
+    private bool IsDirty => !Edited.SameAs(_saved);
+
+    protected override void OnParametersSet()
+    {
+        var key = $"{TeamId}\0{DataSetName}";
+        if (_loadedFor == key) return;
+        _loadedFor = key;
+        Load();
+    }
+
+    private void Load()
+    {
+        // No engine registry (a page rendered without the server started): none of its own.
+        try { _saved = IndxServerInternalApi.Manager.GetTextRules(DataSetName, TeamId) ?? new DatasetTextRules(); }
+        catch (InvalidOperationException) { _saved = new DatasetTextRules(); }
+        _replacements = _saved.Replacements.Select(r => new Row { From = r.From, To = r.To }).ToList();
+        _folds = _saved.Folds.Select(f => new Row { From = f.From, To = f.To }).ToList();
+        _oneWay = _saved.OneWay;
+        _removedFolds = new(_saved.RemovedFolds, StringComparer.Ordinal);
+        _removedReplacements = new(_saved.RemovedReplacements, StringComparer.Ordinal);
+        _minimumWordSize = _saved.MinimumWordSize == TokenizerSetup.Default.MinimumWordSize ? null : _saved.MinimumWordSize;
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!CanEdit || _saving) return;
+        _error = _done = null;
+        var rules = Edited;
+        _saving = true;
+        try
+        {
+            var manager = IndxServerInternalApi.Manager;
+            var refused = await Task.Run(() => manager.SetTextRules(DataSetName, TeamId, rules));
+            if (refused != null) { _error = refused; return; }
+            _saved = rules;
+            _saving = false;
+            _rebuilding = true;
+            StateHasChanged();
+            // The rebuild is claimed before SetTextRules returns; its outcome is the status's.
+            while (!_disposed && manager.IsShadowBuildInProgress(DataSetName, TeamId))
+                await Task.Delay(1000);
+            if (_disposed) return;
+            _rebuilding = false;
+            if (manager.ShadowBuildError(DataSetName, TeamId) is { Length: > 0 } failed)
+            {
+                _error = $"The rebuild failed, and the rules are as they were: {failed}";
+                Load();
+            }
+            else _done = "The index is rebuilt with these rules.";
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not save: {ex.Message}";
+        }
+        finally { _saving = false; _rebuilding = false; }
+    }
+
+    public void Dispose() => _disposed = true;
+
+}

@@ -1,0 +1,64 @@
+/* The bars over the two numbers. The port of the React HistogramRange's stylesheet. */
+.indx-histrange {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    width: 100%;
+    min-width: 0;
+}
+
+.indx-histrange-bars {
+    display: flex;
+    align-items: flex-end;
+    gap: 1px;
+    height: 20px;
+    cursor: crosshair;
+    user-select: none;
+    touch-action: none;
+}
+
+.indx-histrange-bar {
+    flex: 1;
+    min-width: 1px;
+    background: var(--lv3);
+    border-radius: 1px 1px 0 0;
+}
+
+.indx-histrange-bar--in {
+    background: var(--lv8);
+}
+
+.indx-histrange-ends {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 2px;
+    font: var(--text-xs);
+    color: var(--lv5);
+}
+
+.indx-histrange-ends ::deep input {
+    width: 64px;
+    flex: none;
+    height: 24px;
+    min-height: 24px;
+    padding: 0 4px;
+    color: var(--lv7);
+    font-variant-numeric: tabular-nums;
+}
+
+.indx-histrange-ends ::deep .indx-histrange-upto {
+    text-align: right;
+}
+
+.indx-histrange-ends ::deep input::placeholder {
+    color: var(--lv4);
+}
+
+.indx-histrange--disabled {
+    opacity: 0.5;
+}
+
+.indx-histrange--disabled .indx-histrange-bars {
+    cursor: default;
+}

@@ -1,0 +1,476 @@
+@* The dataset's query parameters (QueryParameterStore): the values a search takes when its
+   request leaves them out (6.0: the mode, and the members of match, candidates and ranking). Each
+   value is "not set" (the engine default applies), or set here; a request that sends the value
+   still wins. A working copy saved with the SaveBar, as boost rules are. Needs no engine, so it
+   works while the dataset is asleep. *@
+@using System.Text.Json
+@using System.Text.Json.Serialization
+@using Indx.Api
+@using Indx.Http
+@using IndxServer.Models
+@inherits DatasetTabBase
+@inject QueryParameterStore Store
+
+@if (!Active) { return; }
+
+<div class="qp-tab">
+    <p class="indx-section-help qp-intro">
+        What a search uses when its request leaves a value out. A value the request sends always wins,
+        so a search box that sets its own keeps it. Changes apply from the next search; nothing is reindexed.
+    </p>
+
+    @* Each table has one column: a setting's name and help, and its control on the last line
+       under them. The groups sit side by side where there is room, one under the other where
+       there is not. On the front what an owner reaches for when a search feels wrong, the typos,
+       the word being typed and the result list; under Advanced how documents are fetched and the
+       ranking's weights, right as they are for nearly every dataset (Nov 2026: the typo lengths
+       were under Advanced, the mode and the candidates on the front). *@
+    <ReadOnlyArea Editable="@Ctx.IsEditor">
+    <div class="qp-groups">
+        <Table AriaLabel="Typos" Class="qp-table">
+            @Head("Typos")
+            <tbody>
+                @ChoiceRow(ToleranceParam)
+                @foreach (var p in TypoParams) { @IntRow(p) }
+                @BoolRow(RungsParam)
+            </tbody>
+        </Table>
+
+        <Table AriaLabel="Typing" Class="qp-table">
+            @Head("Typing")
+            <tbody>
+                @foreach (var p in TypingParams) { @IntRow(p) }
+                @BoolRow(JoinedWordsParam)
+            </tbody>
+        </Table>
+
+        <Table AriaLabel="Result list" Class="qp-table">
+            @Head("Result list")
+            <tbody>
+                @foreach (var p in ResultParams) { @BoolRow(p) }
+            </tbody>
+        </Table>
+    </div>
+    </ReadOnlyArea>
+
+    <div class="qp-advanced">
+        <Button Variant="ghost" Size="micro" IconRight="@(ShowAdvanced ? DatasetIcons.ChevronDown : DatasetIcons.ChevronRight)"
+                @onclick="() => _showAdvanced = !ShowAdvanced">Advanced</Button>
+        @if (!ShowAdvanced && FetchingChanged is { } changed)
+        {
+            @* The two biggest switches are out of sight here, so a changed one is said on the front. *@
+            <span class="qp-advanced-note">@changed</span>
+        }
+    </div>
+    @if (ShowAdvanced)
+    {
+        @* Each table its own read-only area, so Text, which has its own, is a group of the same
+           grid and flows with the others; for a viewer its list of Indx's own rules still opens. *@
+        <div class="qp-groups">
+            <ReadOnlyArea Editable="@Ctx.IsEditor">
+            <Table AriaLabel="Fetching" Class="qp-table">
+                @Head("Fetching")
+                <tbody>
+                    @ChoiceRow(ModeParam)
+                    @BoolRow(RerankParam)
+                    @foreach (var p in FetchingParams) { @IntRow(p) }
+                </tbody>
+            </Table>
+            </ReadOnlyArea>
+
+            <ReadOnlyArea Editable="@Ctx.IsEditor">
+            <Table AriaLabel="Ranking weights" Class="qp-table">
+                @Head("Ranking weights")
+                <tbody>
+                    @foreach (var p in RankingParams) { @IntRow(p) }
+                    @foreach (var p in RankingBoolParams) { @BoolRow(p) }
+                </tbody>
+            </Table>
+            </ReadOnlyArea>
+
+            @* Not a query parameter: the dataset's text rules are built into the index and saved
+               by themselves (17 Nov 2026). They are under Advanced with the rest that is right as
+               it is for nearly every dataset. *@
+            <TextRulesPanel TeamId="@Ctx.TeamId" DataSetName="@Ctx.Name" Editable="@Ctx.IsEditor" Ready="@(Ctx.EngineState == SystemState.Ready)" />
+        </div>
+    }
+
+    @if (!string.IsNullOrEmpty(_error))
+    {
+        <p class="qp-error">@_error</p>
+    }
+
+    @if (ChangedUnderEdit)
+    {
+        <Alert Variant="warning">
+            <Title>Observr changed the saved settings</Title>
+            <Description>You have unsaved changes here. Save keeps yours; Cancel shows the ones Observr applied.</Description>
+        </Alert>
+    }
+    <SaveBar Visible="@(IsDirty && Ctx.IsEditor)" Message="Unsaved changes">
+        <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" Loading="@_saving" @onclick="SaveAsync">Save</Button>
+        <Button Variant="secondary" Size="micro" Disabled="@_saving" @onclick="Cancel">Cancel</Button>
+    </SaveBar>
+    @if (AnySet && Ctx.IsEditor)
+    {
+        <div class="indx-file-actions">
+            <Button Variant="ghost" Size="micro" @onclick="ClearAll">Use engine defaults for all</Button>
+        </div>
+    }
+</div>
+
+@code {
+    private static readonly JsonSerializerOptions JsonOpts = new()
+    {
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        Converters = { new JsonStringEnumConverter() },
+    };
+
+    // The engine's own values, read from the library so a changed default reaches the console.
+    private static readonly MatchSetup MatchDefaults = new();
+    private static readonly CandidateSetup CandidateDefaults = new();
+    private static readonly RankingSetup RankingDefaults = new();
+
+    /// <summary>A yes/no value. Get/Set work on the whole working copy.</summary>
+    // Name is the parameter's own name, as in the search body: the toggle's label, so the console
+    // and the API read the same.
+    private sealed record BoolParam(string Name, string Label, string Help, bool EngineDefault,
+        Func<DatasetQueryParameters, bool?> Get, Action<DatasetQueryParameters, bool?> Set);
+
+    /// <summary>A number, as a whole number on screen (a share as a percentage).</summary>
+    private sealed record IntParam(string Key, string Label, string Help, int EngineDefault, int Min, int Max,
+        Func<DatasetQueryParameters, int?> Get, Action<DatasetQueryParameters, int?> Set, string Unit = "");
+
+    /// <summary>One of a few values, by name.</summary>
+    private sealed record ChoiceParam(string Name, string Label, string Help, string EngineDefault,
+        IReadOnlyList<SelectField.SelectOption> Options,
+        Func<DatasetQueryParameters, string?> Get, Action<DatasetQueryParameters, string?> Set);
+
+    private static MatchProxy M(DatasetQueryParameters p) => p.Match ??= new MatchProxy();
+    private static CandidateProxy C(DatasetQueryParameters p) => p.Candidates ??= new CandidateProxy();
+    private static RankingProxy R(DatasetQueryParameters p) => p.Ranking ??= new RankingProxy();
+    private static int? Percent(float? share) => share is { } s ? (int)MathF.Round(s * 100) : null;
+    private static float? Share(int? percent) => percent is { } n ? n / 100f : null;
+
+    private static readonly ChoiceParam ModeParam = new("Mode", "How documents are fetched",
+        "EditDistance finds the documents holding every query word, exactly or within a typo or two, and orders them by how close the words are. Bm25f ranks every document by pattern recognition, closest first.",
+        nameof(SearchMode.EditDistance),
+        [new("EditDistance", nameof(SearchMode.EditDistance)), new("Bm25f", nameof(SearchMode.Bm25f))],
+        p => p.Mode?.ToString(), (p, v) => p.Mode = v == null ? null : Enum.Parse<SearchMode>(v));
+
+    private static readonly BoolParam RerankParam = new("Rerank", "Rerank",
+        "Orders the documents fetched by how fully and how closely they hold the query, words, joined words and the whole query as typed.",
+        RankingDefaults.Rerank, p => p.Ranking?.Rerank, (p, v) => R(p).Rerank = v);
+
+    private static readonly ChoiceParam ToleranceParam = new("Tolerance", "Typos",
+        "The most a query word may differ from a word in a document. A field can allow fewer, never more.",
+        nameof(Tolerance.TwoEdits),
+        [new("Exact", nameof(Tolerance.Exact)), new("One edit", nameof(Tolerance.OneEdit)), new("Two edits", nameof(Tolerance.TwoEdits)), new("Three edits", nameof(Tolerance.ThreeEdits))],
+        p => p.Match?.Tolerance?.ToString(), (p, v) => M(p).Tolerance = v == null ? null : Enum.Parse<Tolerance>(v));
+
+    private static readonly BoolParam RungsParam =
+        new("Rungs", "Every typo level", "Counts the exact matches and those within each typo level together, the exact first. Off, a search stops at the first level that finds anything.",
+            MatchDefaults.Rungs == Rungs.All, p => p.Match?.Rungs is { } r ? r == Rungs.All : null,
+            (p, v) => M(p).Rungs = v is { } on ? (on ? Rungs.All : Rungs.Fewest) : null);
+
+    private static readonly BoolParam JoinedWordsParam =
+        new("JoinedWords", "Joined and split words", "Matches words written together or apart, so \"head set\" finds \"headset\" and the other way round.",
+            MatchDefaults.JoinedWords, p => p.Match?.JoinedWords, (p, v) => M(p).JoinedWords = v);
+
+    private static readonly IntParam[] TypoParams =
+    [
+        new("oneEditFrom", "One typo from", "The shortest query word allowed one typo. 0 is never.",
+            MatchDefaults.OneEditFrom, 0, 64, p => p.Match?.OneEditFrom, (p, v) => M(p).OneEditFrom = v),
+        new("twoEditsFrom", "Two typos from", "The shortest query word allowed two typos. 0 is never.",
+            MatchDefaults.TwoEditsFrom, 0, 64, p => p.Match?.TwoEditsFrom, (p, v) => M(p).TwoEditsFrom = v),
+        new("threeEditsFrom", "Three typos from", "The shortest query word allowed three typos, where the typos and the field allow three. 0 is never.",
+            MatchDefaults.ThreeEditsFrom, 0, 64, p => p.Match?.ThreeEditsFrom, (p, v) => M(p).ThreeEditsFrom = v),
+    ];
+
+    private static readonly IntParam[] TypingParams =
+    [
+        new("typingPrefixFrom", "Start of a word from", "The word being typed also finds longer words it starts, from this many characters. 0 is never.",
+            MatchDefaults.TypingPrefixFrom, 0, 64, p => p.Match?.TypingPrefixFrom, (p, v) => M(p).TypingPrefixFrom = v),
+    ];
+
+    private static readonly BoolParam[] ResultParams =
+    [
+        new("Fallback", "Closest when nothing matches", "When no document holds every query word, return those holding the most of them. Off returns nothing instead.",
+            CandidateDefaults.Fallback, p => p.Candidates?.Fallback, (p, v) => C(p).Fallback = v),
+        new("FillWithMostWords", "Fill a short page", "When too few documents hold every query word to fill the page, list those holding most of the words below them, shown and not counted. Off keeps a title search to the one record it names.",
+            CandidateDefaults.FillWithMostWords, p => p.Candidates?.FillWithMostWords, (p, v) => C(p).FillWithMostWords = v),
+        new("Rest", "Related below the matches", "Below the documents holding every word, the best of the rest by pattern recognition.",
+            CandidateDefaults.Rest, p => p.Candidates?.Rest, (p, v) => C(p).Rest = v),
+    ];
+
+    private static readonly IntParam[] FetchingParams =
+    [
+        new("maxCandidates", "Candidates", "How many documents are ranked, in place of the rows times the candidates per row. Higher ranks more of a large match, and every search pays for it.",
+            0, 1, QueryParameterResolution.MaxCandidates, p => p.Candidates?.MaxCandidates, (p, v) => C(p).MaxCandidates = v),
+        new("fillReach", "Fill a short page from typos", "When too few documents hold every word on the level counted, fill the page from this many typo levels above it, shown below them and not counted. A document fills only if at most one word in three of the search is misspelt: one for up to three words, two for four to six. 0 never, the default, and right for title search. 1 helps a product search with few hits (\"chili\" finds \"chilli\" below it). 2 reaches two typos.",
+            CandidateDefaults.FillReach, 0, 2, p => p.Candidates?.FillReach, (p, v) => C(p).FillReach = v),
+        new("candidatesPerRow", "Candidates per row", "How many documents are ranked for each row a search asks for, at least the fewest candidates below and at most 5,000 in all.",
+            CandidateDefaults.CandidatesPerRow, 1, 1000, p => p.Candidates?.CandidatesPerRow, (p, v) => C(p).CandidatesPerRow = v),
+        new("noFallbackForNumbersFrom", "No fallback for a number from", "A search that is one number of at least this many digits (an ISBN, an EAN, a part number) and that no record holds shows nothing, rather than records sharing some of its digits. 0 is off. The field holding the numbers must be matched by its words.",
+            CandidateDefaults.NoFallbackForNumbersFrom, 0, 64, p => p.Candidates?.NoFallbackForNumbersFrom, (p, v) => C(p).NoFallbackForNumbersFrom = v),
+        new("minCandidates", "Fewest candidates", "The fewest documents ranked, when the rows times the candidates per row are fewer: a search for a few rows still ranks this many. 100 by default; higher finds more of a large match for a short list, and every such search pays for it.",
+            CandidateDefaults.MinCandidates, 1, 5000, p => p.Candidates?.MinCandidates, (p, v) => C(p).MinCandidates = v),
+        new("typingPrefixOneEditFrom", "Start of a word with a typo from", "The start of a word being typed, within one typo, from this many characters. 0 is never.",
+            MatchDefaults.TypingPrefixOneEditFrom, 0, 64, p => p.Match?.TypingPrefixOneEditFrom, (p, v) => M(p).TypingPrefixOneEditFrom = v),
+    ];
+
+    private static readonly IntParam[] RankingParams =
+    [
+        new("share", "Reranking's share", "How much the reranking weighs against pattern recognition in the order, in percent.",
+            Percent(RankingDefaults.Share) ?? 0, 0, 100, p => Percent(p.Ranking?.Share), (p, v) => R(p).Share = Share(v), "%"),
+        new("typingShift", "Share moved while typing", "How far the share moves towards the reranker while the last word is being typed, in percent: the reranker reads where a word starts, which is what is being typed.",
+            Percent(RankingDefaults.TypingShift) ?? 0, 0, 100, p => Percent(p.Ranking?.TypingShift), (p, v) => R(p).TypingShift = Share(v), "%"),
+        new("longFieldFrom", "Long field from", "Where a record's field is longer than this many characters, the field counts for less in the reranker in that record, the more the longer (735 characters 79 %, 2,000 66 %), down to the floor below. 0 is never.",
+            RankingDefaults.LongFieldFrom, 0, 100_000, p => p.Ranking?.LongFieldFrom, (p, v) => R(p).LongFieldFrom = v),
+        new("longFieldWeightFloor", "Long field floor", "The least a long field counts for, in percent of its weight.",
+            Percent(RankingDefaults.LongFieldWeightFloor) ?? 0, 0, 100, p => Percent(p.Ranking?.LongFieldWeightFloor), (p, v) => R(p).LongFieldWeightFloor = Share(v), "%"),
+    ];
+
+    private static readonly BoolParam[] RankingBoolParams =
+    [
+        new("WholeQueryFloor", "Whole query first", "A document holding the whole query as typed ranks above one holding its words apart.",
+            RankingDefaults.WholeQueryFloor, p => p.Ranking?.WholeQueryFloor, (p, v) => R(p).WholeQueryFloor = v),
+    ];
+
+    private static readonly IntParam[] IntParams = [.. TypoParams, .. TypingParams, .. FetchingParams, .. RankingParams];
+
+    /// <summary>"maxCandidates" → "MaxCandidates": the name as the C# API spells it, as the toggles show.</summary>
+    private static string ParamName(IntParam p) => char.ToUpperInvariant(p.Key[0]) + p.Key[1..];
+    private string InputId(IntParam p) => $"qp-{Ctx.Name}-{p.Key}";
+
+    private bool _loaded;
+    private DatasetQueryParameters _edit = new();
+    private string _savedJson = "{}";
+    // The number fields as typed, so an unparseable entry stays on screen with its error.
+    private readonly Dictionary<string, NumberEntry> _text = new();
+    private readonly Dictionary<string, string> _textErrors = new();
+    private string? _error;
+    private bool _saving;
+
+    protected override void OnParametersSet()
+    {
+        if (Active && !_loaded) Load();
+    }
+
+    /// <summary>Set when Observr changed the saved parameters while this tab held unsaved edits.</summary>
+    private bool _changedUnderEdit;
+    /// <summary>The notice, while the edits it is about are still unsaved: a Save or a Cancel ends
+    /// them, and with them the notice, so a later edit does not show it for an old change.</summary>
+    private bool ChangedUnderEdit { get { if (!IsDirty) _changedUnderEdit = false; return _changedUnderEdit; } }
+
+    protected override void OnObservrApplied(IReadOnlySet<string> kinds)
+    {
+        if (!_loaded || !kinds.Contains(IndxServer.Services.Observr.ObservrProposal.QueryParametersKind)) return;
+        if (IsDirty) { _changedUnderEdit = true; return; }
+        Load();
+    }
+
+    private void Load()
+    {
+        _loaded = true;
+        _changedUnderEdit = false;
+        var saved = Store.Load(Ctx.TeamId, Ctx.Name);
+        _savedJson = Json(saved ?? new DatasetQueryParameters());
+        Reset(saved);
+    }
+
+    private void Reset(DatasetQueryParameters? from)
+    {
+        // A copy: the store's instance is shared with every search.
+        _edit = from == null ? new() : JsonSerializer.Deserialize<DatasetQueryParameters>(Json(from), JsonOpts)!;
+        _text.Clear();
+        _textErrors.Clear();
+        foreach (var p in IntParams)
+            _text[p.Key] = new NumberEntry { Text = p.Get(_edit)?.ToString() };
+        _error = null;
+    }
+
+    private static string Json(DatasetQueryParameters p)
+    {
+        var json = JsonSerializer.Serialize(p, JsonOpts);
+        // An empty part and none at all are the same thing.
+        foreach (var part in new[] { "match", "candidates", "ranking" })
+            json = json.Replace($",\"{part}\":{{}}", "").Replace($"\"{part}\":{{}},", "").Replace($"\"{part}\":{{}}", "");
+        return json;
+    }
+
+    private bool IsDirty => _loaded && (Json(_edit) != _savedJson || _textErrors.Count > 0);
+    private bool AnySet => QueryParameterResolution.SetNames(_edit).Count > 0;
+    /// <summary>Whether the dataset has text rules of its own, which are under Advanced too.</summary>
+    private bool HasTextRules
+    {
+        get
+        {
+            try { return IndxServer.Engine.IndxServerInternalApi.Manager.GetTextRules(Ctx.Name, Ctx.TeamId) != null; }
+            catch (InvalidOperationException) { return false; }
+        }
+    }
+
+    private bool AdvancedSet => HasTextRules || ModeParam.Get(_edit) != null || RerankParam.Get(_edit) != null
+        || FetchingParams.Concat(RankingParams).Any(p => p.Get(_edit) != null) || RankingBoolParams.Any(p => p.Get(_edit) != null);
+
+    /// <summary>The mode or the reranking as this dataset sets them, for the line beside a closed
+    /// Advanced; null while both are the engine's.</summary>
+    private string? FetchingChanged
+    {
+        get
+        {
+            var said = new List<string>();
+            if (ModeParam.Get(_edit) is { } mode) said.Add($"fetched with {mode}");
+            if (RerankParam.Get(_edit) is { } rerank) said.Add(rerank ? "reranked" : "not reranked");
+            return said.Count == 0 ? null : string.Join(", ", said);
+        }
+    }
+    // Open by default when something in it is set, so a set value is never out of sight.
+    private bool? _showAdvanced;
+    private bool ShowAdvanced => _showAdvanced ?? AdvancedSet;
+
+    private RenderFragment BoolRow(BoolParam p) => __builder =>
+    {
+        var value = p.Get(_edit);
+        <TableRow Class="@(value != null ? "qp-row--set" : null)">
+            <TableCell Class="qp-cell">
+                @Text(p.Label, p.Help)
+                <div class="qp-control">
+                    <ToggleSwitch Label="@p.Name" Variant="positive" Checked="@(value ?? p.EngineDefault)"
+                                  CheckedChanged="@(v => p.Set(_edit, v))" />
+                    @Restore(value != null, p.EngineDefault ? "on" : "off", () => p.Set(_edit, null))
+                </div>
+            </TableCell>
+        </TableRow>
+    };
+
+    private RenderFragment ChoiceRow(ChoiceParam p) => __builder =>
+    {
+        var value = p.Get(_edit);
+        <TableRow Class="@(value != null ? "qp-row--set" : null)">
+            <TableCell Class="qp-cell">
+                @Text(p.Label, p.Help)
+                <div class="qp-control">
+                    <div class="qp-choice">
+                        <SelectField Size="micro" Options="p.Options" Value="@(value ?? p.EngineDefault)"
+                                     ValueChanged="@(v => p.Set(_edit, v))" />
+                    </div>
+                    <span class="qp-param-name">@p.Name</span>
+                    @Restore(value != null, p.EngineDefault, () => p.Set(_edit, null))
+                </div>
+            </TableCell>
+        </TableRow>
+    };
+
+    private static RenderFragment Head(string group) => __builder =>
+    {
+        <thead>
+            <tr><th>@group</th></tr>
+        </thead>
+    };
+
+    private static RenderFragment Text(string label, string help) => __builder =>
+    {
+        <span class="qp-label">@label</span>
+        <span class="qp-help">@help</span>
+    };
+
+    /// <summary>The ghost button that hands a value back to the engine default. Its place is kept
+    /// while nothing is set, so the controls stay in one column.</summary>
+    private RenderFragment Restore(bool set, string defaultValue, Action restore) => __builder =>
+    {
+        if (set)
+        {
+            <Tooltip Content="@($"Restore default value ({defaultValue})")" Position="left">
+                <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Restore" aria-label="@($"Restore default value ({defaultValue})")" @onclick="restore" />
+            </Tooltip>
+        }
+        else
+        {
+            <span class="qp-restore-placeholder" aria-hidden="true"></span>
+        }
+    };
+
+    /// <summary>What a number left unset shows: the engine's value, or for the candidates the
+    /// rule that applies in its place.</summary>
+    private static string DefaultText(IntParam p) =>
+        p.Key == "maxCandidates" ? "rows × per row" : $"{p.EngineDefault:N0}{p.Unit}";
+
+    private RenderFragment IntRow(IntParam p) => __builder =>
+    {
+        var entry = Entry(p);
+        var set = p.Get(_edit) != null || !string.IsNullOrEmpty(entry.Text);
+        <TableRow Class="@(set ? "qp-row--set" : null)">
+            <TableCell Class="qp-cell">
+                @Text(p.Label, p.Help)
+                <div class="qp-control">
+                    <div class="qp-number">
+                        <InputField @bind-Value="entry.Text" @bind-Value:after="@(() => SetNumber(p, entry.Text))"
+                                    Error="@_textErrors.GetValueOrDefault(p.Key)" Id="@InputId(p)"
+                                    placeholder="@DefaultText(p)" inputmode="numeric" />
+                    </div>
+                    @* The parameter's own name, as on the toggles. *@
+                    <label class="qp-param-name" for="@InputId(p)">@ParamName(p)</label>
+                    @Restore(set, DefaultText(p), () => SetNumber(p, ""))
+                </div>
+            </TableCell>
+        </TableRow>
+    };
+
+    /// <summary>A number field's text as typed, so an entry that does not parse stays on screen.</summary>
+    private sealed class NumberEntry { public string? Text { get; set; } }
+
+    private NumberEntry Entry(IntParam p)
+    {
+        if (!_text.TryGetValue(p.Key, out var e)) _text[p.Key] = e = new NumberEntry();
+        return e;
+    }
+
+    private void SetNumber(IntParam p, string? text)
+    {
+        text = text?.Trim() ?? "";
+        Entry(p).Text = text;
+        _textErrors.Remove(p.Key);
+        if (text.Length == 0) { p.Set(_edit, null); return; }
+        if (!int.TryParse(text.Replace(" ", "").Replace(",", "").Replace(".", "").TrimEnd('%'), out var n) || n < p.Min || n > p.Max)
+        {
+            _textErrors[p.Key] = $"A whole number from {p.Min:N0} to {p.Max:N0}";
+            return;
+        }
+        p.Set(_edit, n);
+    }
+
+    private void ClearAll()
+    {
+        if (!Ctx.IsEditor) return;
+        _edit = new();
+        _text.Clear();
+        _textErrors.Clear();
+        _error = null;
+    }
+
+    private async Task SaveAsync()
+    {
+        if (!Ctx.IsEditor) return;
+        if (_saving) return;
+        _error = null;
+        if (_textErrors.Count > 0) { _error = "Fix the values marked above, or clear them to use the default."; return; }
+        if (QueryParameterResolution.Validate(_edit) is { } invalid) { _error = invalid; return; }
+        var toSave = JsonSerializer.Deserialize<DatasetQueryParameters>(Json(_edit), JsonOpts)!;
+        _saving = true;
+        try
+        {
+            await Task.Run(() => Store.Save(Ctx.TeamId, Ctx.Name, toSave));
+            _savedJson = Json(toSave);
+        }
+        catch (Exception ex)
+        {
+            _error = $"Could not save: {ex.Message}";
+        }
+        finally { _saving = false; }
+    }
+
+    private void Cancel() => Reset(Store.Load(Ctx.TeamId, Ctx.Name));
+}

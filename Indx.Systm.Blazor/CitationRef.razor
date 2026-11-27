@@ -1,0 +1,24 @@
+@* Port of indx-systm CitationRef: a numbered mark in the running text that points at an entry in
+   a CitationList. A link when it has an Href, a button otherwise; the host decides what a click
+   does. *@
+@if (Href != null)
+{
+    <a href="@Href" class="indx-chat-ref @Class" title="@Title" aria-label="@_label" @onclick="OnClick" @attributes="AdditionalAttributes">@N</a>
+}
+else
+{
+    <button type="button" class="indx-chat-ref @Class" title="@Title" aria-label="@_label" @onclick="OnClick" @attributes="AdditionalAttributes">@N</button>
+}
+
+@code {
+    /// <summary>The number the source list shows for this citation.</summary>
+    [Parameter, EditorRequired] public int N { get; set; }
+    /// <summary>Where the source lives; the mark is a link when given.</summary>
+    [Parameter] public string? Href { get; set; }
+    [Parameter] public EventCallback<MouseEventArgs> OnClick { get; set; }
+    [Parameter] public string? Title { get; set; }
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private string _label => Title is { Length: > 0 } t ? $"Source {N}: {t}" : $"Source {N}";
+}

@@ -1,0 +1,38 @@
+.filters-tab { display: flex; flex-direction: column; gap: 16px; }
+.filters-note, .filters-error { font: var(--text-sm); color: var(--lv5); margin: 0; }
+.filters-error { color: var(--CSignal); }
+
+/* The setup beside the column it makes. */
+.filters-layout { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 20px; align-items: start; }
+.filters-list { min-width: 0; }
+
+/* A row: grip, name, panel, values, shown, move buttons. The head lines up with the cells: the
+   grip and the list's gap after it (4px) are its first column. */
+.filters-head, .filters-row { display: grid; align-items: center; gap: 10px; }
+.filters-head { grid-template-columns: 24px minmax(0, 1fr) 160px 140px 44px 56px; font: var(--text-xs); color: var(--lv5); padding: 4px 0; border-bottom: 0.5px solid var(--lv3); }
+.filters-row { grid-template-columns: minmax(0, 1fr) 160px 140px 44px; padding: 4px 0; }
+::deep .filters-item { border-bottom: 0.5px solid var(--lv2); }
+::deep .filters-item:last-child { border-bottom: 0; }
+
+.filters-name { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.filters-raw { display: inline-flex; align-items: center; gap: 6px; font: var(--text-2xs); font-family: var(--font-mono); color: var(--lv5); }
+.filters-panel { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.filters-fixed { font: var(--text-xs); color: var(--lv6); }
+.filters-count { font: var(--text-xs); color: var(--lv6); font-variant-numeric: tabular-nums; }
+.filters-why { color: var(--lv5); }
+.filters-off .filters-name ::deep input { color: var(--lv4); }
+
+/* The column as a page draws it. */
+.filters-preview { position: sticky; top: 16px; display: flex; flex-direction: column; gap: 6px; padding: 12px; border: 0.5px solid var(--lv3); }
+.filters-preview-title { font: var(--text-xs); color: var(--lv5); margin: 0 0 4px; font-weight: normal; }
+.filters-preview-panel { display: flex; justify-content: space-between; gap: 8px; padding: 8px 10px; background: var(--lv1); font: var(--text-sm); color: var(--lv7); }
+.filters-preview-kind { font: var(--text-xs); color: var(--lv5); }
+
+@media (max-width: 900px) {
+    .filters-layout { grid-template-columns: 1fr; }
+    .filters-preview { position: static; }
+    .filters-head { display: none; }
+    .filters-row { grid-template-columns: minmax(0, 1fr) 44px; }
+    .filters-row > :nth-child(2), .filters-row > :nth-child(3) { grid-column: 1; }
+    .filters-row > :nth-child(4) { grid-column: 2; grid-row: 1; }
+}

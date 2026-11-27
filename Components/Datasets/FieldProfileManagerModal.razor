@@ -1,0 +1,211 @@
+@* The profile manager (Nov 2026): every profile the dataset has, with what sets it apart at a
+   glance (its typos, a rerank weight that is not 1, its pattern setup) and the fields that have
+   it. New, Edit and Reset start here; Delete asks which profile the fields get instead, and gives
+   it to all of them at once. Changes go into the field tab's working copy, which Save sends. *@
+@using System.Globalization
+@using Indx.Api
+@using IndxServer.Services
+
+@* The Modal is this component's root, so a wrapper carries the scope for its width (::deep). *@
+<div class="fpm-host">
+<Modal Open="@Open" OpenChanged="OpenChanged" Title="Profile manager" Class="fpm-modal"
+       Description="A profile is a searched field's typos, rerank weight and pattern setup under one name. Editing one changes every field that has it.">
+    <div class="fpm">
+        @* Plain cells: a TableCell with a Label lays the label out inside the cell, for a table
+           of label and value pairs, which this is not. *@
+        <Table AriaLabel="Profiles" Class="fpm-table">
+            <thead>
+                <tr>
+                    <th>@Head(DatasetIcons.Profiles, "Profile", null)</th>
+                    <th>@Head(EditDistanceIcon, "Typos", "Field.Tolerance: the typos a word may have and still match.")</th>
+                    <th>@Head(DatasetIcons.WeightMedium, "Weight", "Field.RerankWeight, against the heaviest searched field. Marked when it is not 1.")</th>
+                    <th>@Head(PatternIcon, "Pattern", "PatternMatchingSetup: index sizes, start and stop characters. Read only by fields with PatternMatching on. Marked when it is not the default.")</th>
+                    <th>@Head(DatasetIcons.Fields, "Fields", "The searched fields that have the profile.")</th>
+                    <th class="fpm-actions"><span class="fpm-sr">Actions</span></th>
+                </tr>
+            </thead>
+            <tbody>
+                @{ var defaultId = FieldProfiles.DefaultOf(Profiles).Id; }
+                @foreach (var p in FieldProfiles.All(Profiles))
+                {
+                    var having = FieldProfiles.FieldsWith(p.Id, Fields, Profiles);
+                    var edited = FieldProfiles.IsEditedBuiltIn(p.Id, Profiles);
+                    <tr class="@(_deleting?.Id == p.Id ? "fpm-row--deleting" : null)">
+                        <td class="fpm-profile">
+                            <span class="fpm-name">@p.Name
+                                @if (p.Id == defaultId) { <Chip>Default</Chip> }
+                                @if (edited) { <Chip>Edited</Chip> }
+                                else if (!FieldProfiles.IsBuiltInId(p.Id)) { <Chip>This dataset</Chip> }
+                            </span>
+                            @if (p.About.Length > 0) { <span class="fpm-about">@p.About</span> }
+                        </td>
+                        <td>
+                            <span class="fpm-with-icon">@DatasetIcons.ForTolerance(p.Tolerance)(14)<span>@ToleranceName(p.Tolerance)</span></span>
+                            @if (p.TypingPrefixFrom is { } from)
+                            {
+                                <span class="fpm-about">@(from == 0 ? "No word starts" : $"Word starts from {from} letters")</span>
+                            }
+                        </td>
+                        <td>
+                            @if (DatasetIcons.ForRerankWeight(p.RerankWeight) is { } w)
+                            {
+                                <Tooltip Content="@WeightNote(p.RerankWeight)"><span class="fpm-with-icon fpm-marked" tabindex="0">@w(14)<span>@Num(p.RerankWeight)</span></span></Tooltip>
+                            }
+                            else { <span class="fpm-plain">1</span> }
+                        </td>
+                        <td>
+                            <span class="fpm-pattern @(IsDefaultPattern(p) ? "fpm-plain" : "fpm-marked")">@PatternLabel(p)</span>
+                            @if (p.TextRules.Length > 0)
+                            {
+                                <span class="fpm-about">@(p.TextRules.Length == 1 ? "1 text rule" : $"{p.TextRules.Length} text rules")</span>
+                            }
+                        </td>
+                        <td>
+                            @if (having.Count == 0) { <span class="fpm-plain">Not used</span> }
+                            else { <span class="fpm-fields">@string.Join(", ", having.Select(f => f.FieldName))</span> }
+                        </td>
+                        <td class="fpm-actions">
+                            @if (Editable)
+                            {
+                                <span class="fpm-buttons">
+                                    <Tooltip Content="@($"Edit {p.Name}")"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Edit" aria-label="@($"Edit {p.Name}")" @onclick="() => OnEdit.InvokeAsync(p.Id)" /></Tooltip>
+                                    @if (edited)
+                                    {
+                                        <Tooltip Content="Reset: back to the built-in values, on its fields too."><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Restore" aria-label="@($"Reset {p.Name}")" @onclick="() => Reset(p)" /></Tooltip>
+                                    }
+                                    else if (!FieldProfiles.IsBuiltInId(p.Id))
+                                    {
+                                        <Tooltip Content="@($"Delete {p.Name}")"><Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Delete" aria-label="@($"Delete {p.Name}")" @onclick="() => StartDelete(p)" /></Tooltip>
+                                    }
+                                </span>
+                            }
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </Table>
+
+        @if (_deleting is { } doomed)
+        {
+            var having = FieldProfiles.FieldsWith(doomed.Id, Fields, Profiles);
+            <div class="fpm-delete" role="group" aria-label="@($"Delete {doomed.Name}")">
+                @if (having.Count == 0)
+                {
+                    <p class="fpm-delete-text">Delete @doomed.Name? No field has it.</p>
+                }
+                else
+                {
+                    <p class="fpm-delete-text">Delete @doomed.Name. Its @(having.Count == 1 ? "field" : $"{having.Count} fields") (@string.Join(", ", having.Select(f => f.FieldName))) get instead:</p>
+                    <div class="fpm-select">
+                        <SelectField Size="micro" aria-label="Replacement profile" Options="ReplacementOptions(doomed)" Value="@_replacement" ValueChanged="@(v => _replacement = v)" />
+                    </div>
+                }
+                <div class="indx-form-actions">
+                    <Button Variant="primary" Size="micro" @onclick="ConfirmDelete">@(having.Count == 0 ? "Delete" : "Delete and replace")</Button>
+                    <Button Variant="secondary" Size="micro" @onclick="() => _deleting = null">Cancel</Button>
+                </div>
+            </div>
+        }
+
+        @* The default (6 Nov 2026): what a field gets when it becomes searched, or when an upload's
+           analysis finds it searched. Fields already Custom keep their own settings. *@
+        <div class="fpm-default">
+            <span class="fpm-default-label"><Tooltip Content="The profile a field gets when it becomes searched, and the searched fields of a new upload. Fields with their own settings keep them.">A newly searched field gets</Tooltip></span>
+            <div class="fpm-select">
+                <SelectField Size="micro" aria-label="Default profile" disabled="@(!Editable)" Value="@FieldProfiles.DefaultOf(Profiles).Id"
+                             Options="@FieldProfiles.All(Profiles).Select(p => new SelectField.SelectOption(p.Name, p.Id) { Icon = DatasetIcons.ForTolerance(p.Tolerance) }).ToList()"
+                             ValueChanged="SetDefault" />
+            </div>
+        </div>
+
+        @if (FieldProfiles.CustomFields(Fields, Profiles) is { Count: > 0 } custom)
+        {
+            <p class="fpm-note">Their own settings, no profile: @string.Join(", ", custom.Select(f => f.FieldName)). Choose one in the field's Profile menu, or save its settings as a new profile from there.</p>
+        }
+
+        <div class="indx-form-actions">
+            @if (Editable)
+            {
+                <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.ShowMore" @onclick="() => OnNew.InvokeAsync()">New profile</Button>
+            }
+            <Button Variant="secondary" Size="micro" @onclick="() => OpenChanged.InvokeAsync(false)">Close</Button>
+        </div>
+    </div>
+</Modal>
+</div>
+
+@code {
+    private static readonly RenderFragment<int> EditDistanceIcon = size => b => { b.OpenComponent<Indx.Systm.Blazor.Icons.EditDistance>(0); b.AddAttribute(1, "Size", size); b.CloseComponent(); };
+    private static readonly RenderFragment<int> PatternIcon = size => b => { b.OpenComponent<Indx.Systm.Blazor.Icons.PatternRecognition>(0); b.AddAttribute(1, "Size", size); b.CloseComponent(); };
+
+    private static RenderFragment Head(RenderFragment<int> icon, string text, string? help) => __builder =>
+    {
+        if (help == null) { <span class="fpm-head">@icon(14)<span>@text</span></span> }
+        else { <Tooltip Content="@help"><span class="fpm-head" tabindex="0">@icon(14)<span>@text</span></span></Tooltip> }
+    };
+
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    /// <summary>The dataset's profiles, the working copy: delete and reset change it.</summary>
+    [Parameter, EditorRequired] public DatasetFieldProfiles Profiles { get; set; } = default!;
+    /// <summary>The fields, the working copy: a replacement or reset writes onto them.</summary>
+    [Parameter, EditorRequired] public IReadOnlyList<FieldProxy> Fields { get; set; } = [];
+    [Parameter] public bool Editable { get; set; } = true;
+    [Parameter] public EventCallback<string> OnEdit { get; set; }
+    [Parameter] public EventCallback OnNew { get; set; }
+    /// <summary>After a delete or a reset changed the working copy.</summary>
+    [Parameter] public EventCallback OnChanged { get; set; }
+
+    private FieldProfile? _deleting;
+    private string? _replacement;
+
+    private void StartDelete(FieldProfile p)
+    {
+        _deleting = p;
+        _replacement = FieldProfiles.SuggestedReplacement(p, Profiles);
+    }
+
+    private async Task ConfirmDelete()
+    {
+        if (_deleting is not { } p) return;
+        FieldProfiles.DeleteReplacing(Profiles, Fields, p.Id, _replacement);
+        _deleting = null;
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task SetDefault(string? id)
+    {
+        if (id == null) return;
+        Profiles.DefaultProfileId = id == FieldProfiles.DefaultBuiltIn ? null : id;
+        await OnChanged.InvokeAsync();
+    }
+
+    private async Task Reset(FieldProfile p)
+    {
+        FieldProfiles.ResetBuiltIn(Profiles, Fields, p.Id);
+        await OnChanged.InvokeAsync();
+    }
+
+    private IReadOnlyList<SelectField.SelectOption> ReplacementOptions(FieldProfile doomed) =>
+        FieldProfiles.All(Profiles).Where(p => p.Id != doomed.Id)
+            .Select(p => new SelectField.SelectOption(p.Name, p.Id) { Icon = DatasetIcons.ForTolerance(p.Tolerance) }).ToList();
+
+    private static string ToleranceName(Tolerance t) => t switch
+    {
+        Tolerance.Exact => "Exact",
+        Tolerance.TwoEdits => "Two edits",
+        Tolerance.ThreeEdits => "Three edits",
+        _ => "One edit",
+    };
+
+    private static string Num(float v) => Math.Round(v, 2).ToString("0.##", CultureInfo.InvariantCulture);
+
+    private static string WeightNote(float w) =>
+        w == 0 ? "Weight 0: confirms no words" : w < 1 ? "Lighter than 1" : "Heavier than 1";
+
+    private static bool IsDefaultPattern(FieldProfile p) =>
+        p.IndexSizes.AsSpan().SequenceEqual([3]) && p.NumberOfStartCharacters == 2 && p.NumberOfStopCharacters == 0;
+
+    private static string PatternLabel(FieldProfile p) =>
+        $"[{string.Join(", ", p.IndexSizes)}], start {p.NumberOfStartCharacters}, stop {p.NumberOfStopCharacters}";
+}

@@ -1,0 +1,46 @@
+/* API keys. One column, as wide as the page like every console page: the table needs the room (it
+   scrolled sideways inside an 880px cap with the window half empty, Nov 2026). The text keeps its
+   own reading width below. Sections spaced by the shared heading rhythm, no borders or shadows. */
+.key-page { min-width: 0; }
+.key-intro { color: var(--lv5); font: var(--text-sm); max-width: 640px; margin-bottom: calc(var(--spacing) * 6); }
+.key-muted { color: var(--lv5); }
+.key-suffix { margin-left: 8px; color: var(--lv5); font: 12px var(--font-mono); }
+.key-expired { color: var(--CSignal); }
+
+::deep .key-reveal { margin-bottom: calc(var(--spacing) * 4); }
+.key-reveal-scope { display: block; margin-bottom: 8px; }
+.key-token {
+    display: block;
+    padding: 10px 12px;
+    background: var(--lv0);
+    border-radius: var(--radius);
+    font: 12px/1.5 var(--font-mono);
+    color: var(--lv8);
+    overflow-wrap: anywhere;
+    user-select: all;
+}
+.key-reveal-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 10px; }
+
+/* The frame is systm Table's, with ResizableColumns: every cell keeps to one line, and the access
+   description, the longest, fills what the others leave. */
+.key-scope { color: var(--lv6); }
+.key-actions { text-align: right; white-space: nowrap; }
+/* Show key and Revoke side by side, at the right: ConfirmButton renders a block of its own. */
+.key-row-actions { display: flex; gap: 4px; align-items: center; justify-content: flex-end; }
+::deep .key-legacy { margin-top: calc(var(--spacing) * 3); }
+
+.key-form { display: flex; flex-direction: column; gap: 18px; }
+.key-field { display: flex; flex-direction: column; gap: 6px; }
+.key-label { font: var(--text-xs); color: var(--lv6); }
+.key-help { margin: 0; font: var(--text-xs); color: var(--lv5); }
+.key-radios { display: flex; gap: 20px; flex-wrap: wrap; }
+.key-datasets { display: flex; flex-direction: column; gap: 6px; padding: 8px 0 0 2px; }
+
+.key-code {
+    margin: 0 0 calc(var(--spacing) * 3);
+    padding: 14px 16px;
+    background: var(--lv1);
+    border-radius: var(--radius);
+    font: 12px/1.6 var(--font-mono);
+    overflow-x: auto;
+}

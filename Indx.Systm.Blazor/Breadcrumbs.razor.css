@@ -1,0 +1,203 @@
+/* Port of indx-systm Breadcrumbs.module.css. Step height and font come from the size class. */
+.indx-breadcrumbs {
+    box-sizing: border-box;
+    width: fit-content;
+    max-width: 100%;
+    padding-inline: 8px;
+    color: var(--lv7);
+    background: var(--lv1);
+    border-radius: var(--radius);
+}
+
+.indx-breadcrumbs-micro   { --step-height: 30px; --icon-gap: 7px;  font: var(--text-xs); }
+.indx-breadcrumbs-default { --step-height: 40px; --icon-gap: 10px; font: var(--text-sm); }
+
+.indx-breadcrumbs-list {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.indx-breadcrumbs-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.indx-breadcrumbs-separator {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    color: var(--lv4);
+    padding: 0 4px;
+}
+
+.indx-breadcrumbs-step {
+    position: relative;
+    display: inline-flex;
+    align-items: stretch;
+    min-width: 0;
+    max-width: 100%;
+    border-radius: var(--radius);
+}
+
+.indx-breadcrumbs-switchable .indx-breadcrumbs-label {
+    padding-inline-end: 36px;
+}
+
+.indx-breadcrumbs-label {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--icon-gap);
+    min-width: 0;
+    min-height: var(--step-height);
+    padding: 0 10px;
+    color: var(--lv6);
+    text-decoration: none;
+    border-radius: var(--radius);
+}
+
+.indx-breadcrumbs-label[aria-current='page'] {
+    color: var(--lv7);
+}
+
+.indx-breadcrumbs-text {
+    overflow-wrap: anywhere;
+}
+
+.indx-breadcrumbs-trigger {
+    all: unset;
+    box-sizing: border-box;
+    position: absolute;
+    inset-block: 4px;
+    inset-inline-end: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    border-radius: var(--radius);
+    color: var(--lv5);
+    cursor: pointer;
+}
+
+.indx-breadcrumbs-trigger:hover:not([data-disabled]),
+.indx-breadcrumbs-trigger[data-state='open'] {
+    background: var(--lv2);
+    color: var(--lv5);
+}
+
+.indx-breadcrumbs-trigger[data-disabled] {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.indx-breadcrumbs-trigger:focus-visible,
+a.indx-breadcrumbs-label:focus-visible {
+    outline: 2px solid var(--lv5);
+    outline-offset: 2px;
+}
+
+.indx-breadcrumbs-icon {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+
+.indx-breadcrumbs-option {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    overflow-wrap: anywhere;
+    min-width: 0;
+}
+
+/* Popover: same borderless base as SelectField's menu. Anchored to the step's START edge and
+   opening rightward — the React version aligns to the end and lets Radix flip on collision;
+   without collision detection here, an end-anchored menu on the first step opens off the left
+   of the window. A breadcrumb sits at the left of the page, so rightward never collides. */
+.indx-breadcrumbs-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+}
+
+.indx-breadcrumbs-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    z-index: 1001;
+    min-width: 180px;
+    /* As tall as the window allows below the header before it scrolls, as the React switcher
+       (Radix) takes the room available. 280px squeezed a team's twenty datasets into a scroll. */
+    max-height: calc(100vh - 120px);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px;
+    background: var(--lv2);
+    border-radius: var(--radius);
+    font: var(--text-sm);
+}
+
+/* Each row keeps the Button's 30px: in a column with a height limit they shrank to fit, so a long
+   list of datasets packed its rows to 20px and read as a smaller font. */
+.indx-breadcrumbs-menu > ::deep .indx-btn,
+.indx-breadcrumbs-menu > .indx-breadcrumbs-menu-divider {
+    flex-shrink: 0;
+}
+
+.indx-breadcrumbs-menu-divider {
+    height: 1px;
+    background: var(--lv3);
+    margin: 4px 0;
+}
+
+.indx-breadcrumbs-menu ::deep .indx-btn-ghost:hover {
+    background: var(--lv3) !important;
+}
+
+@media (prefers-color-scheme: dark) {
+    :where(:root:not([data-theme="light"])) .indx-breadcrumbs-menu {
+        background: var(--lv1);
+    }
+
+    :where(:root:not([data-theme="light"])) .indx-breadcrumbs-menu ::deep .indx-btn-ghost:hover {
+        background: var(--lv2) !important;
+    }
+}
+:where(:root[data-theme="dark"]) .indx-breadcrumbs-menu {
+    background: var(--lv1);
+}
+:where(:root[data-theme="dark"]) .indx-breadcrumbs-menu ::deep .indx-btn-ghost:hover {
+    background: var(--lv2) !important;
+}
+
+/* Overflow="truncate": one line, sized by the space the trail is given rather than by a
+   breakpoint. Ancestors shrink long before the current page does and every label ellipsizes.
+   Each step needs an explicit floor: the step and the label carry min-width: 0 so that they can
+   shrink at all, and the switcher is absolutely positioned, so nothing else holds a collapsed
+   ancestor open and its switcher would drift over whatever sits before the trail. A step with
+   an icon may lose its text entirely, a step without one keeps a few characters, and the
+   current page always does. Same numbers as indx-systm Breadcrumbs.module.css. */
+.indx-breadcrumbs-truncate { min-width: 0; }
+.indx-breadcrumbs-truncate .indx-breadcrumbs-list { flex-wrap: nowrap; }
+.indx-breadcrumbs-truncate .indx-breadcrumbs-item {
+    --sep: 0px; --lead: 0px; --end: 10px; --text-min: 4ch;
+    flex: 0 1 auto;
+    min-width: calc(var(--sep) + 10px + var(--lead) + var(--text-min) + var(--end));
+}
+.indx-breadcrumbs-truncate .indx-breadcrumbs-item:not(:first-child) { --sep: 28px; }
+.indx-breadcrumbs-truncate .indx-breadcrumbs-item:has(.indx-breadcrumbs-switchable) { --end: 36px; }
+.indx-breadcrumbs-truncate .indx-breadcrumbs-item:has(.indx-breadcrumbs-label > .indx-breadcrumbs-icon) { --lead: calc(14px + var(--icon-gap)); --text-min: 0px; }
+.indx-breadcrumbs-truncate .indx-breadcrumbs-item.indx-breadcrumbs-item:last-child { --text-min: 6ch; }
+.indx-breadcrumbs-truncate .indx-breadcrumbs-item:not(:last-child) { flex-shrink: 1000; }
+.indx-breadcrumbs-truncate .indx-breadcrumbs-step { flex: 0 1 auto; }
+.indx-breadcrumbs-truncate .indx-breadcrumbs-label { overflow: hidden; }
+.indx-breadcrumbs-truncate .indx-breadcrumbs-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; overflow-wrap: normal; }

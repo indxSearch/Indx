@@ -1,0 +1,71 @@
+.indx-checkbox-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    cursor: pointer;
+    user-select: none;
+    /* This control is a <label>; null out any host-app global label margin so it
+       centers cleanly against inputs/buttons in a flex row. */
+    margin: 0;
+}
+
+.indx-checkbox {
+    width: 17px;
+    height: 17px;
+    border-radius: var(--radius);
+    background: var(--lv2);
+    appearance: none;
+    -webkit-appearance: none;
+    position: relative;
+    cursor: pointer;
+    flex-shrink: 0;
+}
+
+.indx-checkbox-wrapper:hover .indx-checkbox:not(:disabled) {
+    background-color: var(--lv3);
+}
+
+.indx-checkbox:checked {
+    background-color: var(--lv3);
+}
+
+.indx-checkbox:checked::after {
+    content: "";
+    position: absolute;
+    top: 3px;
+    left: 3px;
+    width: 11px;
+    height: 11px;
+    border-radius: var(--radius);
+    background-color: var(--lv8);
+}
+
+.indx-checkbox:focus-visible {
+    outline: 2px solid var(--lv5);
+    outline-offset: 2px;
+}
+
+.indx-checkbox:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.indx-checkbox-label {
+    font: var(--text-sm);
+    color: var(--lv7);
+}
+
+.indx-checkbox-score {
+    font: var(--text-xs);
+    color: var(--lv5);
+    padding-top: 1px;
+}
+
+.indx-checkbox-disabled {
+    cursor: not-allowed;
+}
+
+.indx-checkbox-disabled .indx-checkbox-label,
+.indx-checkbox-disabled .indx-checkbox-score {
+    opacity: 0.5;
+}

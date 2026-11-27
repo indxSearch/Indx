@@ -1,0 +1,637 @@
+using System.Data;
+using System.Globalization;
+using System.Text;
+using Indx.Api;
+using Terminal.Gui.App;
+using Terminal.Gui.Drawing;
+using Terminal.Gui.Input;
+using Terminal.Gui.ViewBase;
+using Terminal.Gui.Views;
+using Attribute = Terminal.Gui.Drawing.Attribute;
+using Color = Terminal.Gui.Drawing.Color;
+
+namespace IndxServer.Monitor
+{
+    /// <summary>
+    /// The monitor screen: the instance across the header, the datasets, and the event stream.
+    /// The divider between the two panes can be dragged, and where it ends up is remembered.
+    ///
+    /// <para>It never reads the engine registry itself. The collector runs on the hosted service's
+    /// timer and publishes a snapshot; this window picks the latest one up on its own timer, which
+    /// is the same arrangement <c>IndxWorkbench</c>'s window has with <c>EngineSession</c> and means
+    /// there are no cross-thread calls in either direction.</para>
+    /// </summary>
+    internal sealed class MonitorWindow : Window
+    {
+        // The workbench palette, which is the console's: the same colour and the same icon per
+        // state as the dataset chips, so a dataset looks the same in the browser and here.
+        private static readonly Color Teal = new(0x72, 0xF5, 0xC6), Warn = new(0xFF, 0xC1, 0x07),
+                                      Signal = new(0xFF, 0x42, 0x38), LightBlue = new(0x6B, 0x9E, 0xFF),
+                                      Ink = new(0x12, 0x12, 0x15), Stone = new(0xCF, 0xCF, 0xCF),
+                                      Slate = new(0x4A, 0x4A, 0x50);
+
+        private static readonly Rune NoHotKey = (Rune)0xFFFF;
+        /// <summary>Invariant throughout, so a figure looks the same in the terminal, in a piped
+        /// log and in a screenshot someone pastes into an issue.</summary>
+        private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
+
+        /// <summary>Rows taken by the header: air, three rows of logo, air, three rows of gauges, air.</summary>
+        internal const int HeaderHeight = 9;
+        /// <summary>Where the gauges start: under the logo's air.</summary>
+        private const int MetersTop = 5;
+        /// <summary>Below these a pane stops being worth having.</summary>
+        private const int MinDatasets = 4, MinEvents = 3;
+        /// <summary>Where the logo sits in the window (MonitorIntro lands the mark there).</summary>
+        internal const int LogoX = 3, LogoY = 1;
+
+        private readonly IApplication _app;
+        private readonly Func<MonitorSnapshot?> _readLatest;
+        private readonly Func<IReadOnlyList<MonitorEvent>> _readEvents;
+        private readonly Action _requestShutdown;
+
+        private readonly Label _header = new();
+        private readonly Label _filters = new();
+        private readonly PixlIconView _stateIcon = new();
+        private readonly MeterView _meters = new();
+        private readonly TableView _datasets = new();
+        private readonly TableView _events = new();
+        private readonly FrameView _datasetsFrame;
+        private readonly VoxelMarkView _mark = new() { Visible = false };
+
+        private readonly MonitorLayout _layout = MonitorLayout.Load();
+        private bool _dragged;
+        private bool _initialised;
+        private int _appliedHeight = -1;
+
+        private IReadOnlyList<DatasetLine> _rows = [];
+        private DateTimeOffset _renderedAt = DateTimeOffset.MinValue;
+        // The events pane as drawn: its newest event and its width, either changing redraws it; and
+        // the event each row belongs to, a long one taking several rows.
+        private MonitorEvent? _renderedNewest;
+        private int _renderedEventsWidth = -1;
+        private IReadOnlyList<MonitorEvent> _eventRows = [];
+        private string _renderedDatasets = "";
+
+        internal MonitorWindow(IApplication app,
+                               Func<MonitorSnapshot?> readLatest,
+                               Func<IReadOnlyList<MonitorEvent>> readEvents,
+                               Action requestShutdown,
+                               MonitorEndpoints? endpoints = null)
+        {
+            _app = app;
+            _readLatest = readLatest;
+            _readEvents = readEvents;
+            _requestShutdown = requestShutdown;
+
+            Title = "indx monitor";
+
+            // ── Header ──
+            // One row of air above the logo and three columns to its left; the state icon mirrors
+            // it on the right, as in the workbench.
+            var logo = new PixlIconView { X = LogoX, Y = LogoY, Icon = "IndxLogo" };
+            int textLeft = LogoX + PixlIcon.Width + 3;
+            var heading = new Label { X = textLeft, Y = 1, Text = "indx monitor", HotKeySpecifier = NoHotKey };
+
+            // The two figure lines sit under the heading and stop short of the state icon.
+            _header.X = textLeft; _header.Y = 2; _header.Width = Dim.Fill(PixlIcon.Width + 5); _header.Height = 1;
+            _filters.X = textLeft; _filters.Y = 3; _filters.Width = Dim.Fill(PixlIcon.Width + 5); _filters.Height = 1;
+            // Labels swallow '_' as a hotkey marker, and these show data.
+            _header.HotKeySpecifier = NoHotKey;
+            _filters.HotKeySpecifier = NoHotKey;
+            // Mirrors the logo: three columns in from the right edge, level with it.
+            _stateIcon.X = Pos.AnchorEnd(PixlIcon.Width + 3); _stateIcon.Y = 1;
+
+            // ── Gauges ──
+            // CPU, memory and the search rate as bars and a sparkline, under the figures and
+            // aligned with them, the width of the row less the margins.
+            _meters.X = textLeft; _meters.Y = MetersTop; _meters.Width = Dim.Fill(PixlIcon.Width + 5);
+
+            // ── Datasets ──
+            // BottomResizable is the divider: dragging it sets an absolute height, which
+            // TakeDraggedHeight turns into the remembered one.
+            _datasetsFrame = new FrameView
+            {
+                Title = "Datasets",
+                X = 0, Y = HeaderHeight, Width = Dim.Fill(),
+                // An absolute height, not a Dim.Func: a drag sets an absolute height too, and
+                // anything that rewrites Height on a timer is fighting the drag for it.
+                Height = Dim.Absolute(_layout.DatasetsHeight ?? 10),
+                Arrangement = ViewArrangement.BottomResizable,
+            };
+            _datasets.X = 0; _datasets.Y = 0; _datasets.Width = Dim.Fill(); _datasets.Height = Dim.Fill();
+            _datasets.FullRowSelect = true;
+            _datasets.Style.ShowHorizontalHeaderOverline = false;
+            _datasets.Style.ShowVerticalCellLines = false;
+            _datasets.Style.ExpandLastColumn = true;
+            // A whole row in its state's colour: the table is read by scanning down it, and a
+            // coloured word in one column is easy to miss at a glance.
+            _datasets.Style.RowColorGetter = args => RowScheme(args.RowIndex);
+            _datasetsFrame.Add(_datasets);
+            // The loading picture: the mark in voxels, under the table's rows while the first
+            // datasets load (ShowMark). Over the table's empty part rather than instead of the
+            // table, so the rows loading, with their percentages, stay in view.
+            _mark.X = 0; _mark.Width = Dim.Fill(); _mark.Height = Dim.Fill();
+            _datasetsFrame.Add(_mark);
+
+            // ── Events ──
+            var eventsFrame = new FrameView
+            {
+                Title = "Events",
+                X = 0, Y = Pos.Bottom(_datasetsFrame), Width = Dim.Fill(), Height = Dim.Fill(2),
+            };
+            _events.X = 0; _events.Y = 0; _events.Width = Dim.Fill(); _events.Height = Dim.Fill();
+            _events.FullRowSelect = true;
+            _events.Style.ShowHorizontalHeaderOverline = false;
+            _events.Style.ShowVerticalCellLines = false;
+            _events.Style.ExpandLastColumn = true;
+            eventsFrame.Add(_events);
+
+            // Where to point a browser and an agent, on their own row above the status bar and
+            // right-aligned, away from the figures. The startup banner prints the address and this
+            // screen then covers the banner with the alternate buffer, so without this the one
+            // thing a developer needs on first run is gone the moment the monitor appears.
+            var reachable = new Label
+            {
+                X = 1, Y = Pos.AnchorEnd(2), Width = Dim.Fill(2), Height = 1,
+                TextAlignment = Alignment.End,
+                HotKeySpecifier = NoHotKey,
+                Text = Describe(endpoints),
+            };
+
+            var status = new StatusBar(
+            [
+                // Detach, not quit: Ctrl+C still stops the server, and an operator who wants the
+                // console back must not have to kill the process to get it.
+                new Shortcut(Key.Q.WithCtrl, "Detach monitor", () => _app.RequestStop()),
+                new Shortcut(Key.F10, "Shut down server", ConfirmShutdown),
+            ]);
+
+            foreach (var table in new[] { _datasets, _events }) ShowSelection(table);
+
+            Add(logo, heading, _header, _filters, _stateIcon, _meters, _datasetsFrame, eventsFrame, reachable, status);
+            _datasetsFrame.FrameChanged += (_, _) => KeepDividerInBounds();
+
+            Refresh();
+            _app.AddTimeout(TimeSpan.FromMilliseconds(250), () => { KeepDividerInBounds(); Refresh(); return true; });
+            // The mark's frames, at 20 a second: its own timer, as the figures' quarter second
+            // would make the turn stutter. Nothing is drawn while it is hidden.
+            _app.AddTimeout(TimeSpan.FromMilliseconds(50), () => { if (_mark.Visible) _mark.SetNeedsDraw(); return true; });
+        }
+
+        /// <summary>
+        /// The endpoints line: where to point a browser, and nothing else. MCP was here too and is
+        /// not any more — an agent's address is not what a developer needs on first run, and the
+        /// live view of what an agent is doing belongs in the web console rather than a line here.
+        /// </summary>
+        internal static string Describe(MonitorEndpoints? endpoints)
+            => endpoints?.Web is { Length: > 0 } web ? $"web  {web}" : "";
+
+        /// <summary>
+        /// The selected row, as a grey block with dark text. Stated as colours rather than taken
+        /// from the scheme, which paints it white: on a terminal with a light background that is a
+        /// row you cannot see.
+        /// </summary>
+        private static void ShowSelection(TableView table)
+        {
+            var scheme = table.GetScheme();
+            table.SetScheme(new Scheme(scheme)
+            {
+                Focus = new Attribute(Ink, Stone),
+                Active = new Attribute(Stone, Slate),
+            });
+
+            var heading = new Attribute(scheme.Normal.Foreground, scheme.Normal.Background, TextStyle.Bold);
+            table.Style.HeaderScheme = new Scheme(heading)
+            {
+                Normal = heading, Focus = heading, Active = heading,
+                HotNormal = heading, HotFocus = heading, HotActive = heading,
+            };
+        }
+
+        // ── The draggable divider ────────────────────────────────────────────
+
+        /// <summary>
+        /// Keeps the divider inside what leaves both panes a usable height, and notices where a
+        /// drag left it.
+        ///
+        /// <para>The first version rewrote <c>Height</c> to a <c>Dim.Func</c> on every tick, the
+        /// way the workbench does for its vertical border. That is why the divider showed a drag
+        /// cursor and would not move: a drag sets an absolute height, and a quarter of a second
+        /// later this put the calculated one back. Now <c>Height</c> is only ever written when the
+        /// value is genuinely out of bounds — a terminal that got shorter — so a drag is left
+        /// alone and simply read afterwards.</para>
+        /// </summary>
+        private void KeepDividerInBounds()
+        {
+            if (_datasetsFrame.Height is not DimAbsolute current)
+                return;
+
+            if (DatasetsHeight(Viewport.Height, current.Size) is not { } clamped)
+                return;   // too small to split sensibly; leave whatever is there
+
+            // The built-in split, once the terminal size is actually known. Doing this at
+            // construction would divide a viewport that is still zero.
+            if (!_initialised)
+            {
+                _initialised = true;
+                if (_layout.DatasetsHeight is null)
+                {
+                    Apply(DatasetsHeight(Viewport.Height, null)!.Value);
+                    return;
+                }
+            }
+
+            if (clamped != current.Size)
+            {
+                Apply(clamped);
+                return;
+            }
+
+            // Anything we did not put there ourselves came from a drag.
+            if (current.Size != _appliedHeight)
+            {
+                _appliedHeight = current.Size;
+                _layout.DatasetsHeight = current.Size;
+                _dragged = true;
+            }
+
+            void Apply(int height)
+            {
+                _appliedHeight = height;
+                _datasetsFrame.Height = Dim.Absolute(height);
+                SetNeedsLayout();
+                SetNeedsDraw();
+            }
+        }
+
+        /// <summary>
+        /// The datasets pane's height in a window whose inside is <paramref name="viewportHeight"/>
+        /// rows: <paramref name="height"/> kept to what leaves both panes usable, or, with none, the
+        /// built-in half. Null when the window is too short to split. The intro (MonitorIntro)
+        /// draws the panes' frames in where this puts them.
+        /// </summary>
+        internal static int? DatasetsHeight(int viewportHeight, int? height)
+        {
+            int available = viewportHeight - HeaderHeight - 1;   // the status bar keeps a row
+            if (available < MinDatasets + MinEvents) return null;
+            return height is { } h ? Math.Clamp(h, MinDatasets, available - MinEvents) : available / 2;
+        }
+
+        /// <summary>Only once something was dragged: a pane on its built-in split keeps following
+        /// the terminal next time.</summary>
+        internal void SaveLayout()
+        {
+            if (_dragged) _layout.Save();
+        }
+
+        // ── Drawing ──────────────────────────────────────────────────────────
+
+        private void Refresh()
+        {
+            var snapshot = _readLatest();
+            if (snapshot is null)
+            {
+                _header.Text = "waiting for the first snapshot …";
+                return;
+            }
+
+            var events = _readEvents();
+            var newest = events.Count > 0 ? events[^1] : null;
+            int eventsWidth = _events.Viewport.Width;
+            bool eventsChanged = !ReferenceEquals(newest, _renderedNewest) || eventsWidth != _renderedEventsWidth;
+            if (snapshot.TakenUtc == _renderedAt && !eventsChanged)
+                return;
+            _renderedAt = snapshot.TakenUtc;
+
+            // The header carries the clock and the counters, so it changes on every tick.
+            ShowHeader(snapshot);
+
+            // The tables do not. Rebuilding one replaces its source, which costs a redraw and
+            // takes the selection with it, so each is rebuilt only when its content actually
+            // differs -- which for datasets is rarely, and that is what lets a row stay selected.
+            var (table, signature) = BuildDatasetTable(snapshot);
+            if (signature != _renderedDatasets)
+            {
+                _renderedDatasets = signature;
+                // Which dataset was selected, by key rather than by row: the table is replaced
+                // roughly every second (the "used" column counts in seconds), and a row index
+                // would not survive a dataset being created or deleted either.
+                string? selected = SelectedDatasetKey();
+                _rows = snapshot.Datasets;
+                _datasets.Table = new DataTableSource(table);
+                RestoreDatasetSelection(selected);
+                _datasets.SetNeedsDraw();
+            }
+
+            ShowMark(snapshot);
+
+            // By the newest event rather than the count: at the buffer's cap the count stays at 500
+            // while events go on arriving, and until 16 Nov 2026 the pane stopped there.
+            if (eventsChanged)
+            {
+                // The selection stays on the event it was on, wherever new events and wrapping move
+                // its row: newest first, so new ones push it down, and a narrower pane wraps more.
+                int selected = _events.Value?.SelectedCell.Y ?? -1;
+                var selectedEvent = selected >= 0 && selected < _eventRows.Count ? _eventRows[selected] : null;
+                _renderedNewest = newest;
+                _renderedEventsWidth = eventsWidth;
+                ShowEvents(events, eventsWidth);
+                int row = RowOfEvent(_eventRows, selectedEvent);
+                if (row >= 0) SelectRow(_events, row, _eventRows.Count);
+                _events.SetNeedsDraw();
+            }
+
+            // Assigning TableView.Table does not itself ask for a repaint, and neither pane is
+            // otherwise redrawn until a key or the mouse forces it -- which looked like a monitor
+            // that refreshed every few seconds at random.
+            _header.SetNeedsDraw();
+            _filters.SetNeedsDraw();
+            _stateIcon.SetNeedsDraw();
+            _meters.SetNeedsDraw();
+        }
+
+        /// <summary>
+        /// The loading picture is up while datasets load (or wait their turn at startup) and none is
+        /// ready yet: a cold start, the one wait long enough to want something to look at, and
+        /// before the first dataset is ready the pane has nothing else to show. Once one serves, the table is the picture; a
+        /// dataset loading later shows in its row and in the header's icon.
+        /// </summary>
+        internal static bool Loading(MonitorSnapshot s) =>
+            !s.Datasets.Any(d => d.Ready)
+            && s.Datasets.Any(d => d.State is SystemState.Loading or SystemState.Indexing || d.Queued);
+
+        private void ShowMark(MonitorSnapshot s)
+        {
+            bool show = Loading(s);
+            // Below the heading and the rows, with a row of air.
+            if (show) _mark.Y = s.Datasets.Count + 2;
+            if (_mark.Visible != show) _mark.Visible = show;
+        }
+
+        private void ShowHeader(MonitorSnapshot s)
+        {
+            var p = s.Process;
+            _meters.Snapshot = s;
+            // PrivateMemorySize64 is 0 on Unix, where this runs in a container; a confident 0MB
+            // would be worse than leaving the column out.
+            string priv = p.PrivateMb > 0 ? string.Create(Inv, $"   priv {p.PrivateMb:N0}MB") : "";
+            _header.Text =
+                string.Create(Inv, $"{s.TakenUtc.UtcDateTime:HH:mm:ss}   datasets {s.Datasets.Count} ({s.LoadedCount} loaded)   ") +
+                string.Create(Inv, $"docs {s.TotalDocuments:N0}   {s.DescribeSearches()}   ") +
+                string.Create(Inv, $"heap {p.GcHeapMb:N0}MB{priv}   ws {p.WorkingSetMb:N0}MB   ") +
+                (p.FootprintMb > 0 ? string.Create(Inv, $"held {p.FootprintMb:N0}MB   ") : "") +
+                string.Create(Inv, $"gc {p.Gen0}/{p.Gen1}/{p.Gen2}   native {p.NativeBlocks:N0} blk");
+
+            _filters.Text = s.Filters.Describe();
+
+            // The header icon reports the instance, so it shows the most notable dataset: an
+            // error outranks work in progress, which outranks serving.
+            var (icon, color) = Worst(s.Datasets);
+            _stateIcon.Icon = icon;
+            _stateIcon.Color = color;
+        }
+
+        /// <summary>The same icon and colour per state as the console's dataset chips. Red is the
+        /// Error state only. A last error on a dataset that serves (a request the engine refused,
+        /// such as an empty search without facets) is amber, as the console's "Last error" alert:
+        /// until Nov 2026 it turned the row and the header red, so one bad request from a client
+        /// made the instance look broken.</summary>
+        internal static (string Icon, Color Color) Appearance(DatasetLine d) =>
+            d.State == SystemState.Error ? ("Warning", Signal)
+            : d.ErrorMessage is not null ? ("Warning", Warn)
+            : d.State == SystemState.Loading ? ("Trolley", Warn)
+            : d.State == SystemState.Indexing ? ("HourGlass", Warn)
+            : d.Queued ? ("HourGlass", Slate)
+            : d.Ready ? ("Flag", Teal)
+            : d.Hibernated ? ("Empty", LightBlue)
+            : ("Empty", Slate);
+
+        internal static (string Icon, Color Color) Worst(IReadOnlyList<DatasetLine> datasets)
+        {
+            if (datasets.Any(d => d.State == SystemState.Error))
+                return ("Warning", Signal);
+            if (datasets.Any(d => d.State is SystemState.Loading or SystemState.Indexing || d.Queued))
+                return ("HourGlass", Warn);
+            if (datasets.Any(d => d.ErrorMessage is not null))
+                return ("Warning", Warn);
+            if (datasets.Any(d => d.Ready))
+                return ("Flag", Teal);
+            return ("Empty", LightBlue);
+        }
+
+        private Scheme? RowScheme(int rowIndex)
+        {
+            if (rowIndex < 0 || rowIndex >= _rows.Count)
+                return null;
+            var color = Appearance(_rows[rowIndex]).Color;
+            var normal = new Attribute(color, GetScheme().Normal.Background);
+            return new Scheme(normal)
+            {
+                Normal = normal,
+                // The selection stays readable: a grey block with dark text, as elsewhere.
+                Focus = new Attribute(Ink, Stone),
+                Active = new Attribute(Stone, Slate),
+            };
+        }
+
+        /// <summary>
+        /// The dataset table, and a signature of exactly what it would show. Taking the signature
+        /// from the rendered cells rather than from the data means it changes when and only when
+        /// the screen would differ -- including the "used" column ticking through its seconds, and
+        /// not including the parts of a timestamp that never reach a column.
+        /// </summary>
+        internal static (DataTable Table, string Signature) BuildDatasetTable(MonitorSnapshot s)
+        {
+            var table = new DataTable();
+            table.Columns.Add("dataset");
+            table.Columns.Add("team");
+            table.Columns.Add("state");
+            table.Columns.Add("docs");
+            table.Columns.Add("on disk");
+            table.Columns.Add("used");
+            table.Columns.Add("note");
+
+            var signature = new StringBuilder();
+            foreach (var d in s.Datasets)
+            {
+                string note = d.ProgressPercent is { } percent ? string.Create(Inv, $"{percent}%") : "";
+                if (d.ErrorMessage is { } error) note = error.Length > 48 ? error[..47] + "…" : error;
+                else if (d.IndexedTextTruncated) note = "text truncated";
+                else if (d.KeepAliveRemaining is { } remaining) note = $"evict in {Short(remaining)}";
+
+                object[] cells =
+                [
+                    d.DataSetName,
+                    d.TeamLabel,
+                    d.Phase,
+                    d.DocumentCount > 0 ? d.DocumentCount.ToString("N0", Inv) : "",
+                    d.RecordsOnDisk > 0 ? d.RecordsOnDisk.ToString("N0", Inv) : d.RecordsOnDisk < 0 ? "…" : "",
+                    d.LastUsedUtc is { } used && d.State is not null ? Short(s.TakenUtc - used) : "",
+                    note,
+                ];
+                table.Rows.Add(cells);
+
+                foreach (var cell in cells) signature.Append(cell).Append('\u0001');
+                // The row colour is not a cell, and a dataset can change colour without any
+                // column changing -- Ready to Error keeps its counts.
+                signature.Append(Appearance(d).Icon).Append('\u0002');
+            }
+
+            return (table, signature.ToString());
+        }
+
+        private void ShowEvents(IReadOnlyList<MonitorEvent> events, int paneWidth)
+        {
+            var (table, rows) = BuildEventTable(events, paneWidth);
+            _eventRows = rows;
+            _events.Table = new DataTableSource(table);
+        }
+
+        /// <summary>The time column's width, "HH:mm:ss", and what the table puts between columns.</summary>
+        private const int EventTimeWidth = 8, EventColumnGap = 1;
+
+        /// <summary>
+        /// The events as table rows, newest first (the pane is short and the interesting line is the
+        /// one that just landed), each message wrapped to the width its column has, its continuation
+        /// rows with the time and source left empty; and the event each row belongs to. A TableView
+        /// cannot wrap a cell, and clicking a message wider than the pane scrolled the table
+        /// sideways to show it (16 Nov 2026), with text the reader could not see.
+        /// </summary>
+        internal static (DataTable Table, IReadOnlyList<MonitorEvent> Rows) BuildEventTable(IReadOnlyList<MonitorEvent> events, int paneWidth)
+        {
+            var table = new DataTable();
+            table.Columns.Add("time");
+            table.Columns.Add("source");
+            table.Columns.Add("what");
+            var rows = new List<MonitorEvent>();
+            int sourceWidth = events.Select(e => e.Source.Length).Append("source".Length).Max();
+            // A pane not yet laid out has no width: one row an event until it has.
+            int width = paneWidth <= 0 ? int.MaxValue : Math.Max(20, paneWidth - EventTimeWidth - sourceWidth - 2 * EventColumnGap - 2);
+            for (int i = events.Count - 1; i >= 0; i--)
+            {
+                var e = events[i];
+                bool first = true;
+                foreach (var line in Wrap(e.Text, width))
+                {
+                    table.Rows.Add(first ? e.AtUtc.UtcDateTime.ToString("HH:mm:ss") : "", first ? e.Source : "", line);
+                    rows.Add(e);
+                    first = false;
+                }
+            }
+            return (table, rows);
+        }
+
+        /// <summary>A message in lines of at most <paramref name="width"/>, broken at spaces, a word
+        /// longer than the line (a path, an id) cut where it must; its own line breaks kept.</summary>
+        internal static IEnumerable<string> Wrap(string text, int width)
+        {
+            foreach (var paragraph in text.Replace("\r\n", "\n").Split('\n'))
+            {
+                var rest = paragraph.TrimEnd();
+                if (rest.Length == 0) { yield return ""; continue; }
+                while (rest.Length > width)
+                {
+                    int cut = rest.LastIndexOf(' ', width);
+                    if (cut <= 0) cut = width;
+                    yield return rest[..cut].TrimEnd();
+                    rest = rest[cut..].TrimStart();
+                }
+                yield return rest;
+            }
+        }
+
+        /// <summary>The first row of <paramref name="selected"/>, the same event as an object (two
+        /// alike are two events), or -1 when nothing was selected or it has left the buffer.</summary>
+        internal static int RowOfEvent(IReadOnlyList<MonitorEvent> rows, MonitorEvent? selected)
+        {
+            if (selected is null) return -1;
+            for (int i = 0; i < rows.Count; i++)
+                if (ReferenceEquals(rows[i], selected)) return i;
+            return -1;
+        }
+
+        private string? SelectedDatasetKey()
+        {
+            int row = _datasets.Value?.SelectedCell.Y ?? -1;
+            return row >= 0 && row < _rows.Count ? _rows[row].Key : null;
+        }
+
+        private void RestoreDatasetSelection(string? key)
+        {
+            if (key is null) return;
+            int row = -1;
+            for (int i = 0; i < _rows.Count; i++)
+                if (_rows[i].Key == key) { row = i; break; }
+            if (row >= 0) SelectRow(_datasets, row, _rows.Count);
+        }
+
+        private static void SelectRow(TableView table, int row, int rowCount)
+        {
+            if (rowCount <= 0) return;
+            row = Math.Clamp(row, 0, rowCount - 1);
+            if (table.Value?.SelectedCell.Y == row) return;
+            int column = table.Value?.SelectedCell.X ?? 0;
+            table.Value = new TableSelection(new System.Drawing.Point(column, row));
+        }
+
+        /// <summary>
+        /// The one action the monitor offers, and it stops the server, so it asks first and Cancel
+        /// is what Enter does. Detaching the screen (Ctrl+Q) and stopping the process are two very
+        /// different things and the wording has to keep them apart.
+        /// </summary>
+        private void ConfirmShutdown()
+        {
+            var dialog = new Dialog { Title = "Shut down server", Width = 62, Height = 10 };
+
+            string[] lines =
+            [
+                "Stop this Indx server?",
+                "",
+                "Loaded datasets are dropped from memory and any search in",
+                "flight is cut off. Data on disk is kept, and the datasets",
+                "load again on the next start.",
+            ];
+            for (int i = 0; i < lines.Length; i++)
+                dialog.Add(new Label { X = 2, Y = 1 + i, Text = lines[i], HotKeySpecifier = NoHotKey });
+
+            var cancel = new Button { Text = "Cancel", IsDefault = true };
+            cancel.Accepting += (_, e) => { e.Handled = true; _app.RequestStop(dialog); };
+
+            var confirm = new Button { Text = "Shut down" };
+            bool confirmed = false;
+            confirm.Accepting += (_, e) => { e.Handled = true; confirmed = true; _app.RequestStop(dialog); };
+
+            dialog.AddButton(cancel);
+            dialog.AddButton(confirm);
+            _app.Run(dialog);
+            dialog.Dispose();
+
+            if (!confirmed)
+                return;
+
+            // Bring the screen down HERE, from the UI thread and after the dialog's own loop has
+            // unwound, and only then stop the host. Two things depend on that order.
+            //
+            // Stopping the host first, and letting it cancel the monitor's token, asks the screen
+            // to stop from another thread. If the process got far enough down its shutdown before
+            // that landed, Terminal.Gui never restored the terminal: mouse reporting stayed on and
+            // the shell printed raw SGR sequences as gibberish ("35;4;44M35;14;43M...") at
+            // whoever used it next.
+            //
+            // And this runs after Run(dialog) returns rather than inside the handler, so the stop
+            // reaches the window. Called from inside, it would be a second RequestStop while the
+            // dialog is still the running top, and might only close the dialog again.
+            _app.RequestStop();
+            _requestShutdown();
+        }
+
+        private static string Short(TimeSpan span)
+        {
+            if (span < TimeSpan.Zero) span = TimeSpan.Zero;
+            if (span.TotalSeconds < 60) return string.Create(Inv, $"{span.TotalSeconds:F0}s");
+            if (span.TotalMinutes < 60) return string.Create(Inv, $"{span.TotalMinutes:F0}m");
+            if (span.TotalHours < 48) return string.Create(Inv, $"{span.TotalHours:F0}h");
+            return string.Create(Inv, $"{span.TotalDays:F0}d");
+        }
+    }
+}

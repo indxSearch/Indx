@@ -1,0 +1,496 @@
+@using Microsoft.AspNetCore.Identity
+@using IndxServer.Data
+@using IndxServer.Services
+@inject ActiveTeamState ActiveTeam
+@inject TeamService TeamService
+@inject UserManager<ApplicationUser> UserManager
+@inject Microsoft.AspNetCore.Identity.UI.Services.IEmailSender EmailSender
+@inject IEditionService Edition
+@inject InstanceSettingsService InstanceSettingsService
+@inject HeaderState Header
+@inject NavigationManager NavigationManager
+@inject InviteService Invites
+@inject Indx.Systm.Blazor.ToastService Toasts
+@implements IDisposable
+
+<PageTitle>Manage @Team.Name</PageTitle>
+
+@* Team settings: [team ▾] › Settings. Members and roles, and a danger zone that renames or
+   deletes the team. The team's API keys have a page of their own (TeamKeysView). Reached from
+   the "Manage team" button on the team page. Hosted by
+   Pages/ConsolePage. *@
+
+<div>
+
+    <h2 class="indx-section-heading indx-section-heading--first">Manage team</h2>
+    <p class="indx-section-help">Who can access this team's datasets, and the team itself.</p>
+
+    @if (!string.IsNullOrEmpty(_error) && !_showAddMember && !_showInvite)
+    {
+        <div style="margin-bottom:12px;"><Alert Variant="destructive">@_error</Alert></div>
+    }
+
+    @* ── Members ── *@
+    <h3 class="indx-section-heading">Members</h3>
+    @* The page action pattern (app.css): the primary add on top of the list it adds to. *@
+    <div class="indx-list-toolbar">
+        @* Invite by email covers everyone: someone with an account is added at once, someone
+           without is invited to register into the team. Picking from every account on the
+           instance is for its admins only, since the list shows who is on the server. *@
+        @if (_canAddMembers)
+        {
+            <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.PanelAdd" @onclick="OpenInvite">Invite member</Button>
+            @if (_isInstanceAdmin)
+            {
+                <Button Variant="secondary" Size="micro" @onclick="OpenAddMember">Add existing user</Button>
+            }
+        }
+        <span class="indx-list-toolbar-end">@_members.Count member@(_members.Count == 1 ? "" : "s")</span>
+    </div>
+    <table style="width:100%; border-collapse:collapse; font-size:13px;">
+        <thead>
+            <tr style="border-bottom:1px solid var(--lv3); color:var(--lv5);">
+                <th style="text-align:left; padding:6px 12px; font-weight:500;">Email</th>
+                <th style="text-align:left; padding:6px 12px; font-weight:500;">Role</th>
+                <th style="padding:6px 12px;"></th>
+            </tr>
+        </thead>
+        <tbody>
+            @foreach (var m in _members)
+            {
+                <tr style="border-bottom:1px solid var(--lv2);">
+                    <td style="padding:8px 12px;">@m.Email</td>
+                    <td style="padding:8px 12px;">
+                        @if (_canAdmin && m.UserId != UserId)
+                        {
+                            <div style="width:130px;"><SelectField Size="micro" Value="@m.Role" ValueChanged="@(v => OnChangeRole(m.UserId, v))" Options="_roleOptions" /></div>
+                        }
+                        else
+                        {
+                            <Chip Color="var(--lv2)" TextColor="var(--lv6)">@m.Role</Chip>
+                        }
+                    </td>
+                    <td style="padding:8px 12px; text-align:right;">
+                        @if (m.UserId == UserId)
+                        {
+                            <div class="ts-row-actions">
+                                <ConfirmButton Label="Leave" Prompt="@($"Only an Admin can add you back to {Team.Name}.")" ConfirmLabel="Leave team" OnConfirm="OnLeave" />
+                            </div>
+                        }
+                        else if (_canAdmin)
+                        {
+                            <div class="ts-row-actions">
+                                <ConfirmButton Label="Remove" Prompt="Their personal keys for this team stop working." ConfirmLabel="Remove member" OnConfirm="() => OnRemove(m.UserId)" />
+                            </div>
+                        }
+                    </td>
+                </tr>
+            }
+        </tbody>
+    </table>
+
+    @* ── Pending invites: people asked to join who have not registered yet ── *@
+    @if (_canAddMembers && _pending.Count > 0)
+    {
+        <h3 class="indx-section-heading">Pending invites</h3>
+        <table style="width:100%; border-collapse:collapse; font-size:13px;">
+            <thead>
+                <tr style="border-bottom:1px solid var(--lv3); color:var(--lv5);">
+                    <th style="text-align:left; padding:6px 12px; font-weight:500;">Email</th>
+                    <th style="text-align:left; padding:6px 12px; font-weight:500;">Role</th>
+                    <th style="text-align:left; padding:6px 12px; font-weight:500;">Invited by</th>
+                    <th style="text-align:left; padding:6px 12px; font-weight:500;">Lasts until</th>
+                    <th style="padding:6px 12px;"></th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var i in _pending)
+                {
+                    <tr style="border-bottom:1px solid var(--lv2);">
+                        <td style="padding:8px 12px;">@i.Email</td>
+                        <td style="padding:8px 12px;"><Chip Color="var(--lv2)" TextColor="var(--lv6)">@i.Role</Chip></td>
+                        <td style="padding:8px 12px; color:var(--lv5);">@(i.InvitedBy ?? "—")</td>
+                        <td style="padding:8px 12px; color:@(i.Expired ? "var(--CSignal)" : "var(--lv5)");">
+                            @if (i.Expired) { <text>Expired </text> }<TimeAgo Value="i.ExpiresAt" />
+                        </td>
+                        <td style="padding:8px 12px; text-align:right;">
+                            <div class="ts-row-actions">
+                                <Button Variant="ghost" Size="micro" Loading="@(_busy == "resend:" + i.Id)" @onclick="() => OnResend(i.Id)">Resend</Button>
+                                <ConfirmButton Label="Revoke" Prompt="The link in their email stops working." ConfirmLabel="Revoke invite" OnConfirm="() => OnRevoke(i.Id)" />
+                            </div>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    }
+
+    @* ── Invite member (Editor and above) ── *@
+    <Modal Open="_showInvite" OpenChanged="@(open => { if (!open && _busy != "invite") _showInvite = false; })" Title="Invite member"
+           Description="@InviteDescription">
+        <div class="indx-modal-form">
+            <InputField Label="Email address" placeholder="name@example.com" @bind-Value="_inviteEmail"
+                        @oninput="@(e => _inviteEmail = e.Value?.ToString() ?? string.Empty)" />
+            <SelectField Size="micro" Label="Role" @bind-Value="_addRole" Options="_addRoleOptions" />
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <Alert Variant="destructive">@_error</Alert>
+            }
+            <div class="indx-form-actions">
+                <Button Variant="primary" Size="micro" Disabled="@string.IsNullOrWhiteSpace(_inviteEmail)" Loading="@(_busy == "invite")" @onclick="OnInvite">Send invite</Button>
+                <Button Variant="secondary" Size="micro" Disabled="@(_busy == "invite")" @onclick="() => _showInvite = false">Cancel</Button>
+            </div>
+        </div>
+    </Modal>
+
+    @* ── Add an existing user (instance admins) ── *@
+    <Modal @bind-Open="_showAddMember" Title="Add existing user" Description="@($"Anyone with an account on this instance can be added to {Team.Name}.")">
+        <div class="indx-modal-form">
+            @if (_addableUsers.Count == 0)
+            {
+                <p style="color:var(--lv5); margin:0;">Everyone with an account is already on this team.</p>
+            }
+            else
+            {
+                <SelectField Size="micro" Label="User" Placeholder="Select a user…" @bind-Value="_addUserId" Options="_userOptions" />
+                <SelectField Size="micro" Label="Role" @bind-Value="_addRole" Options="_addRoleOptions" />
+            }
+            @if (!string.IsNullOrEmpty(_error))
+            {
+                <Alert Variant="destructive">@_error</Alert>
+            }
+            <div class="indx-form-actions">
+                <Button Variant="primary" Size="micro" Disabled="@string.IsNullOrEmpty(_addUserId)" Loading="@(_busy == "add")" @onclick="OnAddMember">Add</Button>
+                <Button Variant="secondary" Size="micro" Disabled="@(_busy == "add")" @onclick="() => _showAddMember = false">Cancel</Button>
+            </div>
+        </div>
+    </Modal>
+
+    @* ── Danger zone (Admin): rename and delete, each confirmed in a modal that says what breaks.
+       Rename is here because the name is in every API path (/api/teams/{name}/…), so renaming
+       breaks every site and script that calls the API until it is updated. ── *@
+    @if (_canAdmin)
+    {
+        <h3 class="indx-section-heading indx-section-heading--danger">Danger Zone</h3>
+        <div class="indx-confirm-typed">
+            <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Tag" @onclick="OpenRename">Rename team</Button>
+            @if (ActiveTeam.Teams.Count > 1)
+            {
+                <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Delete" @onclick="() => _deleteOpen = true">Delete team</Button>
+            }
+        </div>
+        @if (ActiveTeam.Teams.Count <= 1)
+        {
+            <p class="indx-section-help" style="margin-top:8px;">You can't delete your only team.</p>
+        }
+
+        <ConfirmModal @bind-Open="_renameOpen" Title="@($"Rename {Team.Name}")" Consequences="RenameConsequences"
+                      CanConfirm="RenameChanged" ConfirmLabel="Rename team" ConfirmIcon="DatasetIcons.Tag" OnConfirm="OnRename">
+            <InputField Label="New name" @bind-Value="_renameInput" Immediate />
+        </ConfirmModal>
+
+        <ConfirmModal @bind-Open="_deleteOpen" Title="@($"Delete {Team.Name}?")" Consequences="DeleteConsequences"
+                      TypeToConfirm="@Team.Name" ConfirmLabel="Delete team" ConfirmIcon="DatasetIcons.Delete" OnConfirm="OnDelete" />
+    }
+</div>
+
+@code {
+    private readonly List<SelectField.SelectOption> _roleOptions =
+        TeamRoles.All.Select(r => new SelectField.SelectOption(r, r)).ToList();
+    private List<SelectField.SelectOption> _userOptions = new();
+    private List<SelectField.SelectOption> _addRoleOptions = new();
+
+    [Parameter, EditorRequired] public Team Team { get; set; } = default!;
+    [Parameter] public string? Role { get; set; }
+    [Parameter, EditorRequired] public string UserId { get; set; } = "";
+
+    private Guid? _loadedFor;
+    private bool _canAdmin;
+    private bool _canAddMembers;
+    private bool _isInstanceAdmin;
+    private bool _canInviteNew;
+    private List<InviteService.Pending> _pending = new();
+    private bool _showInvite;
+    private string _inviteEmail = "";
+
+    private List<MemberRow> _members = new();
+    private List<UserRow> _addableUsers = new();
+    private string _addUserId = "";
+    private string _addRole = TeamRoles.Viewer;
+    private string _renameInput = "";
+    private string? _error;
+
+    private record MemberRow(string UserId, string Email, string Role);
+    private record UserRow(string Id, string Email);
+
+    protected override void OnInitialized() => ActiveTeam.OnChange += OnActiveTeamChanged;
+    public void Dispose() { ActiveTeam.OnChange -= OnActiveTeamChanged; Header.Clear(this, keepIf: NavigationManager.ToBaseRelativePath(NavigationManager.Uri).StartsWith("teams/", StringComparison.OrdinalIgnoreCase)); }
+
+    private void SetHeader() => Header.Set(this, b =>
+    {
+        b.OpenComponent<ConsoleBreadcrumb>(0);
+        b.AddAttribute(1, "TeamName", Team.Name);
+        b.AddAttribute(2, "Page", "Settings");
+        b.CloseComponent();
+    });
+
+    // Membership or role changed (add/remove/role change go through ReloadAsync on some
+    // paths); re-read. ConsolePage handles a team that disappeared or was renamed.
+    private async void OnActiveTeamChanged()
+    {
+        if (ActiveTeam.Teams.All(t => t.Team.Id != Team.Id)) return;
+        await LoadAsync();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        SetHeader();
+        if (_loadedFor == Team.Id) return;
+        _loadedFor = Team.Id;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+
+        _canAdmin = TeamRoles.CanAdmin(Role);
+        // Editor and above — and only when the plan allows more than one user.
+        _canAddMembers = TeamRoles.CanWrite(Role)
+            && Edition.IsEnabled(EditionFeature.MultipleUsers);
+        _renameInput = Team.Name ?? "";
+
+        var members = await TeamService.GetMembersAsync(Team.Id);
+        var rows = new List<MemberRow>();
+        foreach (var m in members)
+        {
+            var u = await UserManager.FindByIdAsync(m.UserId);
+            rows.Add(new MemberRow(m.UserId, u?.Email ?? "(unknown)", m.Role));
+        }
+        _members = rows.OrderByDescending(r => TeamRoles.Rank(r.Role)).ThenBy(r => r.Email).ToList();
+
+        var me = await UserManager.FindByIdAsync(UserId);
+        _isInstanceAdmin = me != null && await UserManager.IsInRoleAsync(me, "Admin");
+        _canInviteNew = await Invites.CanInviteNewUsersAsync(UserId, Team.Id);
+        _pending = _canAddMembers ? await Invites.ForTeamAsync(Team.Id) : new();
+
+        var memberIds = members.Select(m => m.UserId).ToHashSet();
+        // Everyone on the instance, for its admins only (Add existing user).
+        var others = _isInstanceAdmin ? UserManager.Users.Where(u => !memberIds.Contains(u.Id)).OrderBy(u => u.Email).ToList() : [];
+        _addableUsers = others.Select(u => new UserRow(u.Id, u.Email ?? "")).ToList();
+        _userOptions = _addableUsers.Select(u => new SelectField.SelectOption(u.Email, u.Id)).ToList();
+        _addRoleOptions = new List<SelectField.SelectOption>
+        {
+            new(TeamRoles.Viewer, TeamRoles.Viewer),
+            new(TeamRoles.Editor, TeamRoles.Editor),
+        };
+        if (_canAdmin) _addRoleOptions.Add(new(TeamRoles.Admin, TeamRoles.Admin));
+        _addUserId = "";
+    }
+
+
+    // Which action is in flight ("add", "leave", "remove:<userId>"); ConfirmButton shows its own spinner, so its
+    // button shows a spinner. One at a time: the handlers reload the whole view when they finish.
+    private string? _busy;
+
+    private async Task RunBusy(string key, Func<Task> action)
+    {
+        if (_busy != null) return;
+        _busy = key;
+        try { await action(); }
+        finally { _busy = null; }
+    }
+
+    private bool _showAddMember;
+
+    private string InviteDescription => _canInviteNew
+        ? $"Someone with an account here is added to {Team.Name} at once. Someone without one gets an email to register, and joins {Team.Name} when they do. The invite lasts {(int)InviteService.Lifetime.TotalDays} days."
+        : $"Someone with an account here is added to {Team.Name} at once. Only {(_canAdmin ? "the instance's admins" : "a team admin")} can invite someone who has no account yet.";
+
+    private void OpenInvite()
+    {
+        _error = null;
+        _inviteEmail = "";
+        _addRole = TeamRoles.Viewer;
+        _showInvite = true;
+    }
+
+    private Task OnInvite() => RunBusy("invite", async () =>
+    {
+        _error = null;
+        InviteService.Result result;
+        try
+        {
+            result = await Invites.InviteAsync(_inviteEmail, Team.Id, _addRole, UserId, RegisterUrl);
+        }
+        catch (InviteService.InviteException ex) { _error = ex.Message; return; }
+        var email = _inviteEmail.Trim();
+        Toasts.Show(result.Outcome switch
+        {
+            InviteService.Outcome.AddedToTeam => $"{email} was added to {Team.Name}.",
+            _ when !result.EmailSent => $"{email} is invited, but the email could not be sent. Try Resend.",
+            InviteService.Outcome.Renewed => $"Invite to {email} sent again.",
+            _ => $"Invite sent to {email}.",
+        });
+        _showInvite = false;
+        await LoadAsync();
+    });
+
+    private Task OnResend(Guid id) => RunBusy("resend:" + id, async () =>
+    {
+        _error = null;
+        try
+        {
+            var sent = await Invites.ResendAsync(id, UserId, RegisterUrl);
+            Toasts.Show(sent ? "Invite sent again." : "The invite was renewed, but the email could not be sent.");
+        }
+        catch (InviteService.InviteException ex) { _error = ex.Message; }
+        await LoadAsync();
+    });
+
+    private Task OnRevoke(Guid id) => RunBusy("revoke:" + id, async () =>
+    {
+        _error = null;
+        try { await Invites.RevokeAsync(id, UserId); }
+        catch (InviteService.InviteException ex) { _error = ex.Message; }
+        await LoadAsync();
+    });
+
+    private string RegisterUrl => NavigationManager.ToAbsoluteUri("/account/register").ToString();
+
+    private void OpenAddMember()
+    {
+        if (!_isInstanceAdmin) return;
+        _error = null;
+        _addUserId = "";
+        _showAddMember = true;
+    }
+
+    private Task OnAddMember() => RunBusy("add", AddMemberAsync);
+
+    private async Task AddMemberAsync()
+    {
+        if (string.IsNullOrEmpty(_addUserId) || !_isInstanceAdmin) return;
+        _error = null;
+        try
+        {
+            await TeamService.AddMemberAsync(Team.Id, _addUserId, _addRole);
+        }
+        catch (TeamService.TeamException ex) { _error = ex.Message; return; }
+
+        var added = await UserManager.FindByIdAsync(_addUserId);
+        if (!string.IsNullOrEmpty(added?.Email))
+        {
+            try
+            {
+                var instanceName = InstanceSettingsService.Load().InstanceName;
+                await EmailSender.SendEmailAsync(added.Email,
+                    EmailTemplates.Subject(instanceName, $"You've been added to team \"{Team.Name}\""),
+                    EmailTemplates.Notice(instanceName,
+                        $"Added to {Team.Name}",
+                        $"You have been added to the team <strong>{Team.Name}</strong> as <strong>{_addRole}</strong>."));
+            }
+            catch { /* email failure is non-fatal */ }
+        }
+        _showAddMember = false;
+        await LoadAsync();
+    }
+
+    private async Task OnChangeRole(string userId, string? role)
+    {
+        if (string.IsNullOrEmpty(role)) return;
+        _error = null;
+        try
+        {
+            await TeamService.RequireAdminAsync(Team.Id, UserId);
+            await TeamService.ChangeRoleAsync(Team.Id, userId, role);
+        }
+        catch (TeamService.TeamException ex) { _error = ex.Message; }
+        await LoadAsync();
+    }
+
+    private Task OnRemove(string userId) => RunBusy("remove:" + userId, async () =>
+    {
+        _error = null;
+        try
+        {
+            await TeamService.RequireAdminAsync(Team.Id, UserId);
+            await TeamService.RemoveMemberAsync(Team.Id, userId);
+        }
+        catch (TeamService.TeamException ex) { _error = ex.Message; }
+        await LoadAsync();
+    });
+
+    private Task OnLeave() => RunBusy("leave", async () =>
+    {
+        _error = null;
+        try { await TeamService.RemoveMemberAsync(Team.Id, UserId); }
+        catch (TeamService.TeamException ex) { _error = ex.Message; return; }
+        await ActiveTeam.ReloadAsync(); // I left → active team falls back to another
+    });
+
+    private bool _renameOpen;
+
+    private void OpenRename()
+    {
+        _renameInput = Team.Name ?? "";
+        _renameOpen = true;
+    }
+
+    private bool RenameChanged => !string.IsNullOrWhiteSpace(_renameInput)
+        && !string.Equals(_renameInput.Trim(), Team.Name, StringComparison.Ordinal);
+
+    private IReadOnlyList<string> RenameConsequences =>
+    [
+        $"The team's address in the API changes from /api/teams/{Team.Name}/… to /api/teams/{(RenameChanged ? _renameInput.Trim() : "(new name)")}/….",
+        "Every website, app, script and MCP client that calls the API by the old name gets errors until it is updated.",
+        "API keys keep working: they belong to the team, not to its name.",
+        "Console links and bookmarks to the old name stop working.",
+    ];
+
+    /// <summary>Null on success, else the reason, shown in the modal.</summary>
+    private async Task<string?> OnRename()
+    {
+        try
+        {
+            await TeamService.RequireAdminAsync(Team.Id, UserId);
+            await TeamService.RenameTeamAsync(Team.Id, _renameInput);
+        }
+        catch (TeamService.TeamException ex) { return ex.Message; }
+        await ActiveTeam.ReloadAsync();
+        return null;
+    }
+
+    private bool _deleteOpen;
+
+    private IReadOnlyList<string> DeleteConsequences => TeamService.GetDatasetNames(Team.Id).Count switch
+    {
+        0 => DeleteLines("The team is deleted. It has no datasets."),
+        1 => DeleteLines("Its 1 dataset is deleted, with all its documents."),
+        var n => DeleteLines($"Its {n} datasets are deleted, with all their documents."),
+    };
+
+    private IReadOnlyList<string> DeleteLines(string datasets) =>
+    [
+        datasets,
+        $"All {_members.Count} member{(_members.Count == 1 ? "" : "s")} lose access to it.",
+        "Its team keys stop working, and so does every personal key made for it. Websites and apps that search it get errors.",
+        "This can't be undone.",
+    ];
+
+    /// <summary>Null on success, else the reason, shown in the modal.</summary>
+    private async Task<string?> OnDelete()
+    {
+        if (ActiveTeam.Teams.Count <= 1) return "You can't delete your only team.";
+        // Deleting a team disposes every engine it owns — seconds, on the circuit's thread if we
+        // let it, which would also freeze the spinner. Run it off the circuit.
+        try
+        {
+            await TeamService.RequireAdminAsync(Team.Id, UserId);
+            await Task.Run(() => TeamService.DeleteTeamAsync(Team.Id));
+        }
+        catch (TeamService.TeamException ex) { return ex.Message; }
+        await ActiveTeam.ReloadAsync();
+        return null;
+    }
+}

@@ -1,0 +1,335 @@
+﻿using Asp.Versioning;
+using IndxServer.Engine;
+using IndxServer.Models;
+using IndxServer.Services;
+using Microsoft.AspNetCore.Mvc;
+
+namespace IndxServer.Controllers
+{
+    /// <summary>
+    /// Reads and lifecycle for search statistics. Aggregates merge the rolled-up daily tables
+    /// with the raw rows not yet rolled (the store does the merging). Deleting statistics is the
+    /// EXPLICIT operation the design trades for survival across dataset delete/recreate.
+    /// Statistics disabled on the instance answers 404 problem+json
+    /// with code <c>statisticsDisabled</c> on every route here.
+    /// <para>The reads of searches, clicks and conversions take an optional <c>source</c>: the
+    /// <c>?source=</c> the searches were sent with. With it they count that surface alone, read
+    /// from the raw rows, so as far back as those are kept (90 days by default); a select or
+    /// conversion counts for the surface of the search it names by queryId. A source no search
+    /// was sent with gives zeros, not the totals. <c>statistics/sources</c> lists the surfaces.</para>
+    /// </summary>
+    public class StatisticsController(TeamContextResolver resolver, StatisticsService statistics)
+        : DatasetApiController(resolver)
+    {
+        /// <summary>The window's totals and rates - the dashboard's header numbers. Rates are
+        /// computed here so every consumer shares the definitions (see the response type).</summary>
+        [KeyAccess(ApiKeyLevel.Read)]
+        [HttpGet(DataSetRoute + "/statistics/overview")]
+        public ActionResult<StatisticsOverviewResponse> Overview(string teamName, string dataSetName, int days = 30,
+            string? source = null)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            if (Disabled(out var off)) return off!;
+            var (fromDay, toDay) = Window(ctx.OwnerKey, dataSetName, days);
+            var o = statistics.Store!.Overview(ctx.OwnerKey, dataSetName, fromDay, toDay, Source(source));
+            return new StatisticsOverviewResponse(
+                o.Searches, o.ZeroHits, o.ClickedSearches, o.Selects, o.Converts, o.ConvertValueSum,
+                Rate(o.ZeroHits, o.Searches), Rate(o.ClickedSearches, o.Searches),
+                Rate(o.PositionSum, o.Selects), o.Uncovered, Rate(o.Uncovered, o.Searches),
+                o.UncoveredChosen);
+        }
+
+        /// <summary>The per-day series behind the charts: one row per UTC day in the window.
+        /// Days without events are served as zero rows, so a chart never has holes.</summary>
+        [KeyAccess(ApiKeyLevel.Read)]
+        [HttpGet(DataSetRoute + "/statistics/timeseries")]
+        public ActionResult<StatisticsDayResponse[]> TimeSeries(string teamName, string dataSetName, int days = 30,
+            string? source = null)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            if (Disabled(out var off)) return off!;
+            var (fromDay, toDay) = Window(ctx.OwnerKey, dataSetName, days);
+            var byDay = statistics.Store!.TimeSeries(ctx.OwnerKey, dataSetName, fromDay, toDay, Source(source))
+                .ToDictionary(r => r.Day);
+            var series = new List<StatisticsDayResponse>((int)(toDay - fromDay + 1));
+            for (long day = fromDay; day <= toDay; day++)
+            {
+                var r = byDay.GetValueOrDefault(day);
+                series.Add(new StatisticsDayResponse(
+                    DateOnly.FromDayNumber((int)day + DateOnly.Parse("1970-01-01").DayNumber).ToString("yyyy-MM-dd"),
+                    r.Searches, r.ZeroHits, r.ClickedSearches, r.Selects, r.Converts,
+                    r.ConvertValueSum, Rate(r.PositionSum, r.Selects), r.Uncovered));
+            }
+            return series.ToArray();
+        }
+
+        private static double? Rate(double numerator, double denominator) =>
+            denominator == 0 ? null : numerator / denominator;
+
+        /// <summary>Top queries in the window: searches, zero-hit count and selects per query
+        /// text (lowercased). With uncoveredOnly=true, the searches without coverage: those coverage
+        /// confirmed nothing for, how often a result was chosen anyway, and the document chosen most
+        /// (mostChosenDocument), which is usually the synonym or spelling to add.
+        /// order=lowestClickThrough lists the queries searched often and chosen from rarely
+        /// (highestClickThrough the reverse; both leave out queries searched fewer than five
+        /// times, where one click reads as 100%), and
+        /// order=chosenAnyway with uncoveredOnly the fuzzy finds.
+        /// With zeroHitsOnly=true, the zero-hit report — the searches the
+        /// dataset could not answer, ordered by how often.</summary>
+        [KeyAccess(ApiKeyLevel.Read)]
+        [HttpGet(DataSetRoute + "/statistics/queries")]
+        public ActionResult<QueryStat[]> Queries(string teamName, string dataSetName,
+            int days = 30, int limit = 50, bool zeroHitsOnly = false, bool uncoveredOnly = false,
+            QueryOrder order = QueryOrder.Searches, string? source = null)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            if (Disabled(out var off)) return off!;
+            var (fromDay, toDay) = Window(ctx.OwnerKey, dataSetName, days);
+            var queries = statistics.Store!.TopQueries(ctx.OwnerKey, dataSetName, fromDay, toDay,
+                Math.Clamp(limit, 1, 1000), zeroHitsOnly, uncoveredOnly, order, Source(source));
+            if (!queries.Any(q => q.MostChosenDocument != null)) return queries.ToArray();
+            var label = Labels(ctx.OwnerKey, dataSetName);
+            return queries.Select(q => q.MostChosenDocument is long key ? q with { MostChosenLabel = label(key) } : q).ToArray();
+        }
+
+        /// <summary>For one query (<paramref name="text"/>, compared lowercased like the query
+        /// list): which documents visitors chose from its results, most chosen first, with the
+        /// position sum and the conversions from the same searches. A query searched often and
+        /// chosen from rarely is either missing what people want or ranking it too low; which of
+        /// the two, and whether the choices were the thing itself or a substitute, is read from
+        /// this list. From the raw rows, so as far back as they are kept (90 days by default).</summary>
+        [KeyAccess(ApiKeyLevel.Read)]
+        [HttpGet(DataSetRoute + "/statistics/queries/documents")]
+        public ActionResult<QueryDocumentStat[]> QueryDocuments(string teamName, string dataSetName,
+            string? text, int days = 30, int limit = 50, string? source = null)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            if (Disabled(out var off)) return off!;
+            if (string.IsNullOrWhiteSpace(text))
+                return ApiProblems.InvalidArgument("text is required: the query whose chosen documents to list");
+            var (fromDay, toDay) = Window(ctx.OwnerKey, dataSetName, days);
+            var label = Labels(ctx.OwnerKey, dataSetName);
+            return statistics.Store!.QueryDocuments(ctx.OwnerKey, dataSetName, text, fromDay, toDay,
+                Math.Clamp(limit, 1, 1000), Source(source))
+                .Select(d => d with { Label = label(d.DocumentKey) }).ToArray();
+        }
+
+        /// <summary>Browsing in the window: how often people narrowed by each filter value, with
+        /// or without text, and how often that came back empty. A combined filter counts once per
+        /// operand; a range counts by its field, with an empty value.</summary>
+        [KeyAccess(ApiKeyLevel.Read)]
+        [HttpGet(DataSetRoute + "/statistics/filters")]
+        public ActionResult<FilterStat[]> Filters(string teamName, string dataSetName,
+            int days = 30, int limit = 50, string? source = null)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            if (Disabled(out var off)) return off!;
+            var (fromDay, toDay) = Window(ctx.OwnerKey, dataSetName, days);
+            return statistics.Store!.TopFilters(ctx.OwnerKey, dataSetName, fromDay, toDay,
+                Math.Clamp(limit, 1, 1000), Source(source)).ToArray();
+        }
+
+        /// <summary>Top documents in the window: selects, converts and summed convert value per
+        /// document key. The keys are the customer's own; titles are looked up by key.</summary>
+        [KeyAccess(ApiKeyLevel.Read)]
+        [HttpGet(DataSetRoute + "/statistics/documents")]
+        public ActionResult<DocumentStat[]> Documents(string teamName, string dataSetName,
+            int days = 30, int limit = 50, string? source = null)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            if (Disabled(out var off)) return off!;
+            var (fromDay, toDay) = Window(ctx.OwnerKey, dataSetName, days);
+            var label = Labels(ctx.OwnerKey, dataSetName);
+            return statistics.Store!.TopDocuments(ctx.OwnerKey, dataSetName, fromDay, toDay,
+                Math.Clamp(limit, 1, 1000), source: Source(source))
+                .Select(d => d with { Label = label(d.DocumentKey) }).ToArray();
+        }
+
+        /// <summary>The surfaces searches came from in the window, most searched first: each
+        /// <c>?source=</c> with its searches, counted as the overview counts them, and a row with
+        /// a null source for the searches that named none. From the raw rows (90 days by default).</summary>
+        [KeyAccess(ApiKeyLevel.Read)]
+        [HttpGet(DataSetRoute + "/statistics/sources")]
+        public ActionResult<SourceStat[]> Sources(string teamName, string dataSetName, int days = 30)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            if (Disabled(out var off)) return off!;
+            var (fromDay, toDay) = Window(ctx.OwnerKey, dataSetName, days);
+            return statistics.Store!.Sources(ctx.OwnerKey, dataSetName, fromDay, toDay).ToArray();
+        }
+
+        /// <summary>One subject's lifetime top documents — the personalization read
+        /// ("top 10 per user"). The subject is whatever the customer sent on the events.</summary>
+        [KeyAccess(ApiKeyLevel.Read)]
+        [HttpGet(DataSetRoute + "/statistics/subjects/{subject}")]
+        public ActionResult<SubjectDocumentStat[]> Subject(string teamName, string dataSetName,
+            string subject, int limit = 10)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            if (Disabled(out var off)) return off!;
+            var label = Labels(ctx.OwnerKey, dataSetName);
+            return statistics.Store!.TopForSubject(ctx.OwnerKey, dataSetName, subject,
+                Math.Clamp(limit, 1, 1000)).Select(d => d with { Label = label(d.DocumentKey) }).ToArray();
+        }
+
+        /// <summary>What the dataset's owners changed in the window, oldest first, and the daily
+        /// document totals: the why beside the numbers.</summary>
+        [KeyAccess(ApiKeyLevel.Read)]
+        [HttpGet(DataSetRoute + "/statistics/changes")]
+        public ActionResult<StatisticsChangesResponse> Changes(string teamName, string dataSetName, int days = 30)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            if (Disabled(out var off)) return off!;
+            var (fromDay, toDay) = Window(ctx.OwnerKey, dataSetName, days);
+            var store = statistics.Store!;
+            var changes = store.Changes(ctx.OwnerKey, dataSetName, fromDay, toDay)
+                .Select(c => new StatisticsChangeResponse(
+                    DateTimeOffset.FromUnixTimeMilliseconds(c.Timestamp).UtcDateTime.ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                    c.Kind,
+                    c.Summary == null ? null : System.Text.Json.JsonDocument.Parse(c.Summary).RootElement.Clone()))
+                .ToArray();
+            var documents = store.DocumentChanges(ctx.OwnerKey, dataSetName, fromDay, toDay)
+                .Select(d => new StatisticsDocumentChangesResponse(
+                    DateOnly.FromDayNumber((int)d.Day + DateOnly.FromDateTime(DateTime.UnixEpoch).DayNumber).ToString("yyyy-MM-dd"),
+                    d.Inserted, d.Updated, d.Deleted))
+                .ToArray();
+            return new StatisticsChangesResponse(changes, documents);
+        }
+
+        /// <summary>The dataset's statistics settings. <c>recordFilters</c>: whether each search's
+        /// filter is stored, which is what the Browsing report counts. On by default.</summary>
+        [KeyAccess(ApiKeyLevel.Read)]
+        [HttpGet(DataSetRoute + "/statistics/settings")]
+        public ActionResult<StatisticsSettings> GetSettings(string teamName, string dataSetName)
+        {
+            var ctx = ResolveTeam(teamName, out var error);
+            if (ctx == null) return error!;
+            if (Disabled(out var off)) return off!;
+            return Settings(ctx.OwnerKey, dataSetName);
+        }
+
+        /// <summary>Changes the dataset's statistics settings; a property left out stays as it is.
+        /// Switching <c>recordFilters</c> off stops recording filters; what is already recorded
+        /// stays until it ages out or the statistics are erased. <c>labelField</c> names the field
+        /// the statistics show beside a document key; <c>""</c> goes back to the first searchable
+        /// field, and a field the dataset does not have is a 400. Team admin, Full key: a privacy
+        /// setting sits here.</summary>
+        [KeyAccess(ApiKeyLevel.Full)]
+        [HttpPut(DataSetRoute + "/statistics/settings")]
+        public ActionResult<StatisticsSettings> PutSettings(string teamName, string dataSetName,
+            [FromBody] StatisticsSettingsUpdate settings)
+        {
+            var ctx = ResolveTeam(teamName, out var error, admin: true);
+            if (ctx == null) return error!;
+            if (Disabled(out var off)) return off!;
+            var store = statistics.Store!;
+            if (settings.LabelField is { } field && field.Trim().Length > 0)
+            {
+                // Checked against the configuration when the dataset is loaded; asleep it is taken
+                // as given, and a field it turns out not to have falls back to the first searchable.
+                var engine = IndxServerInternalApi.Manager.FindSearchEngine(dataSetName, ctx.OwnerKey);
+                var known = engine is { IsDisposed: false } ? engine.GetFieldConfiguration() : null;
+                if (known != null && known.Length > 0 && !known.Any(f => f.FieldName == field.Trim()))
+                    return ApiProblems.InvalidArgument($"labelField: the dataset has no field '{field.Trim()}'");
+            }
+            if (settings.TimeZone is { } zone && zone.Trim().Length > 0 && StatisticsDays.Find(zone) == null)
+                return ApiProblems.InvalidArgument($"timeZone: '{zone.Trim()}' is not a time zone name, such as Europe/Oslo or UTC");
+            if (settings.RecordFilters is bool on) store.SetRecordsFilters(ctx.OwnerKey, dataSetName, on);
+            if (settings.TimeZone != null && settings.TimeZone.Trim() != (store.TimeZoneName(ctx.OwnerKey, dataSetName) ?? ""))
+                store.SetTimeZone(ctx.OwnerKey, dataSetName, settings.TimeZone);
+            if (settings.LabelField != null) store.SetLabelField(ctx.OwnerKey, dataSetName, settings.LabelField);
+            return Settings(ctx.OwnerKey, dataSetName);
+        }
+
+        private StatisticsSettings Settings(string teamId, string dataSetName) =>
+            new(statistics.Store!.RecordsFilters(teamId, dataSetName), statistics.Store.LabelField(teamId, dataSetName),
+                StatisticsDays.NameOf(statistics.Store.ZoneOf(teamId, dataSetName)));
+
+        /// <summary>Key to label for one read (<see cref="StatisticsLabels"/>): from the engine when
+        /// it is loaded, never waking it; asleep, every label is null.</summary>
+        private Func<long, string?> Labels(string teamId, string dataSetName) =>
+            statistics.LabelsFor(IndxServerInternalApi.Manager.FindSearchEngine(dataSetName, teamId), teamId, dataSetName);
+
+        /// <summary>Deletes the dataset's statistics. Bare, every row: the explicit purge, since
+        /// statistics survive dataset delete/recreate and starting clean is a choice made here.
+        /// With <c>source</c> and/or <c>from</c>/<c>to</c> (UTC days, yyyy-MM-dd, inclusive), only
+        /// the visitor events they select: the searches sent with that source or in those days,
+        /// with their selects and conversions, so test traffic can go without the real history.
+        /// The owners' changes and the subjects' lifetime top documents stay then. By source, days
+        /// older than the raw rows' retention (90 by default) keep that surface's share.</summary>
+        [KeyAccess(ApiKeyLevel.Full)]
+        [HttpDelete(DataSetRoute + "/statistics")]
+        public IActionResult Purge(string teamName, string dataSetName,
+            string? source = null, string? from = null, string? to = null)
+        {
+            var ctx = ResolveTeam(teamName, out var error, admin: true);
+            if (ctx == null) return error!;
+            if (Disabled(out var off)) return off!;
+            var src = Source(source);
+            if (!TryDay(from, out var fromDay) || !TryDay(to, out var toDay))
+                return ApiProblems.InvalidArgument("from and to are UTC days written yyyy-MM-dd, such as 2026-10-06");
+            if (fromDay > toDay)
+                return ApiProblems.InvalidArgument("from is after to");
+            if (src == null && fromDay == null && toDay == null)
+                statistics.Store!.PurgeDataset(ctx.OwnerKey, dataSetName);
+            else
+                statistics.Store!.DeleteEvents(ctx.OwnerKey, dataSetName, src, fromDay, toDay);
+            return NoContent();
+        }
+
+        /// <summary>A yyyy-MM-dd day as a Unix day; blank is no bound.</summary>
+        private static bool TryDay(string? text, out long? day)
+        {
+            day = null;
+            if (string.IsNullOrWhiteSpace(text)) return true;
+            if (!DateOnly.TryParseExact(text.Trim(), "yyyy-MM-dd", System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out var date))
+                return false;
+            day = date.DayNumber - DateOnly.FromDateTime(DateTime.UnixEpoch).DayNumber;
+            return true;
+        }
+
+        /// <summary>The GDPR erasure of one subject: the subject↔document edge is deleted and the
+        /// raw rows are anonymised, so aggregate counts stay true while nothing ties them to the
+        /// subject any more.</summary>
+        [KeyAccess(ApiKeyLevel.Full)]
+        [HttpDelete(DataSetRoute + "/statistics/subjects/{subject}")]
+        public IActionResult EraseSubject(string teamName, string dataSetName, string subject)
+        {
+            var ctx = ResolveTeam(teamName, out var error, admin: true);
+            if (ctx == null) return error!;
+            if (Disabled(out var off)) return off!;
+            statistics.Store!.EraseSubject(ctx.OwnerKey, dataSetName, subject);
+            return NoContent();
+        }
+
+        private bool Disabled(out ObjectResult? problem)
+        {
+            if (statistics.Enabled) { problem = null; return false; }
+            problem = ApiProblems.Problem(StatusCodes.Status404NotFound, "statisticsDisabled",
+                "Statistics disabled",
+                "Statistics are switched off on this instance (Statistics:Enabled=false).");
+            return true;
+        }
+
+        /// <summary>A source as the search stored it (trimmed, at most 40 characters), so a read
+        /// finds what was written; blank means every surface.</summary>
+        private static string? Source(string? source) => StatisticsService.CleanSource(source);
+
+        /// <summary>The last <paramref name="days"/> days, today included, in the dataset's time zone.</summary>
+        private (long FromDay, long ToDay) Window(string teamId, string dataSetName, int days)
+        {
+            long today = statistics.Store!.Today(teamId, dataSetName);
+            return (today - Math.Clamp(days, 1, 3650) + 1, today);
+        }
+    }
+}

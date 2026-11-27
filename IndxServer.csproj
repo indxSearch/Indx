@@ -1,0 +1,180 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+
+	<PropertyGroup>
+		<TargetFramework>net10.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<UserSecretsId>aspnet-IndxServer-753A8260-85A1-4678-9E16-CC33E76477FD</UserSecretsId>
+		<!-- Indx.Systm.Blazor lives INSIDE this folder so it rides the git-subtree split to the
+		     public repo, but it is its own project (referenced below) — keep its files out of
+		     this app's own compile/content globs or every component gets compiled twice. -->
+		<DefaultItemExcludes>$(DefaultItemExcludes);Indx.Systm.Blazor/**</DefaultItemExcludes>
+		<GenerateDocumentationFile>True</GenerateDocumentationFile>
+		<DocumentationFile>IndxServer.xml</DocumentationFile>
+
+		<!-- Versioning (Semantic Versioning: MAJOR.MINOR.PATCH-PRERELEASE) -->
+		<Version>2.0.0</Version>
+		<AssemblyVersion>2.0.0.0</AssemblyVersion>
+		<FileVersion>2.0.0.0</FileVersion>
+		<InformationalVersion>2.0.0-beta.9</InformationalVersion>
+
+		<!-- License Information -->
+		<PackageLicenseFile>LICENSE</PackageLicenseFile>
+		<Copyright>Copyright (c) 2026 Indx (Bionic AS)</Copyright>
+		<!-- 1591: keep doc generation on (Swagger reads IndxServer.xml) but don't warn on every
+		     public member lacking an XML comment — the MCP models, BoostRule, etc. are self-describing. -->
+		<NoWarn>$(NoWarn);MSTEST0001;BL0008;1591</NoWarn>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<None Include="LICENSE" Pack="true" PackagePath="" />
+		<!-- The vector graph in the Indx library is a port of code from FAISS (MIT) and hnswlib
+		     (Apache 2.0), and both licences ask that their text goes with every copy. A published
+		     server is a copy, whichever way the library is referenced, so the texts ship in its
+		     output. They are copies of Indx/THIRD-PARTY-NOTICES.md and Indx/ThirdParty/*, kept
+		     here because this folder is all the public repository gets;
+		     PublicTreeTests.TheThirdPartyLicenceTexts_AreTheLibrarysOwn fails when they differ. -->
+		<None Update="THIRD-PARTY-NOTICES.md" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+		<None Update="ThirdParty\*.txt" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
+	</ItemGroup>
+
+	<!-- Internal services (LicenseBootstrapper, NotificationService, …) are exercised
+	     by the test project, which needs access to them. -->
+	<ItemGroup>
+		<InternalsVisibleTo Include="TestIndxServer" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- The Web SDK's default content glob includes **/*.json, which swept the running
+		     instance's IndxData/settings.json into the publish output. Deploying then wrote
+		     the developer's copy over the server's: registration mode, instance name and the
+		     pending-invite list (RegistrationMode.Invite keeps invites in AllowedEmails) all
+		     reset, and LicenseToken/Plan nulled. IndxData is runtime state, never build
+		     output. The licence does not ship either (16 Oct 2026): the server fetches its
+		     own with its token into its own IndxData, and a developer's licence deployed over
+		     it would be the wrong licence. deploy/prepare.sh refuses any IndxData in the output. -->
+		<Content Remove="IndxData\**" />
+		<None Remove="IndxData\**" />
+	</ItemGroup>
+
+	<PropertyGroup Condition=" '$(RunConfiguration)' == 'IndxServer' " />
+
+	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+	  <NoWarn>1701;1702;CA2254;CS1998;MSTEST0001;BL0008;1591</NoWarn>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">
+	  <NoWarn>1701;1702;CA2254;CS1998;MSTEST0001;BL0008;1591</NoWarn>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<!-- The terminal monitor. Pinned exactly: Terminal.Gui v2 breaks between minors. -->
+		<PackageReference Include="Terminal.Gui" Version="2.5.0" />
+		<PackageReference Include="Asp.Versioning.Mvc" Version="10.2.1" />
+		<PackageReference Include="Asp.Versioning.Mvc.ApiExplorer" Version="10.2.1" />
+		<PackageReference Include="Azure.Communication.Email" Version="1.1.0" />
+		<PackageReference Include="Microsoft.AspNetCore.Authentication.Google" Version="10.0.13" />
+		<PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.13" />
+		<PackageReference Include="Microsoft.AspNetCore.Authentication.MicrosoftAccount" Version="10.0.13" />
+		<PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.13" />
+		<PackageReference Include="Microsoft.AspNetCore.Diagnostics.EntityFrameworkCore" Version="10.0.13" />
+		<PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.13" />
+		<PackageReference Include="Microsoft.AspNetCore.Identity.UI" Version="10.0.13" />
+		<PackageReference Include="Microsoft.ApplicationInsights.AspNetCore" Version="3.2.0" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.13">
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+			<PrivateAssets>all</PrivateAssets>
+		</PackageReference>
+		<PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.13" />
+		<PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="10.0.13">
+			<IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+			<PrivateAssets>all</PrivateAssets>
+		</PackageReference>
+		<PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.3.0" />
+		<!-- NLog writes IndxServer.log (Services/ServerLogFile.cs). It came in through the library
+		     until Sep 2026; the library no longer references it. -->
+		<PackageReference Include="NLog" Version="6.2.2" />
+		<PackageReference Include="NLog.Extensions.Logging" Version="6.2.2" />
+		<PackageReference Include="Swashbuckle.AspNetCore" Version="10.3.1" />
+		<PackageReference Include="Swashbuckle.AspNetCore.Swagger" Version="10.3.1" />
+		<PackageReference Include="System.ServiceModel.Syndication" Version="10.0.13" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<ProjectReference Include="Indx.Systm.Blazor\Indx.Systm.Blazor.csproj" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- The pixl icons for the terminal monitor, straight from the Blazor port: no copies to go
+		     stale. PixlIcon.cs reads the SVG path out of each and rasterises it. The folder is in
+		     DefaultItemExcludes above, so this explicit item is the only thing that picks them up. -->
+		<EmbeddedResource Include="Indx.Systm.Blazor\Icons\*.razor" LogicalName="pixl/%(Filename)%(Extension)" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<!-- The demo films (Services/DemoDatasets.cs): Wikidata, CC0, built by
+		     tools/demo-data/build-films.py. Embedded, so a published server carries them. -->
+		<EmbeddedResource Include="Demo\films.json.gz" LogicalName="IndxServer.Demo.films.json.gz" Condition="Exists('Demo/films.json.gz')" />
+	</ItemGroup>
+
+	<!-- ===== Indx engine reference selection =====
+	     Three modes, resolved into $(IndxReferenceMode):
+	       Source  - ProjectReference to ..\Indx (full IndxSolutions checkout). Default for us.
+	       NuGet   - obfuscated IndxSearchLib package. Default for the public IndxServer repo.
+	       LocalDll- a local obfuscated Indx.dll next to this .csproj. Testing only; opt-in.
+	     Auto-detect: if the Indx source project is present we default to Source, otherwise NuGet.
+	     Override explicitly with:  -p:IndxFromNuGet=true   or   -p:IndxFromLocalDll=true  -->
+	<PropertyGroup>
+	  <IndxReferenceMode Condition="'$(IndxFromLocalDll)' == 'true'">LocalDll</IndxReferenceMode>
+	  <IndxReferenceMode Condition="'$(IndxReferenceMode)' == '' And '$(IndxFromNuGet)' == 'true'">NuGet</IndxReferenceMode>
+	  <IndxReferenceMode Condition="'$(IndxReferenceMode)' == '' And Exists('../Indx/Indx.csproj')">Source</IndxReferenceMode>
+	  <IndxReferenceMode Condition="'$(IndxReferenceMode)' == ''">NuGet</IndxReferenceMode>
+	</PropertyGroup>
+
+	<!-- Source build: project reference + SOURCE_BUILD constant -->
+	<PropertyGroup Condition="'$(IndxReferenceMode)' == 'Source'">
+	  <DefineConstants>$(DefineConstants);SOURCE_BUILD</DefineConstants>
+	</PropertyGroup>
+	<ItemGroup Condition="'$(IndxReferenceMode)' == 'Source'">
+	  <ProjectReference Include="..\Indx\Indx.csproj" />
+	</ItemGroup>
+
+	<!-- Obfuscated NuGet package. The version is a property so the packaging pipeline can point
+	     a build at the package it just made (-p:IndxSearchLibVersion=… with a local feed). -->
+	<PropertyGroup>
+	  <IndxSearchLibVersion Condition="'$(IndxSearchLibVersion)' == ''">6.0.0-rc2</IndxSearchLibVersion>
+	</PropertyGroup>
+	<ItemGroup Condition="'$(IndxReferenceMode)' == 'NuGet'">
+	  <PackageReference Include="IndxSearchLib" Version="$(IndxSearchLibVersion)" />
+	  <!-- A published IndxSearchLib from before Oct 2026 carries the HNSW package, which
+	       resolves MessagePack 3.1.0 (GHSA-hv8m-jj95-wg3x, High) or the 3.1.7 it was pinned to
+	       (GHSA-qhrr-8q5h-9q3h, Moderate). This higher reference wins. A Source build has no
+	       MessagePack at all since the vector graph became the library's own, so the pin lives
+	       here and not among the server's own packages; drop it once the referenced
+	       IndxSearchLib declares no HNSW. -->
+	  <PackageReference Include="MessagePack" Version="3.1.12" />
+	</ItemGroup>
+
+	<!-- Local obfuscated DLL (testing only, opt-in: -p:IndxFromLocalDll=true).
+	     A bare <Reference> does not restore the DLL's transitive NuGet dependencies,
+	     so they are listed explicitly here (see IndxSearchLib.nuspec for the same set). -->
+	<ItemGroup Condition="'$(IndxReferenceMode)' == 'LocalDll'">
+	  <Reference Include="Indx">
+	    <HintPath>Indx.dll</HintPath>
+	  </Reference>
+	  <!-- An Indx.dll built before Oct 2026 also needs the HNSW package (26.9.5494); since then
+	       the vector graph is the library's own. -->
+	  <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.13" />
+	  <PackageReference Include="CommunityToolkit.HighPerformance" Version="8.4.2" />
+	</ItemGroup>
+
+	<!-- Identity.UI is referenced for IEmailSender only. Its default UI's static files (Bootstrap,
+	     jQuery, 13 MB) serve nothing here, since the account pages are our own, so they are not
+	     part of the build or the publish. -->
+	<Target Name="DropIdentityUiStaticAssets" AfterTargets="ResolveStaticWebAssetsInputs">
+		<ItemGroup>
+			<StaticWebAsset Remove="@(StaticWebAsset)" Condition="'%(SourceId)' == 'Microsoft.AspNetCore.Identity.UI'" />
+		</ItemGroup>
+	</Target>
+
+</Project>

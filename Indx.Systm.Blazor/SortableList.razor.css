@@ -1,0 +1,19 @@
+.indx-sortable { display: flex; flex-direction: column; list-style: none; padding: 0; margin: 0; }
+.indx-sortable-item { position: relative; display: flex; align-items: center; gap: 4px; min-width: 0; }
+.indx-sortable-content { flex: 1; min-width: 0; }
+.indx-sortable-moves { display: inline-flex; flex-shrink: 0; }
+.indx-sortable-moves ::deep .indx-btn { padding-inline: 4px; }
+
+/* The grip is held: the move cursor over it, systm's where the page has turned its cursors on
+   (data-cursors="indx"), else the browser's. */
+.indx-sortable-handle { display: inline-flex; flex-shrink: 0; }
+.indx-sortable-handle ::deep .indx-btn { padding-inline: 4px; touch-action: none; cursor: move; }
+
+/* The item being dragged fades; a line shows where it lands. Nothing animates. */
+.indx-sortable-item[data-dragging] { opacity: 0.4; }
+.indx-sortable-item[data-drop]::before { content: ''; position: absolute; left: 0; right: 0; height: 2px; background: var(--lv7); pointer-events: none; }
+.indx-sortable-item[data-drop='before']::before { top: -1px; }
+.indx-sortable-item[data-drop='after']::before { bottom: -1px; }
+
+/* Read aloud, not shown. */
+.indx-sortable-said { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

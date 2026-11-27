@@ -1,0 +1,495 @@
+/* The search box and the facets base. Stacked by default; side by side when THIS area is at
+   least 900px wide, which is why it is a container query and not a media query: the preview
+   sits inside a page with its own gutters and maximum width. */
+.indx-search-layout {
+    container-type: inline-size;
+    margin-top: 20px;
+
+    /* The height the preview may use: what is left of the window below the point where it
+       starts. js/fill-viewport.js measures that point and keeps it in --fill-top, because what
+       sits above belongs to other components and changes with the screen: on a phone the
+       breadcrumb row wraps onto a second line, and a number written in here then left the page
+       scrolling over nothing by exactly that row. Below the preview come the surface's bottom
+       padding and the page gutter.
+
+       Until the script has run (and if it never does) the fallback is the desktop measurement:
+       126px of chrome plus the gutter.
+
+       Both layouts are sized from this, so the box has ONE height whether it holds nothing,
+       one hit or twenty-four. The hits scroll inside it. A box that grows with its hits jumps
+       on the first keystroke and pushes the page into scrolling. */
+    --preview-room: calc(100dvh - var(--fill-top, calc(126px + var(--page-gutter, 40px)))
+                         - var(--page-gutter, 40px) - var(--spacing, 5px));
+    --facets-stacked: 196px;
+    --preview-gap: 8px;
+}
+
+
+
+.indx-search-panel {
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    background: var(--lv0);
+    border: 0.5px solid var(--lv3);
+    padding: 5px;
+    box-sizing: border-box;
+    /* Stacked: the room, less the facets base under it. Never so short that it is useless. */
+    height: max(300px, calc(var(--preview-room) - var(--facets-stacked) - var(--preview-gap)));
+}
+
+.indx-search-bg-logo {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 175px;
+    height: 125px;
+    color: var(--lv3);
+    pointer-events: none;
+    user-select: none;
+}
+
+.indx-perf-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 8px;
+}
+
+
+.indx-perf-result {
+    font: var(--text-xs);
+    color: var(--lv5);
+    white-space: nowrap;
+}
+
+.indx-search-field-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    width: 100%;
+    height: 40px;
+    /* The box is a fixed-height column. Without this the field is a shrinkable row: once the
+       hits overflow the box, the shortfall is taken from every row, and the input got 8px
+       shorter the moment a character was typed. Only the hit list may give way. */
+    flex: 0 0 40px;
+    border: 1px solid transparent;
+    border-radius: 1px;
+    box-sizing: border-box;
+}
+
+.indx-search-field-wrap:focus-within {
+    border-color: transparent;
+}
+
+.indx-search-field-icon {
+    position: absolute;
+    left: 7px;
+    display: flex;
+    align-items: center;
+    height: 100%;
+    color: var(--lv4);
+    pointer-events: none;
+    transition: color 0.2s;
+}
+
+.indx-search-field-wrap:focus-within .indx-search-field-icon {
+    color: var(--lv7);
+}
+
+.indx-search-field-input {
+    width: 100%;
+    height: 100%;
+    padding: 0 56px 0 35px;
+    font: var(--text-base);
+    color: var(--lv8);
+    caret-color: var(--lv7);
+    background: none;
+    border: none;
+    border-radius: 1px;
+    outline: none;
+    box-sizing: border-box;
+}
+
+.indx-search-field-input::placeholder {
+    color: var(--lv4);
+    transition: opacity 0.2s;
+}
+
+.indx-search-field-input:focus::placeholder {
+    opacity: 0;
+}
+
+.indx-search-field-input::selection {
+    background: var(--lv3);
+}
+
+.indx-search-field-input[type="search"] {
+    -webkit-appearance: none;
+    appearance: none;
+}
+
+.indx-search-field-input::-webkit-search-cancel-button {
+    -webkit-appearance: none;
+    display: none;
+}
+
+.indx-search-actions {
+    position: absolute;
+    right: 4px;
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    height: 100%;
+}
+
+/* Room for the sort button beside Clear. */
+.indx-search-field-wrap--sort .indx-search-field-input {
+    padding-right: 180px;
+}
+
+/* The sort menu: Relevance, then each Sortable field with its two directions. */
+::deep .indx-sort-menu {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 6px;
+    min-width: 200px;
+}
+
+.indx-sort-row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+}
+
+.indx-sort-field {
+    flex: 1;
+    min-width: 0;
+    padding: 0 8px;
+    font: var(--text-xs);
+    color: var(--lv7);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.indx-search-empty {
+    flex: 0 0 auto;
+    font: var(--text-sm);
+    color: var(--lv4);
+    margin-top: 8px;
+}
+
+/* The hits scroll inside the box and take what is left of its fixed height. */
+.indx-search-results {
+    margin-top: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-color: var(--lv3) transparent;
+}
+.indx-search-result-item { flex: 0 0 auto; }
+.indx-perf-toolbar { flex: 0 0 auto; }
+
+.indx-search-result-item {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 8px 5px;
+    border-bottom: 1px solid var(--lv3);
+    font: var(--text-xs);
+    color: var(--lv6);
+}
+
+.indx-search-result-key {
+    color: var(--lv4);
+    margin-right: 4px;
+}
+
+.indx-search-result-fields { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.indx-search-result-score {
+    flex: none;
+    font-variant-numeric: tabular-nums;
+    color: var(--lv4);
+    font: var(--text-xs);
+    white-space: nowrap;
+}
+.indx-search-result-side {
+    flex: none;
+    align-self: stretch;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 4px;
+}
+.indx-search-result-pin { display: flex; color: var(--lv7); }
+.indx-search-not-ready { color: var(--lv5); margin-top: 16px; }
+
+.indx-perf-sep { display: inline-block; width: 12px; }
+
+/* ── Facets base ─────────────────────────────────────────────────────────────────────────────
+   Fixed height, scrolling inside itself: whatever a search does to the facets, the page below
+   and above stays where it is.
+
+   A plain --lv1 ground with the search box's own hairline (0.5px --lv3), no shadow: one step off the page tone, enough to read as
+   a base. The caption is the brightest thing on it (--lv7); the chips are a step darker than
+   the ground (--lv2), since the page tone would vanish against --lv1.
+
+   The caption mirrors the search field. That box is 0.5px border + 5px padding around a 40px
+   row whose icon sits 7px inside a 1px transparent border and whose text starts 35px in. This
+   base has the same border and padding, and its row is built the same way. */
+.indx-facets {
+    margin-top: var(--preview-gap);
+    background: var(--lv1);
+    border: 0.5px solid var(--lv3);
+    color: var(--lv7);
+    box-sizing: border-box;
+    height: var(--facets-stacked);
+    /* the same hairline and padding as the search box, so the caption lines up with its field */
+    padding: 5px;
+    display: flex;
+    flex-direction: column;
+}
+
+.indx-facets-caption {
+    flex: 0 0 auto;
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 40px;
+    border: 1px solid transparent;
+    box-sizing: border-box;
+}
+.indx-facets-caption-icon {
+    position: absolute;
+    left: 7px;
+    display: flex;
+    align-items: center;
+    height: 100%;
+    color: var(--lv7);
+}
+.indx-facets-caption-text {
+    padding-left: 35px;
+    font: var(--text-base);
+    color: var(--lv7);
+}
+
+/* The rows start flush with the caption icon's left edge: the icon sits 1px border + 7px in,
+   so 8px here. The same on the right. */
+.indx-facets-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 2px 8px 8px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    scrollbar-color: var(--lv4) transparent;
+}
+
+.indx-facets-note { margin: 0; font: var(--text-xs); color: var(--lv5); }
+.indx-facets-note strong { color: var(--lv7); font-weight: var(--med); }
+
+.indx-facet-row { display: flex; align-items: baseline; gap: 10px; }
+.indx-facet-field {
+    flex: 0 0 120px;
+    font: var(--text-xs);
+    color: var(--lv5);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.indx-facet-values { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.indx-facet-value {
+    display: inline-block;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    vertical-align: bottom;
+}
+.indx-facet-count { margin-left: 6px; color: var(--lv5); font-variant-numeric: tabular-nums; }
+/* A filterable field's values are toggles (systm Chip with OnClick): the text in the plain chip's
+   ink until picked, the count lighter on the picked chip's dark ground. */
+.indx-facet-values ::deep .indx-chip--toggle:not(.indx-chip--selected) { color: var(--lv7); }
+.indx-facet-values ::deep .indx-chip--selected .indx-facet-count { color: var(--lv4); }
+.indx-facet-more { font: var(--text-xs); color: var(--lv5); white-space: nowrap; margin-left: 2px; }
+/* A number field: its name over its histogram, at every width; the range's count after the name. */
+.indx-facet-row--range { flex-direction: column; align-items: stretch; gap: 3px; }
+.indx-facet-row--range .indx-facet-field { flex: 0 0 auto; }
+
+/* On a phone the field name goes above its values, which then get the full width. */
+@media (max-width: 768px) {
+    .indx-facet-row { flex-direction: column; gap: 3px; }
+    .indx-facet-field { flex: 0 0 auto; }
+    .indx-facet-value { max-width: 150px; }
+}
+
+/* ── Wide: facets to the right of the box, both the full height of the room ──────────────────
+   The base is laid over its stretched cell absolutely, so its content cannot make the row
+   taller. In a narrow column the field name goes above its chips. */
+@container (min-width: 900px) {
+    /* The grid is an inner element: a container query cannot restyle its own container. */
+    .indx-search-grid {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 340px;
+        gap: var(--preview-gap);
+        align-items: stretch;
+        height: max(350px, var(--preview-room));
+    }
+    .indx-search-panel { min-height: 0; height: 100%; }
+    .indx-facets-cell { position: relative; min-height: 0; }
+    .indx-facets { position: absolute; inset: 0; height: auto; margin-top: 0; }
+    .indx-facet-row { flex-direction: column; gap: 3px; }
+    .indx-facet-field { flex: 0 0 auto; }
+    .indx-facet-value { max-width: 190px; }
+}
+
+/* ── A hit, and the document panel ───────────────────────────────────────────────────────────
+   Hovering a hit shows its document where the facets are; clicking pins it. The panel takes the
+   facets base's place rather than floating over the list: the list scrolls inside a box that
+   clips, so a hover card would be cut off, and the base already has a fixed size, so nothing on
+   the page moves when it changes. */
+.indx-search-result-item { cursor: pointer; }
+.indx-search-result-item:hover,
+.indx-search-result-item:focus-visible { background: var(--lv1); outline: none; }
+.indx-search-result-item--pinned { background: var(--lv2); }
+
+.indx-doc-unpin { margin-left: auto; padding-right: 2px; }
+
+/* Rank, score and kind, spaced apart rather than separated by a dot. */
+.indx-doc-meta { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; font: var(--text-xs); color: var(--lv5); font-variant-numeric: tabular-nums; }
+
+.indx-doc-section { display: flex; flex-direction: column; gap: 8px; padding-top: 6px; border-top: 0.5px solid var(--lv3); }
+.indx-doc-section-title { font: var(--text-xs); font-weight: var(--med); color: var(--lv7); display: flex; gap: 8px; align-items: baseline; }
+.indx-doc-section-note { font-weight: var(--reg); color: var(--lv5); }
+
+.indx-doc-field { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.indx-doc-field-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.indx-doc-field-name { font: var(--text-xs); color: var(--lv6); overflow-wrap: anywhere; }
+.indx-doc-field-tag {
+    font: var(--text-xs);
+    color: var(--lv5);
+    background: var(--lv2);
+    padding: 0 5px;
+    white-space: nowrap;
+}
+.indx-doc-value {
+    font: var(--text-xs);
+    color: var(--lv8);
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.indx-doc-value + .indx-doc-value { padding-top: 3px; border-top: 0.5px dashed var(--lv3); }
+.indx-doc-value--empty { color: var(--lv4); font-style: italic; }
+.indx-doc-value-more { color: var(--lv5); }
+.indx-doc-json { margin: 0; font: var(--text-xs); color: var(--lv7); white-space: pre-wrap; overflow-wrap: anywhere; }
+
+/* "This search" over the facets (Nov 2026): what the search counted and why, in the doc panel's tones. */
+.indx-search-explain {
+    flex-direction: column;
+    gap: 6px;
+    padding: 4px 12px 12px;
+}
+
+/* Narrow first: the caption is one line, the kind of match and then the levels, cut at the end if
+   it does not fit; the block under it with the notes is left out. Wide, below, it is the other
+   way round. */
+.indx-search-explain-caption {
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.indx-search-explain-caption .indx-facets-caption-text {
+    flex: none;
+}
+
+.indx-search-explain-inline {
+    display: inline-flex;
+    gap: 4px;
+    margin-left: 10px;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.indx-search-explain-chip {
+    display: inline-flex;
+    flex: none;
+}
+
+.indx-search-explain-caption ::deep .indx-tooltip-wrapper {
+    flex: none;
+}
+
+.indx-search-explain-headline {
+    display: inline-flex;
+    align-items: center;
+    gap: inherit;
+}
+
+/* "Records with every word": what the levels after it count. */
+.indx-search-explain-label {
+    flex: none;
+    align-self: center;
+    font: var(--text-xs);
+    color: var(--lv5);
+}
+
+.indx-search-explain {
+    display: none;
+}
+
+@container (min-width: 900px) {
+    .indx-search-explain-inline { display: none; }
+    .indx-search-explain { display: flex; }
+}
+
+.indx-search-explain-levels {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+
+.indx-search-explain-note {
+    margin: 0;
+    font: var(--text-xs);
+    color: var(--lv5);
+}
+
+/* "How each word matched" in the document panel: a query word, then how and where it was met. */
+.indx-doc-match {
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+    padding: 2px 0;
+    font: var(--text-xs);
+}
+
+.indx-doc-match-word {
+    min-width: 80px;
+    color: var(--lv8);
+    font-weight: var(--med);
+    overflow-wrap: anywhere;
+}
+
+.indx-doc-match-how {
+    color: var(--lv6);
+}
+
+/* Several fields after "also in": a gap between them. Razor drops a space between two tags. */
+.indx-doc-field-tag + .indx-doc-field-tag {
+    margin-left: 4px;
+}
+
+.indx-doc-match--missing .indx-doc-match-word,
+.indx-doc-match--missing .indx-doc-match-how {
+    color: var(--lv4);
+}

@@ -1,0 +1,180 @@
+@using System.Security.Claims
+@using IndxServer.Services
+@implements IDisposable
+@inject OnboardingService Onboarding
+@inject ActiveTeamState ActiveTeam
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager Navigation
+@* Get started at the foot of the side column (Nov 2026; mockup: indx-react/apps/components, "Get
+   started"; the steps: OnboardingService). A card with the progress as a row of cells opens the
+   panel of steps in their groups, the next one marked; folded to a rail, the card is a ring. The
+   team is the page's, else the active one. Nothing shows where the account has no Get started on
+   the team, or has hidden it. *@
+@* Gone once every step is done, as when hidden: there is nothing left to show the way to. *@
+@if (_view is { Hidden: false, Finished: false } view)
+{
+    @* A block of its own: the Popover's anchor and trigger are inline spans, which shrank the card
+       to its content instead of the column's width. *@
+    <div class="getstarted @(Rail ? "getstarted--rail" : "")">
+    <Popover @bind-Open="_open" Side="right" Align="end" SideOffset="8" AriaLabel="Get started" Class="getstarted-popover">
+        <Trigger>
+            <button type="button" class="getstarted-trigger"
+                    aria-label="@($"Get started, {view.Done} of {view.Total} done")" title="@(Rail ? $"Get started: {view.Done} of {view.Total} done" : null)">
+                @if (Rail)
+                {
+                    @* Folded: a 30px button like the rail's others, the progress as a short row of cells under the icon. *@
+                    <span class="getstarted-railbutton">
+                        <Rocket Size="14" Color="var(--lv8)" />
+                        <span class="getstarted-railsteps"><StepProgress Parts="Parts(view)" Weighted="false" Height="2" /></span>
+                    </span>
+                }
+                else
+                {
+                    <span class="getstarted-card">
+                        <span class="getstarted-card-head">
+                            <Rocket Size="14" Color="var(--lv8)" />
+                            <span class="getstarted-card-title">Get started</span>
+                            <span class="getstarted-count">@view.Done of @view.Total</span>
+                        </span>
+                        <StepProgress Parts="Parts(view)" />
+                    </span>
+                }
+            </button>
+        </Trigger>
+        <ChildContent>
+            <div class="getstarted-panel">
+                <div class="getstarted-head">
+                    <span class="getstarted-title">Get started</span>
+                    <span class="getstarted-count">@view.Done of @view.Total done</span>
+                </div>
+                <p class="getstarted-line">
+                    @(view.Kind == IndxServer.Data.Onboarding.KindFirst ? "From your data to search on your site." : $"Your way around {view.TeamName}.")
+                </p>
+                @* Nested: a bar per group, as wide as its steps and filled by its own done. *@
+                <StepProgress Parts="Parts(view)" Labels />
+                @foreach (var group in view.Groups)
+                {
+                    <div class="getstarted-group">
+                        <div class="getstarted-group-head">@group.Title</div>
+                        @foreach (var step in group.Steps)
+                        {
+                            var s = step;
+                            var next = s.Key == view.Next;
+                            <button type="button" class="getstarted-step @(s.Done ? "getstarted-step--done" : "")" @onclick="() => Go(s)">
+                                @* The pixl check, quiet, for done; the circle for open, in the ink for the next. *@
+                                <span class="getstarted-mark">
+                                    @if (s.Done) { <Check Size="14" Color="var(--lv5)" /> }
+                                    else { <Circle Size="14" Color="@(next ? "var(--lv8)" : "var(--lv4)")" /> }
+                                </span>
+                                <span class="getstarted-step-text">
+                                    <span class="getstarted-step-title">
+                                        @s.Title
+                                        @if (next) { <Chip Color="var(--lv8)" TextColor="var(--lv0)">Next</Chip> }
+                                        @if (s.Pro) { <Chip>Pro</Chip> }
+                                    </span>
+                                    <span class="getstarted-step-line">@s.Line</span>
+                                </span>
+                                <ChevronRight Size="14" Color="var(--lv5)" />
+                            </button>
+                        }
+                    </div>
+                }
+                @if (view.Teaser)
+                {
+                    @* The one place Get started shows what Pro adds: a card at the end, not a step. *@
+                    <div class="getstarted-teaser">
+                        <span class="getstarted-teaser-icon"><Observr Size="21" Color="var(--lv8)" /></span>
+                        <span class="getstarted-teaser-text">
+                            <span class="getstarted-step-title">Add Pro to get Observr <Chip>Pro</Chip></span>
+                            <span class="getstarted-step-line">
+                                Observr looks at your search every week and tells you what visitors could not find, and what to change.
+                                @(view.TeaserTeam ? "Pro also brings your whole team, and no cap on documents." : "")
+                            </span>
+                            <span><Button Variant="secondary" Size="micro" Href="@ProHref" target="_blank" rel="noopener">Get Pro</Button></span>
+                        </span>
+                    </div>
+                }
+                <div class="getstarted-foot">
+                    <Button Variant="ghost" Size="micro" @onclick="HideAsync">Hide for now</Button>
+                </div>
+            </div>
+        </ChildContent>
+    </Popover>
+    </div>
+}
+
+@code {
+    /// <summary>The rail's button instead of the card.</summary>
+    [Parameter] public bool Rail { get; set; }
+
+    /// <summary>Whether this is the one on show (the card unfolded, the button folded): the one
+    /// that opens when the account menu asks for Get started.</summary>
+    [Parameter] public bool Shown { get; set; } = true;
+
+    private OnboardingView? _view;
+    private bool _open;
+    private string _userId = "";
+
+    /// <summary>Where See Pro goes: the upgrade page on the license portal, which says what Pro
+    /// adds and takes the subscription (it asks the visitor to sign in first).</summary>
+    private const string ProHref = "https://license.indx.co/Account/Subscription/Manage";
+
+    protected override async Task OnInitializedAsync()
+    {
+        _userId = (await AuthState.GetAuthenticationStateAsync()).User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
+        Onboarding.Changed += OnChanged;
+        Onboarding.OpenRequested += OnOpenRequested;
+        Navigation.LocationChanged += OnLocation;
+        ActiveTeam.OnChange += OnChanged;
+        await LoadAsync();
+    }
+
+    private void OnChanged() => _ = InvokeAsync(async () => { await LoadAsync(); StateHasChanged(); });
+
+    private void OnOpenRequested() => _ = InvokeAsync(async () =>
+    {
+        if (!Shown) return;
+        await LoadAsync();
+        _open = _view is { Hidden: false, Finished: false };
+        StateHasChanged();
+    });
+    private void OnLocation(object? sender, LocationChangedEventArgs e) => OnChanged();
+
+    private async Task LoadAsync()
+    {
+        if (_userId.Length == 0 || Team() is not { } found) { _view = null; return; }
+        _view = await Onboarding.GetAsync(_userId, found.Team, found.Role);
+    }
+
+    /// <summary>The page's team (/teams/{name}/…), else the active one.</summary>
+    private (IndxServer.Data.Team Team, string Role)? Team()
+    {
+        var seg = new Uri(Navigation.Uri).AbsolutePath.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+        var name = seg.Length >= 2 && seg[0].Equals("teams", StringComparison.OrdinalIgnoreCase) ? Uri.UnescapeDataString(seg[1]) : ActiveTeam.ActiveTeamName;
+        return ActiveTeam.Find(name);
+    }
+
+    /// <summary>The groups as StepProgress parts: each its steps, filled by its own done.</summary>
+    private static IReadOnlyList<StepProgress.Part> Parts(OnboardingView view) =>
+        view.Groups.Select(g => new StepProgress.Part(g.Title, g.Steps.Count(s => s.Done), g.Steps.Count)).ToList();
+
+    private void Go(OnboardingStep step)
+    {
+        _open = false;
+        if (step.Href != null) Navigation.NavigateTo(step.Href);
+    }
+
+    private async Task HideAsync()
+    {
+        _open = false;
+        if (_view != null) await Onboarding.HideAsync(_userId, _view.TeamId);
+    }
+
+    public void Dispose()
+    {
+        Onboarding.Changed -= OnChanged;
+        Onboarding.OpenRequested -= OnOpenRequested;
+        Navigation.LocationChanged -= OnLocation;
+        ActiveTeam.OnChange -= OnChanged;
+    }
+}

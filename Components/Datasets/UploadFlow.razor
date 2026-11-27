@@ -1,0 +1,775 @@
+@* Everything a dataset shows on the Fields tab before it is Ready: the empty / hibernated
+   panel, upload → analyze (schema scan), the analyzed configure-then-"Load and Index" view,
+   the load/index progress bars, and wake-from-hibernation. Once the engine is Ready the
+   FieldConfigTab takes over. *@
+@using Indx.Api
+@using IndxServer.Models
+@using IndxServer.Engine
+
+@inherits DatasetTabBase
+@inject IndxServer.Services.FieldProfileStore ProfileStore
+@inject IndxServer.Services.UploadLimit UploadLimit
+@if (!Active || !Ctx.HasStatus) { return; }
+
+@{
+    var state = Ctx.EngineState;
+    var status = Ctx.Status;
+}
+
+@if (Ctx.AnalyzeWarning is { } analyzeWarning)
+{
+    <div class="up-alert up-top16">
+        <Alert Variant="warning">@analyzeWarning</Alert>
+    </div>
+}
+
+@* A field has one type, its first value's. What Init met that was of another type, and what Load
+   then left out, as the engine put it (RecoverableErrors): the sum, then a line per field. *@
+@if (Ctx.AnalyzeNotes is { Count: > 0 } analyzeNotes)
+{
+    <div class="up-alert up-top16">
+        <Alert Variant="warning">
+            <Title>@analyzeNotes[0]</Title>
+            <Description>
+                @foreach (var line in analyzeNotes.Skip(1))
+                {
+                    <div>@line</div>
+                }
+            </Description>
+        </Alert>
+    </div>
+}
+@if (Ctx.LoadWarnings is { Count: > 0 } loadWarnings)
+{
+    <div class="up-alert up-top16">
+        <Alert Variant="warning">
+            <Title>@loadWarnings[0]</Title>
+            <Description>
+                @foreach (var line in loadWarnings.Skip(1))
+                {
+                    <div>@line</div>
+                }
+            </Description>
+        </Alert>
+    </div>
+}
+
+@* ── Loading / Indexing in progress (navigated back while engine is busy) ── *@
+@if (Ctx.IsTransitional && !Ctx.IsLoadIndexing)
+{
+    <div class="indx-field-config-saving up-top16">
+        <p class="indx-field-config-saving-label">
+            @(state switch { SystemState.Indexing => "Indexing in progress…", SystemState.Loaded => "Data loaded, waiting for indexing.", _ => "Loading in progress…" })
+        </p>
+        @* Work the server is tracking (startup warm-up, a load from the API, a build started on
+           another visit to this page) reports its percentage here. A console wake does not land
+           on this panel at all: it re-attaches to the full progress view below. *@
+        @if (Ctx.Engines.GetProgressPercent(Ctx.Name, Ctx.TeamId) is { } pendingPercent)
+        {
+            <ProgressBar Value="pendingPercent" ShowLabel FulfilledColor />
+        }
+    </div>
+    @* Recovery escape hatches: a dataset can get stuck in a non-Ready state — an interrupted
+       load, or an index that failed in a way that never moves the state on. The tab nav is hidden
+       while pending, so Options is out of reach and these are the only way out. Replace builds a
+       new engine and swaps it in without needing this one, and export reads the stored documents
+       regardless of state, so both work here exactly as they do on the Error panel. *@
+    <div class="up-top8 up-actions">
+        @if (Ctx.TeamName is { } pendingTeamName)
+        {
+            <DatasetDownloadButton Ctx="Ctx" TeamName="@pendingTeamName" />
+        }
+        @if (Ctx.IsAdmin)
+        {
+            <DeleteDatasetButton Ctx="Ctx" />
+        }
+    </div>
+    <p class="up-hint up-top4">Stuck here? Download the data, then delete to recover.</p>
+}
+
+@* ── Engine error (e.g. OutOfMemory during load/index): this engine is dead and no other panel
+   matches the state. The *dataset* is not dead, though, and saying so is the point of this panel:
+   Replace builds a new engine from a new file and swaps it in without ever touching this one, and
+   Export reads the stored documents straight from the database, so it works here too. Both live on
+   the Options tab, which an admin can reach in this state. Delete is the last resort, not the
+   first offer. ── *@
+@* A failed first load is an Error state too, but a different situation: nothing was stored, the
+   uploaded file is still held, and the engine accepts another load. So it gets its own alert
+   (the reason, then what to change on this page) instead of the generic one below, whose talk
+   of memory, Replace and stored documents does not apply. *@
+@* Neither error panel renders while this page's own load or index is still running. The engine's
+   status object is live, so it reads Error the instant a load fails, which is before this page
+   has finished the step and knows why. For that moment the generic alert used to flash, only to
+   be replaced by the specific one. The progress view owns the screen until the step ends, and
+   the reason is set in the same render that ends it. *@
+@if (Ctx.IsLoadIndexing)
+{
+}
+else if (state == SystemState.Error && Ctx.IsAnalyzed && Ctx.LoadFailure is { } loadFailure)
+{
+    <div class="up-alert up-top16">
+        <Alert Variant="destructive">
+            <Title>@loadFailure.Title</Title>
+            <Description>@loadFailure.Advice</Description>
+        </Alert>
+    </div>
+}
+else if (state == SystemState.Error)
+{
+    <div class="up-alert up-top16">
+        <Alert Variant="destructive">
+            <Title>The search engine hit an unrecoverable error@(string.IsNullOrEmpty(status?.ErrorMessage) ? "." : $": {status!.ErrorMessage}")</Title>
+            <Description>
+                This often means the server ran out of memory while loading or indexing. The engine
+                cannot recover, but the dataset can: <strong>Replace</strong> rebuilds it from a new
+                JSON file on a fresh engine, keeping this dataset's name, API keys, boost rules,
+                synonyms and keep-alive policy. If the error was memory, use a smaller file or a larger
+                instance. The stored documents are still readable, so download them first if you need
+                them.
+            </Description>
+        </Alert>
+    </div>
+    <div class="up-top8 up-actions">
+        @if (Ctx.TeamName is { } errorTeamName)
+        {
+            <DatasetDownloadButton Ctx="Ctx" TeamName="@errorTeamName" />
+        }
+        @if (Ctx.IsEditor)
+        {
+            <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Sliders" @onclick="GoToReplace">Replace data…</Button>
+        }
+        @if (Ctx.IsAdmin)
+        {
+            <DeleteDatasetButton Ctx="Ctx" />
+        }
+    </div>
+    @if (!Ctx.IsEditor)
+    {
+        <p class="up-hint up-top8">An editor can replace the data to rebuild it; a team admin can delete it.</p>
+    }
+}
+
+@* ── Hibernated (data on disk, engine not loaded) or empty (needs upload) ── *@
+@if (state == SystemState.Created && !Ctx.IsAnalyzed && !Ctx.IsUploading && !Ctx.IsLoadIndexing && Ctx.IsEditor)
+{
+    @if (Ctx.IsHibernated)
+    {
+        var recordCount = Ctx.KeepAlive?.RecordCount ?? 0;
+        <p class="up-intro up-narrow">
+            @if (Ctx.KeepAlive?.KeepAliveTimeHrs is 0 or null)
+            {
+                <text>This dataset is <strong>hibernated</strong>: @recordCount.ToString("N0") document@(recordCount == 1 ? "" : "s") @(recordCount == 1 ? "is" : "are") stored on disk but not loaded into memory. Wake it to search and edit.</text>
+            }
+            else
+            {
+                @* Timed or pinned, and not loaded: idle eviction, a restart, or a load that failed. The
+                   console never loads it on opening, so a dataset that ran the instance out of memory
+                   can still be opened and its data rescued. *@
+                <text>This dataset is <strong>not loaded</strong>: @recordCount.ToString("N0") document@(recordCount == 1 ? "" : "s") @(recordCount == 1 ? "is" : "are") stored on disk. It loads on its next search, or wake it now to search and edit here.</text>
+            }
+        </p>
+        <div class="up-row up-top8">
+            <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Eye" @onclick="StartWake">Wake up</Button>
+        </div>
+        @* How often it is woken is the thing to know about a dataset on idle eviction, and the
+           reason to change its keep-alive; nothing for one that only wakes by hand. *@
+        <DatasetWakeDays Ctx="Ctx" />
+        @* Wake up is the one thing this view is for. Downloading the data, deleting the dataset and
+           the rest need no engine and live on Options, which is open while the dataset sleeps. *@
+        @if (Ctx.IsAdmin)
+        {
+            <p class="up-intro up-narrow up-top16">
+                Its data can be downloaded, and the dataset deleted or changed, without waking it.
+            </p>
+            <div class="up-row up-top8">
+                <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Sliders" @onclick="OpenOptions">Go to Options</Button>
+            </div>
+        }
+        @if (!string.IsNullOrEmpty(Ctx.OperationError))
+        {
+            <p class="up-error">@Ctx.OperationError</p>
+        }
+    }
+    else
+    {
+        <p class="up-intro">Upload a JSON file to configure and index this dataset.</p>
+        <div class="up-row up-top8">
+            <label for="@FileInputId" class="indx-upload-label">
+                <Json Size="14" />
+                @if (_selectedFile != null)
+                {
+                    <span>@_selectedFile.Name (@DatasetContext.FormatBytes(_selectedFile.Size))</span>
+                }
+                else
+                {
+                    <span>Choose JSON file…</span>
+                }
+            </label>
+            @if (_selectedFile != null)
+            {
+                <Button Variant="primary" Size="micro" @onclick="StartUploadAsync">Upload</Button>
+            }
+        </div>
+        @if (!string.IsNullOrEmpty(Ctx.OperationError))
+        {
+            <p class="up-error">@Ctx.OperationError</p>
+        }
+    }
+    @if (Ctx.IsAdmin && !Ctx.IsHibernated)
+    {
+        <div class="up-top16">
+            <DeleteDatasetButton Ctx="Ctx" TriggerVariant="secondary" />
+        </div>
+    }
+}
+
+@* ── Upload + analyze progress ── *@
+@if (Ctx.IsUploading)
+{
+    <div class="indx-field-config-saving">
+        <ProgressBar Value="@Ctx.UploadProgress" ShowLabel FulfilledColor />
+        @if (Ctx.IsAnalyzing)
+        {
+            @* Init: discovering the field schema (fast — no documents stored or indexed yet). *@
+            <p class="indx-field-config-saving-label">Analyzing…</p>
+        }
+        else
+        {
+            <p class="indx-field-config-saving-label">Uploading…</p>
+        }
+        <Button Variant="secondary" Size="micro" @onclick="CancelUpload">Cancel</Button>
+    </div>
+}
+
+@* ── Analyzed: configure + Load and Index ── *@
+@if (state != SystemState.Ready && Ctx.IsAnalyzed && !Ctx.IsUploading && !Ctx.IsLoadIndexing && Ctx.EditedFields is { } editedFields)
+{
+    @* Profiles from the first configuration on (6 Nov 2026): the dataset's, the built-ins until it
+       has its own, the default given to a field as it becomes searched; saved at Load and index. *@
+    var profiles = UploadProfiles(editedFields);
+    <FieldConfigToolbar @bind-Filter="_fieldFilter" @bind-ShowUnused="_showUnused" @bind-ShowAdvanced="_showAdvanced">
+        <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Profiles" @onclick="() => _profileDialogs?.OpenManager()">Profile manager</Button>
+    </FieldConfigToolbar>
+    @if (!string.IsNullOrEmpty(Ctx.OperationError))
+    {
+        <p class="up-error up-error--wide">@Ctx.OperationError</p>
+    }
+    <FieldConfigTable Fields="editedFields" Editable="true" ShowUnused="_showUnused" ShowAdvanced="_showAdvanced" Filter="@_fieldFilter"
+                      @bind-SearchableTouched="_searchableTouched" OnChanged="Ctx.NotifyChanged"
+                      Profiles="profiles" OnEditProfile="e => _profileDialogs?.Edit(e)" OnNewProfile="f => _profileDialogs?.NewFor(f)" />
+    <FieldProfileDialogs @ref="_profileDialogs" Fields="editedFields" Profiles="profiles" Editable="true" OnChanged="Ctx.NotifyChanged" />
+    @* Same layout as the Ready field configuration (FieldConfigTab): the way forward in a
+       SaveBar that sticks to the window bottom, since the table is often taller than the screen.
+       Always visible, because until Load and Index there is no dataset to leave unchanged. *@
+    <SaveBar AriaLabel="Load and index">
+        <Button Variant="primary" Size="micro" @onclick="StartLoadAndIndex" disabled="@(!Ctx.HasSearchable)">
+            Load and Index
+        </Button>
+        @if (_searchableTouched && !Ctx.HasSearchable)
+        {
+            <span class="indx-field-config-error">At least one field must be searchable</span>
+        }
+    </SaveBar>
+    <div class="indx-file-actions">
+        <FieldConfigFileActions OnImported="StateHasChanged" />
+    </div>
+    <KeyFieldRow Editable="@Ctx.IsEditor" />
+}
+
+@* ── Load & Index progress (also used by Wake) ── *@
+@* ── Cancelled wake, engine being disposed. Its own step: the bars describe work that has
+   stopped, and the engine underneath is mid-teardown, so neither is worth showing. ── *@
+@if (Ctx.IsLoadIndexing && Ctx.IsCancellingWake)
+{
+    <div class="up-alert up-top16">
+        <Alert Variant="info">
+            <Title>Returning to hibernation…</Title>
+            <Description>The wake was cancelled. Releasing memory; the stored documents are untouched.</Description>
+        </Alert>
+    </div>
+}
+else if (Ctx.IsLoadIndexing)
+{
+    <div class="indx-field-config-saving">
+        <ProgressBar Value="Ctx.LoadProgress" ShowLabel FulfilledColor />
+        <p class="indx-field-config-saving-label">Loading…</p>
+    </div>
+    @if (Ctx.IsIndexingPhase)
+    {
+        <div class="indx-field-config-saving">
+            <ProgressBar Value="Ctx.IndexProgress" ShowLabel FulfilledColor />
+            <p class="indx-field-config-saving-label">Indexing…</p>
+        </div>
+    }
+    @* A wake reads the store and writes nothing, so stopping it is safe at any point: the engine
+       is dropped and the dataset is hibernated again, as if the button had never been pressed. *@
+    @if (Ctx.IsWaking && Ctx.IsEditor)
+    {
+        <div class="up-top8 up-actions">
+            <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Hibernate" @onclick="CancelWakeAsync">
+                Cancel and return to hibernation
+            </Button>
+        </div>
+    }
+}
+
+@* The file input sits outside the block that draws the upload panel, because the browser reads
+   the chosen file through this element for the whole upload and that block is hidden the moment
+   IsUploading flips. It used to be inside, and the upload only worked because the first read was
+   issued before that render landed; anything that delayed the read by a round-trip broke it with
+   "Cannot read properties of null (_blazorFilesById)".
+
+   The condition is that block's, minus the one term that moves during an upload. Everything left
+   holds still across the read: the engine stays Created until Init runs, IsAnalyzed flips after
+   it, and load/index is later still. The label pairs with the input by id, so it does not need to
+   be next to it. *@
+@if (state == SystemState.Created && !Ctx.IsAnalyzed && !Ctx.IsLoadIndexing && Ctx.IsEditor && !Ctx.IsHibernated)
+{
+    <InputFile OnChange="OnFileSelected" accept=".json" style="display:none" id="@FileInputId" />
+}
+
+@code {
+
+    private string FileInputId => $"fileinput-{Ctx.Name}";
+
+    private IBrowserFile? _selectedFile;
+    private CancellationTokenSource? _uploadCts;
+    private bool _showUnused;
+    private string? _fieldFilter;
+    private bool _showAdvanced;
+    private bool _searchableTouched;
+
+    /// <summary>Opens the Options tab, where Replace lives — reachable in the Error state.</summary>
+    private void GoToReplace()
+    {
+        Ctx.ActiveTab = "options";
+        Ctx.NotifyChanged();
+    }
+
+    // ── Upload → Analyze ─────────────────────────────────────────────────────
+
+    private void OnFileSelected(InputFileChangeEventArgs e)
+    {
+        _selectedFile = e.File;
+        Ctx.OperationError = null;
+    }
+
+    private void CancelUpload() => _uploadCts?.Cancel();
+
+    private async Task StartUploadAsync()
+    {
+        if (_selectedFile == null) return;
+        var file = _selectedFile;
+        _selectedFile = null;
+        // Said before a byte is sent: past the limit the browser stream fails with an IO error.
+        if (UploadLimit.Refusal(file.Size) is { } tooLarge)
+        {
+            Ctx.OperationError = tooLarge;
+            Ctx.NotifyChanged();
+            return;
+        }
+        Ctx.OperationError = null;
+        Ctx.LoadFailure = null;
+        Ctx.AnalyzeNotes = null;
+        Ctx.LoadWarnings = null;
+        Ctx.IsUploading = true;
+        Ctx.UploadProgress = 0;
+        _uploadCts = new CancellationTokenSource();
+        Ctx.NotifyChanged();
+
+        FileStream? fs = null;
+        try
+        {
+            // Stream file to a temp file instead of memory to avoid large heap allocations
+            var tempPath = Path.Combine(Path.GetTempPath(), $"indx-upload-{Guid.NewGuid():N}.tmp");
+            fs = new FileStream(tempPath, FileMode.Create, FileAccess.ReadWrite, FileShare.None, bufferSize: 65536, FileOptions.DeleteOnClose);
+            const int chunkSize = 65536;
+            var buffer = new byte[chunkSize];
+            long totalRead = 0;
+            await using var stream = file.OpenReadStream(maxAllowedSize: UploadLimit.Bytes);
+            int bytesRead;
+            while ((bytesRead = await stream.ReadAsync(buffer, _uploadCts.Token)) > 0)
+            {
+                await fs.WriteAsync(buffer, 0, bytesRead, _uploadCts.Token);
+                totalRead += bytesRead;
+                var pct = file.Size > 0 ? (int)(100L * totalRead / file.Size) : 0;
+                if (pct != Ctx.UploadProgress)
+                {
+                    Ctx.UploadProgress = pct;
+                    await Render();
+                }
+            }
+
+            // Analyze field structure asynchronously (avoids blocking Blazor thread on large files).
+            // Init only discovers the schema (field names/types/presence) — no documents are stored or
+            // indexed yet — so it's the fast first pass. Label it distinctly from the upload transfer.
+            Ctx.IsAnalyzing = true;
+            await Render();
+            fs.Position = 0;
+            var initError = await Ctx.Engines.InitFromStreamAsync(Ctx.Name, Ctx.TeamId, fs);
+            if (!string.IsNullOrEmpty(initError))
+            {
+                Ctx.OperationError = $"Analyze failed: {initError}";
+                fs.Dispose();
+                fs = null;
+                return;
+            }
+
+            // Hand the stream to the context for the Load & Index step
+            Ctx.SetBufferedFile(fs);
+            fs = null; // ownership transferred
+
+            // A single document in a non-trivial file means no document array was found: the
+            // whole file is being read as one record, which then "loads" as 1 document and can
+            // exhaust memory during indexing. Warn now, before Load/Index is attempted. (Init
+            // finds the documents inside an export envelope on its own, so what is left when
+            // this fires is a file whose records the detection could not locate at all.)
+            var engine = Ctx.FindEngine();
+            // Init's word on fields whose values changed type: Status mirrors its monitor.
+            if (engine?.Status.RecoverableErrors is { Count: > 0 } initErrors)
+                Ctx.AnalyzeNotes = DatasetContext.WarningLines(initErrors, "Init");
+            var analyzedDocs = engine?.DocumentFields?.AnalyzedDocumentCount ?? 0;
+            var analyzedBytes = Ctx.BufferedFile?.Length ?? 0;
+            Ctx.AnalyzeWarning = analyzedDocs == 1 && analyzedBytes > 100_000
+                ? $"Only 1 document was found in a {analyzedBytes / (1024.0 * 1024.0):F1} MB file. " +
+                  "Indx finds the document array inside an export envelope on its own " +
+                  "(e.g. { \"count\": …, \"products\": [ … ] }), so this means no array of objects " +
+                  "was found anywhere in the file - it is being read as one large document. " +
+                  "Check the structure before loading: the records may be nested deeper than the " +
+                  "detection reaches, or the file may hold a single document after all."
+                : null;
+
+            // Populate field config for display; show unused fields by default for new datasets
+            Ctx.RefreshFieldsFromEngine();
+            _showUnused = true;
+        }
+        catch (OperationCanceledException)
+        {
+            fs?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            Ctx.OperationError = $"Upload failed: {ex.Message}";
+            fs?.Dispose();
+        }
+        finally
+        {
+            _uploadCts?.Dispose();
+            _uploadCts = null;
+            Ctx.IsUploading = false;
+            Ctx.IsAnalyzing = false;
+            Ctx.RefreshStatus();
+            await Render();
+        }
+    }
+
+    // ── Load & Index ─────────────────────────────────────────────────────────
+
+    /// <summary>The alert for a failed load: the engine's reason, then what to change here.</summary>
+    private LoadFailure DescribeLoadFailure(string? raw)
+    {
+        const string nothingStored = "Nothing was stored, and the uploaded file is still here.";
+        const string retry = "then press Load and Index again.";
+        raw = string.IsNullOrEmpty(raw) ? "the engine gave no reason" : raw;
+
+        // A declared key field already gets full guidance from the server.
+        var described = Ctx.Engines.DescribeLoadFailure(Ctx.Name, Ctx.TeamId, raw);
+        if (described != raw)
+            return new LoadFailure("Load failed", $"{described} {nothingStored} Change the Document key below, {retry}");
+
+        if (raw.Contains("duplicate document key", StringComparison.OrdinalIgnoreCase))
+        {
+            var keyField = Ctx.FindEngine()?.DocumentFields?.NameOfDocumentKeyField;
+            var named = string.IsNullOrEmpty(keyField) ? "the key field" : $"the key field '{keyField}'";
+            return new LoadFailure($"Load failed: {raw}",
+                $"More than one document has the same value in {named}, and a key must be unique. {nothingStored} " +
+                $"Set Document key below to a field that is unique on every document, or to Auto-generated, {retry}");
+        }
+
+        return new LoadFailure($"Load failed: {raw}",
+            $"{nothingStored} If the cause is in the configuration below, change it, {retry} Otherwise delete this dataset and upload a corrected file.");
+    }
+
+    private void StartLoadAndIndex()
+    {
+        if (!Ctx.HasSearchable) return;
+        var ms = Ctx.BufferedFile;
+        if (ms == null) return;
+        Ctx.OperationError = null; // clear any prior load error before retrying
+        Ctx.LoadFailure = null;
+
+        // Apply field configuration before Load so MakeSearchEngines sees the correct searchable set
+        if (Ctx.EditedFields is { } edited)
+        {
+            var engine = Ctx.FindEngine();
+            // A value or a combination of roles the engine refuses: say why and stop, rather
+            // than load with the configuration half meant. (An answer since Oct 2026; it used
+            // to be thrown, and this used to catch it.)
+            if (engine != null && !engine.TrySetFieldConfiguration(edited, out var refused))
+            {
+                Ctx.OperationError = refused;
+                return;
+            }
+            var df = engine?.DocumentFields;
+            if (df != null && engine?.Persistence != null)
+                engine.Persistence.SaveDocumentFields(df.GetSerialized());
+            // The profile choices with the fields, as the Ready tab's Save keeps them.
+            if (Ctx.EditedProfiles is { } profiles)
+            {
+                ProfileStore.Save(Ctx.TeamId, Ctx.Name, profiles);
+                Ctx.SetSavedProfiles(profiles);
+            }
+        }
+
+        BeginProgress();
+        _ = RunLoadAndIndexAsync(ms);
+    }
+
+    private async Task RunLoadAndIndexAsync(FileStream ms)
+    {
+        var pollCts = new CancellationTokenSource();
+        try
+        {
+            // Phase 1: Load — in-place (peak memory ~1×). This is the first load (no live engine to
+            // serve yet); a bad custom key is already flagged at selection time, and otherwise the load
+            // fails cleanly below (the lib's clear+append is atomic, so the db is left recoverable).
+            ms.Position = 0;
+            (Task loadTask, ProcessMonitor monitor)? loadResult;
+            try { loadResult = Ctx.Engines.StartLoadAsync(Ctx.Name, Ctx.TeamId, ms); }
+            catch (IndxServer.Models.ShadowBusyException)
+            {
+                Ctx.OperationError = "Load failed: the index is being rebuilt. Try again when it is done.";
+                return;
+            }
+            if (loadResult == null)
+            {
+                Ctx.OperationError = "Load failed: dataset not found";
+                return;
+            }
+            var (loadTask, loadMonitor) = loadResult.Value;
+
+            var pollTask = PollMonitor(loadMonitor, v => Ctx.LoadProgress = v, pollCts.Token);
+            await loadTask;
+            // Before anything renders again: the failure and the end of the progress view must
+            // reach the screen together (EndProgress, in the finally below).
+            if (!loadMonitor.Succeeded)
+                Ctx.LoadFailure = DescribeLoadFailure(loadMonitor.ErrorMessage);
+            pollCts.Cancel();
+            try { await pollTask; } catch { }
+            if (!loadMonitor.Succeeded)
+                return;
+            Ctx.LoadProgress = loadMonitor.ProgressPercent;
+            Ctx.LoadWarnings = DatasetContext.WarningLines(loadMonitor.RecoverableErrors, "Load");
+            await Render();
+
+            // Release the buffer — no longer needed
+            Ctx.TakeBufferedFile();
+            ms.Dispose();
+
+            // Phase 2: Index — keep Loading bar at 100%
+            Ctx.LoadProgress = 100;
+            Ctx.IndexProgress = 0;
+            Ctx.IsIndexingPhase = true;
+            await Render();
+
+            var indexMonitor = new ProcessMonitor();
+            pollCts = new CancellationTokenSource();
+            pollTask = PollMonitor(indexMonitor, v => Ctx.IndexProgress = v, pollCts.Token);
+
+            await Task.Run(() =>
+            {
+                using var tracked = Ctx.Engines.TrackProgress(Ctx.Name, Ctx.TeamId, indexMonitor);
+                Ctx.FindEngine()?.Index(monitor: indexMonitor);
+                indexMonitor.WaitForCompletion();
+            });
+            pollCts.Cancel();
+            try { await pollTask; } catch { }
+            Ctx.IndexProgress = indexMonitor.ProgressPercent;
+            await Render();
+
+            if (!indexMonitor.Succeeded)
+                Ctx.OperationError = string.IsNullOrEmpty(indexMonitor.ErrorMessage)
+                    ? "Indexing failed. See the server log for details."
+                    : $"Indexing failed: {indexMonitor.ErrorMessage}";
+
+            Ctx.RefreshFieldsFromEngine();
+        }
+        catch (ObjectDisposedException) { }
+        finally
+        {
+            pollCts.Cancel();
+            pollCts.Dispose();
+            await EndProgress();
+        }
+    }
+
+    // ── Wake a hibernated dataset (load + index from the store, no upload) ───
+
+    // The server owns the wake (IndxServerInternalApi.Wake.cs); this page only attaches to it.
+    // That is what makes leaving and coming back show the same bars, and what lets any visit
+    // cancel it.
+
+    private CancellationTokenSource? _wakePollCts;
+
+    private void OpenOptions()
+    {
+        Ctx.ActiveTab = "options";
+        Ctx.NotifyChanged();
+    }
+
+    private void StartWake()
+    {
+        Ctx.OperationError = null;
+        // Woken from Status, it opens on Status once Ready: the page that says it is.
+        Ctx.ActiveTab = "status";
+        if (!Ctx.Engines.StartWake(Ctx.Name, Ctx.TeamId))
+        {
+            Ctx.OperationError = "Wake failed: dataset not found";
+            Ctx.NotifyChanged();
+            return;
+        }
+        if (!TryAttachToWake())
+        {
+            // Over before we could look: something else had already brought the engine up.
+            Ctx.RefreshStatus();
+            Ctx.NotifyChanged();
+        }
+    }
+
+    /// <summary>A page opened (or re-opened) while a wake is running picks it up here. Subscribed
+    /// ahead of the base class so the attach happens before the render the same notification
+    /// triggers: the returning visitor never sees the plain "in progress" panel first.</summary>
+    private FieldProfileDialogs? _profileDialogs;
+    private FieldProxy[]? _defaultedFor;
+
+    /// <summary>The profiles the upload's field table works on: the dataset's, read once (the
+    /// built-ins until it has its own), and each field the analysis left searched given the
+    /// default once per analysis. A field ticked afterwards gets it in the table.</summary>
+    private DatasetFieldProfiles UploadProfiles(FieldProxy[] fields)
+    {
+        if (Ctx.EditedProfiles == null) Ctx.SetSavedProfiles(ProfileStore.Load(Ctx.TeamId, Ctx.Name));
+        var own = Ctx.EditedProfiles!;
+        if (!ReferenceEquals(_defaultedFor, fields))
+        {
+            foreach (var f in fields) FieldProfiles.GiveDefault(f, own);
+            _defaultedFor = fields;
+        }
+        return own;
+    }
+
+    protected override void OnInitialized()
+    {
+        Ctx.Changed += AttachToRunningWake;
+        base.OnInitialized();
+        // The usual case: the panel already knows the status by the time this tab is created.
+        AttachToRunningWake();
+    }
+
+    protected override void OnAfterRender(bool firstRender) => AttachToRunningWake();
+
+    private void AttachToRunningWake()
+    {
+        // Whatever the engine state: a page opened mid-cancel finds an engine in Error or Loaded,
+        // and must attach all the same rather than present that as the dataset's condition.
+        if (Active && Ctx.HasStatus && !Ctx.IsLoadIndexing && !Ctx.IsUploading)
+            TryAttachToWake();
+    }
+
+    private bool TryAttachToWake()
+    {
+        if (_wakePollCts != null) return true;
+        if (Ctx.Engines.GetWakeProgress(Ctx.Name, Ctx.TeamId) is not { } progress) return false;
+
+        _wakePollCts = new CancellationTokenSource();
+        Ctx.IsWaking = true;
+        BeginProgress(); // reuses the Load/Index progress bars
+        ApplyWakeProgress(progress);
+        _ = FollowWakeAsync(_wakePollCts.Token);
+        return true;
+    }
+
+    private void ApplyWakeProgress(WakeProgress progress)
+    {
+        Ctx.LoadProgress = progress.LoadPercent;
+        Ctx.IndexProgress = progress.IndexPercent;
+        Ctx.IsIndexingPhase = progress.Indexing;
+        Ctx.IsCancellingWake = progress.Cancelling;
+    }
+
+    private async Task FollowWakeAsync(CancellationToken ct)
+    {
+        await ProgressPoller.RunAsync(TimeSpan.FromMilliseconds(150),
+            () =>
+            {
+                if (Ctx.Engines.GetWakeProgress(Ctx.Name, Ctx.TeamId) is not { } progress) return false;
+                ApplyWakeProgress(progress);
+                return true;
+            },
+            Render, ct);
+        if (ct.IsCancellationRequested) return; // the page went away; the wake carries on without it
+
+        _wakePollCts?.Dispose();
+        _wakePollCts = null;
+        Ctx.OperationError = Ctx.Engines.GetWakeError(Ctx.Name, Ctx.TeamId);
+        try
+        {
+            // Status first, flags after: the cancelling flag is what masks the torn-down engine,
+            // so it must outlive the last reference to that engine's status.
+            Ctx.RefreshStatus();
+            Ctx.IsWaking = false;
+            Ctx.IsCancellingWake = false;
+            if (Ctx.EngineState == SystemState.Ready) Ctx.RefreshFieldsFromEngine();
+        }
+        catch (ObjectDisposedException) { }
+        finally
+        {
+            Ctx.IsWaking = false;
+            Ctx.IsCancellingWake = false;
+        }
+        await EndProgress();
+    }
+
+    private async Task CancelWakeAsync()
+    {
+        Ctx.IsCancellingWake = true;
+        await Render();
+        // The follower above notices the wake is gone and puts the hibernated panel back.
+        await Ctx.Engines.CancelWakeAsync(Ctx.Name, Ctx.TeamId);
+    }
+
+    // ── Shared progress plumbing ─────────────────────────────────────────────
+
+    private void BeginProgress()
+    {
+        Ctx.IsLoadIndexing = true;
+        Ctx.LoadProgress = 0;
+        Ctx.IndexProgress = 0;
+        Ctx.IsIndexingPhase = false;
+        Ctx.NotifyChanged();
+    }
+
+    private async Task EndProgress()
+    {
+        Ctx.IsLoadIndexing = false;
+        Ctx.LoadProgress = 0;
+        Ctx.IndexProgress = 0;
+        Ctx.IsIndexingPhase = false;
+        Ctx.RefreshStatus();
+        try { await Render(); }
+        catch (ObjectDisposedException) { }
+    }
+
+    private Task PollMonitor(ProcessMonitor monitor, Action<int> setProgress, CancellationToken ct) =>
+        ProgressPoller.RunAsync(TimeSpan.FromMilliseconds(150),
+            () => { setProgress(monitor.ProgressPercent); return true; },
+            Render, ct);
+
+    public override void Dispose()
+    {
+        base.Dispose();
+        Ctx.Changed -= AttachToRunningWake;
+        _wakePollCts?.Cancel();
+        _uploadCts?.Cancel();
+        _uploadCts?.Dispose();
+    }
+}

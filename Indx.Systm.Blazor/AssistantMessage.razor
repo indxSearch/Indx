@@ -1,0 +1,18 @@
+@* Port of indx-systm AssistantMessage: the assistant's turn, a small labelled head, then
+   whatever the answer is made of (text, a StreamStatus, proposals, actions). *@
+<div class="indx-chat-assistant @Class">
+    <div class="indx-chat-assistant-head">
+        @if (Icon != null) { @Icon(14) } else { <AiAgent Size="14" Color="currentColor" /> }
+        <span>@Label</span>
+    </div>
+    <div class="indx-chat-assistant-body">@ChildContent</div>
+</div>
+
+@code {
+    /// <summary>Name shown above the answer.</summary>
+    [Parameter] public string Label { get; set; } = "Assistant";
+    /// <summary>Icon before the name; the pixl AI agent by default.</summary>
+    [Parameter] public RenderFragment<int>? Icon { get; set; }
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public string? Class { get; set; }
+}

@@ -1,0 +1,64 @@
+@* A trigger button that swaps itself for "[prompt] [confirm] [cancel]" until the user decides.
+   The open state can be owned by the parent via @bind-Open so one token can drive several sites
+   (the dataset console shows "delete" in more than one place); left unbound it is self-contained. *@
+
+@if (Open)
+{
+    <div class="indx-confirm-row">
+        @if (!string.IsNullOrEmpty(Prompt))
+        {
+            <span class="indx-confirm-prompt">@Prompt</span>
+        }
+        <Button Variant="@Variant" Size="@Size" Disabled="@Disabled" Loading="@_busy" @onclick="Confirm">@ConfirmLabel</Button>
+        <Button Variant="@CancelVariant" Size="@Size" Disabled="@_busy" @onclick="() => SetOpen(false)">Cancel</Button>
+    </div>
+}
+else
+{
+    <div class="indx-confirm-row">
+        <Button Variant="@TriggerVariant" Size="@Size" IconLeft="@Icon" Disabled="@Disabled" Loading="@_busy" title="@Title" @onclick="() => SetOpen(true)">@Label</Button>
+        @ChildContent
+    </div>
+}
+
+@code {
+    /// <summary>Text of the trigger button. Empty for an icon-only trigger — set <see cref="Title"/> then.</summary>
+    [Parameter, EditorRequired] public string Label { get; set; } = "";
+    /// <summary>Native tooltip on the trigger (for icon-only triggers).</summary>
+    [Parameter] public string? Title { get; set; }
+    /// <summary>Question shown next to the confirm button; omit for none.</summary>
+    [Parameter] public string? Prompt { get; set; }
+    [Parameter] public string ConfirmLabel { get; set; } = "Confirm";
+    /// <summary>Variant of the confirm button (default danger).</summary>
+    [Parameter] public string Variant { get; set; } = "danger";
+    [Parameter] public string TriggerVariant { get; set; } = "ghost";
+    [Parameter] public string CancelVariant { get; set; } = "secondary";
+    [Parameter] public string Size { get; set; } = "micro";
+    [Parameter] public RenderFragment<int>? Icon { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    /// <summary>Rendered after the trigger while closed (e.g. a hint).</summary>
+    [Parameter] public RenderFragment? ChildContent { get; set; }
+    [Parameter] public bool Open { get; set; }
+    [Parameter] public EventCallback<bool> OpenChanged { get; set; }
+    [Parameter] public EventCallback OnConfirm { get; set; }
+
+    private async Task SetOpen(bool value)
+    {
+        Open = value;
+        await OpenChanged.InvokeAsync(value);
+    }
+
+    // True while OnConfirm runs. The confirm row stays up with a spinner; a parent that owns
+    // Open and closes it inside its handler gets the spinner on the trigger instead — either
+    // way a slow delete never reads as a dead click.
+    private bool _busy;
+
+    private async Task Confirm()
+    {
+        if (_busy) return;
+        _busy = true;
+        try { await OnConfirm.InvokeAsync(); }
+        finally { _busy = false; }
+        if (Open) await SetOpen(false);
+    }
+}

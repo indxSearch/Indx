@@ -1,0 +1,158 @@
+@inject IndxServer.Services.NotificationService NotificationService
+@inject AuthenticationStateProvider AuthState
+@inject NavigationManager NavigationManager
+@inject IndxServer.Services.NotificationSignal Signal
+@inject IndxServer.Services.NotificationLinks Links
+@implements IDisposable
+
+@* The bell and its panel, a systm Popover: a press outside, Escape or a navigation closes it. *@
+<div class="notif-wrapper">
+    <Popover Open="_open" OpenChanged="OnOpenChanged" AriaLabel="Notifications" Class="notif-panel">
+        <Trigger>
+            @if (_open)
+            {
+                <button class="nav-bell notif-trigger notif-trigger--active @(_unreadCount > 0 ? "notif-trigger--has-unread" : "")" aria-label="Notifications">
+                    <Bell Size="14" />
+                    @if (_unreadCount > 0)
+                    {
+                        <span class="notif-badge"></span>
+                    }
+                </button>
+            }
+            else
+            {
+                <Tooltip Content="Notifications" Position="bottom">
+                    <button class="nav-bell notif-trigger @(_unreadCount > 0 ? "notif-trigger--has-unread" : "")" aria-label="Notifications">
+                        <Bell Size="14" />
+                        @if (_unreadCount > 0)
+                        {
+                            <span class="notif-badge"></span>
+                        }
+                    </button>
+                </Tooltip>
+            }
+        </Trigger>
+        <ChildContent>
+        <div class="notif-panel-header">
+            <span class="notif-panel-title">Notifications</span>
+            @if (_unreadCount > 0)
+            {
+                <button class="notif-mark-all" @onclick="MarkAllRead"><Check Size="14" /> Mark all read</button>
+            }
+        </div>
+
+        @if (_notifications.Count == 0)
+        {
+            <EmptyState Size="compact" Icon="DatasetIcons.Bell" Title="No notifications yet">Expiring keys, ended boost rules, failed backups and new releases land here.</EmptyState>
+        }
+        else
+        {
+            <ul class="notif-list">
+                @foreach (var n in _notifications)
+                {
+                    @* Opening one marks it read and goes where it is about (NotificationLinks). *@
+                    <li class="notif-row @(!n.IsRead ? "notif-row--unread" : "") @(_links.ContainsKey(n.Id) ? "notif-row--link" : "")"
+                        @onclick="() => OpenAsync(n)">
+                        <div class="notif-dot-col">
+                            @if (!n.IsRead)
+                            {
+                                <span class="notif-dot"></span>
+                            }
+                        </div>
+                        <div class="notif-content">
+                            <p class="notif-title">@n.Title</p>
+                            <p class="notif-body">@n.Body</p>
+                            <p class="notif-time"><TimeAgo Value="n.CreatedAt" TooltipPosition="right" /></p>
+                        </div>
+                    </li>
+                }
+            </ul>
+        }
+
+        <div class="notif-panel-footer">
+            <a href="/account/notifications" @onclick="Close">See all notifications</a>
+        </div>
+        </ChildContent>
+    </Popover>
+</div>
+
+@code {
+    /// <summary>Opens above the bell, to its right: for the foot of the side column.</summary>
+
+    private bool _open;
+    private int _unreadCount;
+    private string? _userId;
+    private List<IndxServer.Data.Notification> _notifications = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        var auth = await AuthState.GetAuthenticationStateAsync();
+        _userId = auth.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (_userId != null)
+            _unreadCount = await NotificationService.GetUnreadCountAsync(_userId);
+        Signal.Created += OnCreated;
+    }
+
+    // A notification for this user was stored elsewhere (a background job, another tab): the
+    // count, and the list when it is open, now rather than at the next reload.
+    private void OnCreated(string userId)
+    {
+        if (userId != _userId) return;
+        _ = InvokeAsync(async () =>
+        {
+            _unreadCount = await NotificationService.GetUnreadCountAsync(userId);
+            if (_open)
+            {
+                _notifications = await NotificationService.GetRecentAsync(userId, 10);
+                _links = await Links.ForAsync(_notifications);
+            }
+            StateHasChanged();
+        });
+    }
+
+    public void Dispose() => Signal.Created -= OnCreated;
+
+    private async Task OnOpenChanged(bool open)
+    {
+        _open = open;
+        if (_open && _userId != null)
+        {
+            _notifications = await NotificationService.GetRecentAsync(_userId, 10);
+            _links = await Links.ForAsync(_notifications);
+            _unreadCount   = await NotificationService.GetUnreadCountAsync(_userId);
+        }
+    }
+
+    private void Close() => _open = false;
+
+    private Dictionary<int, string> _links = [];
+
+    private async Task OpenAsync(IndxServer.Data.Notification n)
+    {
+        await MarkRead(n);
+        if (_links.TryGetValue(n.Id, out var href))
+        {
+            _open = false;
+            NavigationManager.NavigateTo(href);
+        }
+    }
+
+    private async Task MarkRead(IndxServer.Data.Notification n)
+    {
+        if (!n.IsRead && _userId != null)
+        {
+            await NotificationService.MarkReadAsync(n.Id, _userId);
+            n.IsRead = true;
+            _unreadCount = Math.Max(0, _unreadCount - 1);
+        }
+    }
+
+    private async Task MarkAllRead()
+    {
+        if (_userId == null) return;
+        await NotificationService.MarkAllReadAsync(_userId);
+        foreach (var n in _notifications) n.IsRead = true;
+        _unreadCount = 0;
+    }
+
+}

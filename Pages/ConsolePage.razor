@@ -1,0 +1,137 @@
+@page "/"
+@page "/team"
+@page "/datasets/{Dataset}"
+@page "/teams/{TeamName}"
+@page "/teams/{TeamName}/settings"
+@page "/teams/{TeamName}/observr"
+@page "/teams/{TeamName}/observr/datasets"
+@page "/teams/{TeamName}/keys"
+@page "/teams/{TeamName}/datasets/{Dataset}"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Microsoft.AspNetCore.Authorization
+@attribute [Authorize]
+@inherits TeamRouteBase
+@inject IndxServer.Services.TeamService TeamService
+@implements IDisposable
+
+@* The whole console is ONE routed component on purpose. The router runs in static SSR and
+   each page is its own interactive island, so navigating between two different page
+   components tears the island down and shows a blank frame until the new one renders (the
+   nav, a separate island, is the only thing that survives). Keeping team page, settings and
+   dataset page as views inside one component means every hop is a parameter change on the
+   same instance: no teardown, no blink. Which view shows is derived from the URL. *@
+
+<PageTitle>Indx</PageTitle>
+
+@if (NoTeam)
+{
+    @* Without a team the breadcrumb is never rendered, and the breadcrumb is where "New team…"
+       lives — so this page was a dead end for anyone who left or was removed from their last
+       team. Offer the same action here. *@
+    @* An empty state, as every page with nothing in it yet (systm EmptyState): the field and its
+       button on one line, the field labelled for readers rather than above, which pushed it out of
+       line with the button. *@
+    <EmptyState Icon="_iconTeam" Title="You don't have a team yet">
+        <ChildContent>Datasets belong to a team. Create one, or ask a team admin to add you to theirs.</ChildContent>
+        <Actions>
+            <div class="noteam-create">
+                <span class="noteam-name">
+                    <InputField @bind-Value="_newTeamName" placeholder="Team name" aria-label="Team name"
+                                @oninput="e => _newTeamName = e.Value?.ToString() ?? string.Empty"
+                                @onkeydown="OnNewTeamKeyDown" Error="@_newTeamError" IsValid="@(_newTeamError == null)" />
+                </span>
+                <Button Variant="primary" Size="micro" @onclick="CreateTeam"
+                        disabled="@string.IsNullOrWhiteSpace(_newTeamName)">Create team</Button>
+            </div>
+        </Actions>
+    </EmptyState>
+}
+else if (TeamResolved)
+{
+    @* LocationChanged fires before the router supplies the new route parameters, so the URL can
+       say "dataset" while Dataset still holds the previous value (null coming from the team
+       page). Render the dataset view only once the parameter has arrived; until then the team
+       view stays up, which is what was on screen anyway. *@
+    @switch (_view)
+    {
+        case ConsoleView.Dataset when Dataset != null:
+            <DatasetView TeamName="@Team!.Name" TeamId="@TeamId" Role="@Role" Dataset="@Dataset" />
+            break;
+        case ConsoleView.Settings:
+            <TeamSettingsView Team="@(Team!)" Role="@Role" UserId="@UserId" />
+            break;
+        case ConsoleView.Observr:
+            <TeamObservrView Team="@(Team!)" Role="@Role" />
+            break;
+        case ConsoleView.ObservrDatasets:
+            <TeamObservrDatasetsView Team="@(Team!)" Role="@Role" />
+            break;
+        case ConsoleView.Keys:
+            <TeamKeysView Team="@(Team!)" Role="@Role" UserId="@UserId" />
+            break;
+        default:
+            <TeamView TeamName="@Team!.Name" TeamId="@TeamId" Role="@Role" />
+            break;
+    }
+}
+
+@code {
+    // ── Create the first team (see the NoTeam branch above) ──────────────────
+    private string _newTeamName = "";
+    private static readonly RenderFragment<int> _iconTeam = size => @<Users Size="size" Color="currentColor" />;
+    private string? _newTeamError;
+
+    private async Task OnNewTeamKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await CreateTeam();
+    }
+
+    private async Task CreateTeam()
+    {
+        if (string.IsNullOrWhiteSpace(_newTeamName) || UserId.Length == 0) return;
+        _newTeamError = null;
+        try
+        {
+            var team = await TeamService.CreateTeamAsync(_newTeamName, UserId);
+            await ActiveTeam.ReloadAsync();
+            NavigationManager.NavigateTo(TeamRoutes.Team(team.Name));
+        }
+        catch (TeamService.TeamException ex) { _newTeamError = ex.Message; }
+    }
+
+    /// <summary>The open dataset. Under /datasets/{x} (legacy) it is forwarded to the team.</summary>
+    [Parameter] public string? Dataset { get; set; }
+
+    private ConsoleView _view;
+
+    protected override void OnInitialized()
+    {
+        NavigationManager.LocationChanged += OnLocationChanged;
+        _view = ViewFromUri();
+    }
+
+    // /teams/{name}/settings carries no route parameter that says "settings", so the view is
+    // read off the path. LocationChanged also fires for same-component navigations.
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        var view = ViewFromUri();
+        if (view == _view) return;
+        _view = view;
+        InvokeAsync(StateHasChanged);
+    }
+
+    private ConsoleView ViewFromUri() =>
+        TeamRoutes.ViewFromPath(NavigationManager.ToBaseRelativePath(NavigationManager.Uri));
+
+    protected override void OnParametersSet() => _view = ViewFromUri();
+
+    // "/datasets/{x}" forwards to the same dataset under the remembered team.
+    protected override string ForwardToActiveTeam(string activeTeamName) =>
+        Dataset == null ? TeamRoutes.Team(activeTeamName) : TeamRoutes.Dataset(activeTeamName, Dataset);
+
+    public override void Dispose()
+    {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+        base.Dispose();
+    }
+}

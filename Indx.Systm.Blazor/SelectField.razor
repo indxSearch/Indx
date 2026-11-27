@@ -1,0 +1,271 @@
+@using Microsoft.JSInterop
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<div class="indx-select-wrapper @(Variant == "ghost" ? "indx-select-wrapper-ghost" : null)">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label id="@_id-label" for="@_id" class="indx-select-label">@Label</label>
+    }
+    <div class="indx-select-trigger" @ref="_trigger" @onkeydown="OnKeyDown">
+        <button type="button" id="@_id" class="indx-select indx-select-@Size @(Variant == "ghost" ? "indx-select-ghost" : null)" @ref="_button"
+                aria-haspopup="listbox" aria-expanded="@(_open ? "true" : "false")"
+                aria-labelledby="@_labelledBy"
+                @onclick="Toggle" @attributes="_splat">
+            @if (_ariaLabel is not null)
+            {
+                <span id="@_id-name" hidden>@_ariaLabel</span>
+            }
+            <span id="@_id-value" class="indx-select-value @(string.IsNullOrEmpty(Value) ? "indx-select-placeholder" : null)" style="display:inline-flex; align-items:center; gap:6px;">
+                @if (SelectedOption?.Icon is { } selIcon)
+                {
+                    @selIcon(_iconSize)
+                }
+                @if (Variant == "ghost")
+                {
+                    @* Every label in one grid cell, only the chosen one visible: the field is as
+                       wide as its widest option, so a value never clips and the field does not
+                       change width as the choice changes. *@
+                    <span class="indx-select-sizer">
+                        @foreach (var option in _options)
+                        {
+                            <span class="@(option.Value == Value ? null : "indx-select-sizer-hidden")" aria-hidden="@(option.Value == Value ? null : "true")">@option.Label</span>
+                        }
+                        @if (SelectedOption == null)
+                        {
+                            <span>@Placeholder</span>
+                        }
+                    </span>
+                }
+                else
+                {
+                    <span>@(SelectedLabel ?? Placeholder)</span>
+                }
+            </span>
+            <span class="indx-select-icon" aria-hidden="true"><ChevronDown Size="@_iconSize" /></span>
+        </button>
+        @if (_open)
+        {
+            <div class="indx-select-backdrop" @onclick="Close"></div>
+            <div class="indx-select-menu" role="listbox">
+                @foreach (var option in _options)
+                {
+                    var choose = OptionRow(option);
+                    @if (OptionActionIcon is { } actionIcon && OnOptionAction.HasDelegate)
+                    {
+                        @* An option with an action of its own beside it ("Edit"), for a menu whose
+                           options can be changed without choosing them first. Two buttons in a row,
+                           not one inside the other; the arrows move among the options only. *@
+                        <div class="indx-select-option-row">
+                            @choose
+                            <Button Variant="ghost" Size="@Size" aria-label="@($"{OptionActionLabel} {option.Label}")" title="@($"{OptionActionLabel} {option.Label}")"
+                                    @onclick="() => RunOptionAction(option.Value)">
+                                <IconLeft>@actionIcon(context)</IconLeft>
+                            </Button>
+                        </div>
+                    }
+                    else
+                    {
+                        @choose
+                    }
+                }
+                @if (!string.IsNullOrEmpty(ActionLabel))
+                {
+                    @* An entry under the options, as the Breadcrumbs switcher's: "New …", which runs
+                       instead of choosing a value. *@
+                    <div class="indx-select-menu-divider" role="separator"></div>
+                    <Button Variant="ghost" Size="@Size" @onclick="RunAction" style="width:100%; justify-content:flex-start;">
+                        <IconLeft><Plus Size="@context" Color="currentColor" /></IconLeft>
+                        <ChildContent>@ActionLabel</ChildContent>
+                    </Button>
+                }
+            </div>
+        }
+    </div>
+</div>
+
+@code {
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+
+    /// <summary>"micro" | "default" | "large" — matches Button sizing.</summary>
+    [Parameter] public string Size { get; set; } = "default";
+
+    /// <summary>"default" (a bordered field) | "ghost" (no border or background, sized to its
+    /// value, like a ghost Button): for a view setting in a toolbar rather than a form field.</summary>
+    [Parameter] public string Variant { get; set; } = "default";
+
+    [Parameter, EditorRequired] public IEnumerable<SelectOption> Options { get; set; } = [];
+
+    /// <summary>An entry below the options, typically "New …", as the Breadcrumbs switcher has:
+    /// shown when set, it closes the menu and raises <see cref="OnAction"/> instead of choosing.</summary>
+    [Parameter] public string? ActionLabel { get; set; }
+    [Parameter] public EventCallback OnAction { get; set; }
+
+    /// <summary>An action beside every option, drawn as this icon (typically an edit): it closes
+    /// the menu and raises <see cref="OnOptionAction"/> with the option's value, choosing nothing.
+    /// Shown when both are set. <see cref="OptionActionLabel"/> names it with the option's label.</summary>
+    [Parameter] public RenderFragment<int>? OptionActionIcon { get; set; }
+    [Parameter] public EventCallback<string> OnOptionAction { get; set; }
+    [Parameter] public string OptionActionLabel { get; set; } = "Edit";
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool _open;
+
+    private string _id => Id ?? _generatedId;
+    private readonly string _generatedId = $"select-{Guid.NewGuid():N}";
+
+    // Match Button's icon sizing.
+    private int _iconSize => Size == "large" ? 21 : 14;
+
+    // Materialized once per parameter set: Options may be a lazy sequence, read several times a render.
+    private IReadOnlyList<SelectOption> _options = [];
+
+    // An aria-label on the field would replace its whole name, so a screen reader heard "Order"
+    // and never the current choice (the field is a button, named by its label alone). It is turned into a hidden name that the field is labelled by
+    // together with its value: "Order, Newest first".
+    private string? _ariaLabel => AdditionalAttributes is { } a && a.TryGetValue("aria-label", out var v) ? v?.ToString() : null;
+    // A visible Label has the same effect through <label for>, so it is referenced the same way.
+    private string? _labelledBy =>
+        _ariaLabel is not null ? $"{_id}-name {_id}-value"
+        : !string.IsNullOrEmpty(Label) ? $"{_id}-label {_id}-value"
+        : null;
+    private Dictionary<string, object>? _splat => _ariaLabel is null ? AdditionalAttributes
+        : AdditionalAttributes!.Where(p => p.Key != "aria-label").ToDictionary(p => p.Key, p => p.Value);
+    protected override void OnParametersSet() => _options = Options as IReadOnlyList<SelectOption> ?? Options.ToArray();
+
+    private SelectOption? SelectedOption => _options.FirstOrDefault(o => o.Value == Value);
+    private string? SelectedLabel => SelectedOption?.Label;
+
+    private void Toggle() => _open = !_open;
+    private void Close() => _open = false;
+
+    /// <summary>One option, the button that chooses it.</summary>
+    private RenderFragment OptionRow(SelectOption option) => __builder =>
+    {
+        <Button Variant="ghost" Size="@Size" role="option" aria-selected="@(Value == option.Value ? "true" : "false")"
+                @onclick="() => Pick(option.Value)" style="width:100%; justify-content:space-between;">
+            <span style="display:inline-flex; align-items:center; gap:6px;">
+                @if (option.Icon is { } optIcon)
+                {
+                    @optIcon(_iconSize)
+                }
+                <span>@option.Label</span>
+            </span>
+            @if (Value == option.Value)
+            {
+                <Check Size="14" />
+            }
+        </Button>
+    };
+
+    private async Task RunOptionAction(string value)
+    {
+        _open = false;
+        _refocus = true;
+        await OnOptionAction.InvokeAsync(value);
+    }
+
+    private async Task RunAction()
+    {
+        _open = false;
+        _refocus = true;
+        await OnAction.InvokeAsync();
+    }
+
+    private async Task Pick(string value)
+    {
+        _open = false;
+        // The option that had focus is gone with the menu; give it back to the field, or the
+        // next Tab starts from the top of the page.
+        _refocus = true;
+        await ValueChanged.InvokeAsync(value);
+    }
+
+    // The handler sits on the wrapper, which holds both the field and the menu, so it hears keys
+    // from either. Escape closes and returns focus to the field. ArrowDown/ArrowUp on a closed
+    // field opens it with the chosen option focused; inside an open menu the arrows, Home and
+    // End move focus in SelectField.razor.js, which can do it without a round-trip.
+    private void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape" && _open)
+        {
+            _open = false;
+            _refocus = true;
+        }
+        else if (!_open && e.Key is "ArrowDown" or "ArrowUp")
+        {
+            _open = true;
+            _focusOption = true;
+        }
+    }
+
+    private ElementReference _button;
+    private bool _refocus;
+    private bool _focusOption;
+
+    // The open menu is placed against the window by SelectField.razor.js, so a scrolling
+    // ancestor (a Modal's content box) cannot clip it. Without JS it falls back to the CSS
+    // position under the field.
+    private ElementReference _trigger;
+    private IJSObjectReference? _module;
+    private IJSObjectReference? _handle;
+
+    private bool _disposed;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try
+        {
+            if (firstRender)
+            {
+                var module = await JS.InvokeAsync<IJSObjectReference>("import", "./_content/Indx.Systm.Blazor/SelectField.razor.js");
+                if (_disposed) { await module.DisposeAsync(); return; }
+                _module = module;
+                _handle = await _module.InvokeAsync<IJSObjectReference?>("init", _trigger);
+            }
+            if (_refocus)
+            {
+                _refocus = false;
+                await _button.FocusAsync();
+            }
+            if (_focusOption && _module is not null)
+            {
+                _focusOption = false;
+                await _module.InvokeVoidAsync("focusOption", _trigger);
+            }
+        }
+        catch (JSDisconnectedException) { }
+        catch (TaskCanceledException) { }
+        catch (JSException) { }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        if (_module is null) return;
+        try
+        {
+            if (_handle is not null)
+            {
+                await _handle.InvokeVoidAsync("dispose");
+                await _handle.DisposeAsync();
+            }
+            await _module.DisposeAsync();
+        }
+        catch (JSDisconnectedException) { }
+        catch (ObjectDisposedException) { }
+        catch (InvalidOperationException) { }
+        catch (TaskCanceledException) { }
+        catch (JSException) { } // element already gone on the client
+    }
+
+    public record SelectOption(string Label, string Value)
+    {
+        /// <summary>Optional leading icon, rendered in the trigger and menu. Receives the icon size.</summary>
+        public RenderFragment<int>? Icon { get; init; }
+    }
+}

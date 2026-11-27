@@ -1,0 +1,62 @@
+@* A severe security update, under the header on every page an instance admin opens, until the
+   instance runs the fix (mockup: indx-react/apps/components, "Security update", variant A). In
+   inverted ink so it is the loudest thing on the page without red. It can be hidden for a day,
+   never for good. The bell, the email and the line under the admin column's version say it too;
+   this is for the admin who works on a team's datasets and does not open Admin. *@
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using System.Security.Claims
+@inject InstanceSettingsService Settings
+@inject IEditionService Edition
+@inject SecurityStripHides Hides
+@inject AuthenticationStateProvider AuthState
+
+@if (_pending is { } pending && !_hidden)
+{
+    <div class="security-strip" role="alert">
+        <Shield Size="16" Color="currentColor" />
+        <span class="security-strip-text">
+            <strong>Security update @pending.Version</strong>
+            <span class="security-strip-muted">@Sentence(pending)</span>
+        </span>
+        <span class="security-strip-actions">
+            @if (_managed)
+            {
+                <Button Variant="primary" Size="micro" IconLeft="IndxServer.Components.Datasets.DatasetIcons.Changes" Href="/admin/settings/version">Update to @pending.Version</Button>
+            }
+            else
+            {
+                <Button Variant="primary" Size="micro" IconLeft="IndxServer.Components.Datasets.DatasetIcons.ExternalLink"
+                        Href="@(pending.Url ?? "https://github.com/indxSearch/Indx/releases")" target="_blank" rel="noopener">Get @pending.Version</Button>
+                <Button Variant="ghost" Size="micro" IconLeft="IndxServer.Components.Datasets.DatasetIcons.HowTo" Href="/admin/settings/version">How to update</Button>
+            }
+            <Button Variant="ghost" Size="micro" IconLeft="IndxServer.Components.Datasets.DatasetIcons.Hide" @onclick="Hide">Hide until tomorrow</Button>
+        </span>
+    </div>
+}
+
+@code {
+    private PendingRelease? _pending;
+    private bool _managed, _hidden;
+    private string _userId = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = (await AuthState.GetAuthenticationStateAsync()).User;
+        // Instance admins only: they are the ones who can update.
+        if (!user.IsInRole("Admin")) return;
+        _userId = user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
+        _pending = UpdateNotice.Pending(Settings.Load(), ReleaseVersion.Current) is { Severe: true } p ? p : null;
+        _managed = Edition.Edition == IndxEdition.Managed;
+        _hidden = _pending != null && Hides.IsHidden(_userId, _pending.Version);
+    }
+
+    private static string Sentence(PendingRelease pending) =>
+        $"Indx {pending.Version} fixes a severe security issue. This instance runs {ReleaseVersion.Current}.";
+
+    private void Hide()
+    {
+        if (_pending is null) return;
+        Hides.Hide(_userId, _pending.Version);
+        _hidden = true;
+    }
+}

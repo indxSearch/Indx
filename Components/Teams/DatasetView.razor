@@ -1,0 +1,126 @@
+@inject IDatasetEngines Engines
+@inject NavigationManager NavigationManager
+@inject ActiveTeamState ActiveTeam
+@inject HeaderState Header
+@implements IDisposable
+
+<PageTitle>@Dataset in @TeamName</PageTitle>
+
+@* One dataset: [team ▾] › [dataset ▾] breadcrumb and the DatasetPanel (status, tab nav, tabs).
+   Only this dataset's panel is mounted; the sibling dropdown in the crumb navigates.
+   Hosted by Pages/ConsolePage. *@
+
+<div>
+    @if (_exists)
+    {
+        <DatasetPanel @key="@($"{TeamId}/{Dataset}")"
+                      Name="@Dataset"
+                      TeamId="@TeamId"
+                      Role="@Role"
+                      MyTeams="ActiveTeam.Teams"
+                      Visible="true"
+                      OnDatasetListChanged="OnDatasetListChanged"
+                      OnRenamed="OnRenamed"
+                      OnContextCreated="ctx => { _ctx = ctx; SetHeader(); }" />
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string TeamName { get; set; } = "";
+    [Parameter, EditorRequired] public string TeamId { get; set; } = "";
+    [Parameter] public string? Role { get; set; }
+    [Parameter, EditorRequired] public string Dataset { get; set; } = "";
+
+    private List<string> _siblings = new();
+    private bool _exists;
+    private string? _loadedFor;
+    private DatasetContext? _ctx;
+
+    // The trail (and the dataset's state chip after it) live in the header; re-set whenever the
+    // siblings or the context change so the header re-renders.
+    private void SetHeader()
+    {
+        // Disposal is not a tight enough test on its own. OnContextCreated can land in the window
+        // after TeamView has set the team's trail and before this view is disposed, and _disposed
+        // is still false there. What settles it is the URL: if it no longer names this dataset,
+        // this view is on its way out and must not claim the header.
+        if (_disposed || !IsCurrentDataset()) return;
+        var ctx = _ctx;
+        Header.Set(this, b =>
+        {
+            b.OpenComponent<ConsoleBreadcrumb>(0);
+            b.SetKey("dataset:" + TeamName + "/" + Dataset); // see TeamView.SetHeader for why
+            b.AddAttribute(1, "TeamName", TeamName);
+            b.AddAttribute(2, "Dataset", Dataset);
+            b.AddAttribute(3, "Siblings", (IReadOnlyList<string>)_siblings);
+            if (ctx != null)
+            {
+                b.AddAttribute(4, "Trailing", (RenderFragment)(t =>
+                {
+                    t.OpenComponent<DatasetStatus>(0);
+                    t.AddAttribute(1, "Ctx", ctx);
+                    t.CloseComponent();
+                }));
+            }
+            b.CloseComponent();
+        });
+    }
+
+    /// <summary>Set once this view is torn down, so a callback that arrives afterwards cannot put
+    /// the trail back. OnContextCreated fires when the panel finishes building its context, which
+    /// can land after the user has already navigated to the team page: HeaderState.Set takes
+    /// ownership unconditionally (only Clear checks the owner), so that late call replaced the
+    /// team's trail with this dataset's, chip and all, on a page the dataset is not on.</summary>
+    private bool _disposed;
+
+    /// <summary>Whether the address bar still points at this dataset. Covers both the team-scoped
+    /// route and the legacy /datasets/{name} one.</summary>
+    private bool IsCurrentDataset()
+    {
+        // Through TeamRoutes, which decodes: the URL is escaped and Dataset is not, so comparing
+        // them directly fails for every name that escapes to something else.
+        var onScreen = TeamRoutes.DatasetFromPath(NavigationManager.ToBaseRelativePath(NavigationManager.Uri));
+        return string.Equals(onScreen, Dataset, StringComparison.OrdinalIgnoreCase);
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        Header.Clear(this, keepIf: NavigationManager.ToBaseRelativePath(NavigationManager.Uri).StartsWith("teams/", StringComparison.OrdinalIgnoreCase));
+    }
+
+    // Same instance, new dataset or team (crumb dropdowns, back/forward): re-read the list.
+    // A dataset that is not in this team (typo, deleted, moved) goes back to the team's list
+    // rather than rendering a page that looks like the dataset exists.
+    protected override void OnParametersSet()
+    {
+        if (_loadedFor != $"{TeamId}/{Dataset}") { _ctx = null; LoadSiblings(); }
+        if (!_exists) { NavigationManager.NavigateTo(TeamRoutes.Team(TeamName), replace: true); return; }
+        SetHeader();
+    }
+
+    private void LoadSiblings()
+    {
+        _loadedFor = $"{TeamId}/{Dataset}";
+        try { _siblings = Engines.GetTeamDataSets(TeamId); }
+        catch { _siblings = new(); }
+        _exists = _siblings.Contains(Dataset);
+    }
+
+    /// <summary>Renamed: the URL carries the name, so go to the new one (the panel is keyed by
+    /// name and remounts with a fresh context).</summary>
+    private Task OnRenamed(string newName)
+    {
+        NavigationManager.NavigateTo(TeamRoutes.Dataset(TeamName, newName), replace: true);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Deleted, transferred or hibernated. Hibernated stays here (the panel shows
+    /// Wake); the other two mean the dataset left this team — go back to its list.</summary>
+    private Task OnDatasetListChanged()
+    {
+        LoadSiblings();
+        if (!_exists) NavigationManager.NavigateTo(TeamRoutes.Team(TeamName));
+        return Task.CompletedTask;
+    }
+}

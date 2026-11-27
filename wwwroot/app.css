@@ -1,0 +1,1318 @@
+/* Base Reset */
+*, *::before, *::after {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+/* Design tokens (:root vars) + dark mode now live in the Indx.Systm.Blazor RCL:
+   _content/Indx.Systm.Blazor/indx-systm.css (linked in App.razor before this file). */
+
+/* Base Styles */
+html, body {
+    font: var(--text-sm);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background-color: var(--lv0);
+    color: var(--lv8);
+    overscroll-behavior-y: none;
+    min-height: 100vh;
+}
+
+p, ul, ol, li {
+    line-height: 1.8;
+}
+
+h1 {
+    font: var(--text-2xl);
+    line-height: 1.3;
+}
+
+h2 {
+    font: var(--text-xl);
+    line-height: 1.3;
+}
+
+h3 {
+    font: var(--text-lg);
+    line-height: 1.3;
+}
+
+h4 {
+    font: var(--text-base);
+    line-height: 1.3;
+}
+
+h5 {
+    font: var(--text-base);
+    line-height: 1.3;
+}
+
+h6 {
+    font: var(--text-base);
+    font-weight: var(--semi);
+    line-height: 1.3;
+}
+
+/* Links */
+a {
+    color: var(--CPureBlue);
+    text-decoration: none;
+}
+
+a:hover {
+    text-decoration: underline;
+}
+
+@media (prefers-color-scheme: dark) {
+    :where(:root:not([data-theme="light"])) a {
+        color: var(--CLightBlue);
+    }
+}
+:where(:root[data-theme="dark"]) a {
+    color: var(--CLightBlue);
+}
+
+/* Form Inputs - Global Styling */
+input[type="text"],
+input[type="email"],
+input[type="password"],
+input[type="number"],
+input[type="tel"],
+input[type="url"],
+input[type="search"],
+textarea,
+select {
+    font: var(--text-xs);
+    padding: 10px;
+    min-height: 30px;
+    border: 1px solid var(--lv3);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--lv7);
+    width: 100%;
+}
+
+input:not(:disabled):hover,
+textarea:not(:disabled):hover,
+select:not(:disabled):hover {
+    border-color: var(--lv5);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+    outline: none;
+    border-color: var(--lv5);
+}
+
+input::placeholder,
+textarea::placeholder {
+    color: var(--lv5);
+}
+
+input:disabled,
+textarea:disabled,
+select:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+input::selection,
+textarea::selection {
+    background: var(--lv3);
+}
+
+/* Hide number input spinners */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+
+/* Form labels */
+label {
+    font: var(--text-xs);
+    color: var(--lv6);
+    display: block;
+    margin-bottom: 4px;
+}
+
+/* Validation */
+.validation-message,
+.text-danger {
+    font: var(--text-2xs);
+    color: var(--CSignal);
+    margin-top: 4px;
+    display: block;
+}
+
+/* Buttons - Global Styling */
+button,
+.btn,
+a.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    border-radius: var(--radius);
+    border: none;
+    box-sizing: border-box;
+    font-size: 13px;
+    font-weight: var(--med);
+    line-height: normal;
+    height: 40px;
+    padding: 0 15px;
+    gap: 10px;
+    background: var(--lv7);
+    color: var(--lv1);
+    text-decoration: none;
+}
+
+a.btn:hover {
+    text-decoration: none;
+    opacity: 0.8;
+}
+
+button:disabled,
+.btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+button:focus-visible,
+.btn:focus-visible {
+    outline: 2px solid var(--lv5);
+    outline-offset: 2px;
+}
+
+/* Button Sizes */
+.btn-micro,
+a.btn.btn-micro {
+    font-size: 11px;
+    font-weight: var(--med);
+    height: 30px;
+    padding: 0 10px;
+    gap: 7px;
+    line-height: normal;
+}
+
+.btn-default {
+    font: var(--text-sm);
+    font-weight: var(--med);
+    height: 40px;
+    padding: 0 15px;
+    gap: 10px;
+}
+
+.btn-large {
+    font: var(--text-base);
+    font-weight: var(--med);
+    height: 50px;
+    padding: 0 20px;
+    gap: 10px;
+}
+
+/* Button Variants */
+.btn-primary {
+    background: var(--lv7);
+    color: var(--lv1);
+    border: none;
+}
+
+.btn-primary:hover:not(:disabled) {
+    opacity: 0.8;
+}
+
+a.btn-primary:hover {
+    opacity: 0.8;
+}
+
+.btn-secondary {
+    border: 1px solid var(--lv3);
+    color: var(--lv6);
+    background: transparent;
+}
+
+.btn-secondary:hover:not(:disabled) {
+    border-color: var(--lv4);
+    opacity: 1;
+}
+
+a.btn-secondary:hover {
+    border-color: var(--lv4);
+    opacity: 1;
+}
+
+.btn-ghost,
+a.btn.btn-ghost {
+    color: var(--lv5);
+    background: transparent;
+    border: none;
+}
+
+.btn-ghost:hover:not(:disabled) {
+    background: var(--lv2);
+    opacity: 1;
+}
+
+a.btn-ghost:hover,
+a.btn.btn-ghost:hover {
+    background: var(--lv2);
+    opacity: 1;
+}
+
+/* Ghost micro buttons as links - left aligned */
+a.btn.btn-ghost.btn-micro {
+    justify-content: flex-start;
+    width: auto;
+}
+
+.btn-danger {
+    background: var(--CSignal);
+    color: var(--lv0);
+    border: none;
+}
+
+.btn-danger:hover:not(:disabled) {
+    opacity: 0.8;
+}
+
+a.btn-danger:hover {
+    opacity: 0.8;
+}
+
+/* Font @font-face declarations (FunktionalGrotesk + Geist) live in the
+   Indx.Systm.Blazor RCL: _content/Indx.Systm.Blazor/fonts/fonts.css */
+
+/* Layout: a header over a side column
+   and the page. The column is one width, named once, so the header's brand cell sits exactly over
+   it and the trail starts where the content does. */
+:root {
+    --side-width: 220px;
+}
+
+/* The window: the page (header over the shell) and, at the right, the Agent panel the window's
+   full height. The page takes what the panel leaves. */
+/* The window is the app's height: the page scrolls inside the shell, so the header stays and the
+   Agent panel's own scrolling never reaches the page. */
+:root {
+    --header-height: 60px;
+}
+
+.layout {
+    display: flex;
+    align-items: stretch;
+    height: 100vh;
+    overflow: hidden;
+}
+
+.layout-page {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.header {
+    display: flex;
+    /* Not centred: the header is 60px with a 1px border, so centring a 30px row put it at 14.5 and
+       every pixel icon in it on a half pixel, soft on a 1x screen. The row sits at a whole 15px. */
+    align-items: flex-start;
+    padding-top: calc((var(--header-height) - 30px) / 2);
+    flex: none;
+    height: var(--header-height);
+    box-sizing: border-box;
+    background: var(--lv1);
+    border-bottom: 1px solid var(--lv2);
+    /* Above the page: its menus open over the shell's sticky rows (the field table's header is
+       at 3), and the account controls' transform makes a stacking context of their own, so the
+       header needs one that outranks the page. Modals and tooltips sit far higher. */
+    position: relative;
+    z-index: 50;
+}
+
+/* The column sits at the window's left edge; the content is centred in what the column leaves,
+   up to its own maximum (below). */
+.shell {
+    flex: 1;
+    display: flex;
+    align-items: stretch;
+    min-height: 0;
+    width: 100%;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    /* Room for the scrollbar whether or not the page scrolls. Where scrollbars take space (a
+       mouse on macOS, Windows, VS Code's browser), a page that grows past the window when its
+       data lands (Statistics, from its skeleton) otherwise narrows by the bar's width, and the
+       whole page shifts sideways. Overlay scrollbars take none, so nothing changes there. */
+    scrollbar-gutter: stable;
+}
+
+/* The Agent panel (stage 5): the window's full height at the right, beside the page. Closed it has
+   no width; opening it pushes the page in, with a short slide. */
+.shell-agent {
+    width: 0;
+    flex: none;
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
+    height: 100vh;
+    box-sizing: border-box;
+    display: flex;
+    min-width: 0;
+    overflow: hidden;
+    transition: width 160ms ease-out;
+}
+
+.shell-agent--open {
+    width: 340px;
+    border-left: 1px solid var(--lv2);
+}
+
+.shell-agent > * {
+    width: 340px;
+    flex: none;
+}
+
+/* Under 1280px the page cannot share the window: pushed in, a 220px column and the panel's
+   340px left the content 540px at 1100 and 240 at 800, the header's trail under its own Jump to
+   button, and every breakpoint (which reads the window, not the page) a size behind. So the panel
+   lies over the page at the right instead, the window's height, set off by its line; the page
+   keeps its own width and layout under it. A phone goes further (768px, below). */
+@media (max-width: 1279px) {
+    .shell-agent--open {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        height: 100vh;
+        height: 100dvh;
+        z-index: 70;
+        background: var(--lv0);
+    }
+}
+
+/* The side column, where a page has sections: the systm Sidebar, as wide as it is (the column's
+   width, or its rail of icons) and the window's height under the header, sticking as the page
+   scrolls. It does not scroll itself: the Sidebar's own body does, so the rail's tooltips can
+   reach out over the page. */
+.shell-side {
+    --sidebar-width: var(--side-width);
+    flex: none;
+    position: sticky;
+    top: 0;
+    align-self: flex-start;
+    height: calc(100vh - var(--header-height));
+    /* Sticky makes the column a layer of its own, and the page after it painted over the rail's
+       tooltips. Above the page's own sticky rows (the field table's header is at 3), under the
+       header (50). */
+    z-index: 10;
+}
+
+/* The line between the column and the page, inside the column's own width, so the trail above
+   still starts where the content does. */
+@media (min-width: 769px) {
+    .shell-side .indx-sidebar {
+        border-right: 1px solid var(--lv2);
+    }
+}
+
+/* The rail (Cmd or Ctrl and B): the header's brand cell narrows with the column to the mark
+   alone, centred over the rail's icons, so the trail still starts where the content does. */
+@media (min-width: 769px) {
+    :root:has(.shell-side .indx-sidebar--rail) {
+        --side-now: 50px;
+    }
+    :root:has(.shell-side .indx-sidebar--rail) .nav-instance,
+    :root:has(.shell-side .indx-sidebar--rail) .nav .nav-brand .indx-chip {
+        display: none;
+    }
+    :root:has(.shell-side .indx-sidebar--rail) .nav-brand {
+        padding-left: 12px;
+    }
+}
+
+/* How wide the page gets before it stops growing and centres. One value for the header and the
+   content, so they stay aligned. 1680px: wide enough that the field configuration's advanced
+   columns have room on a large monitor, short of the point where a text line gets tiring. */
+:root {
+    --page-max: 1680px;
+}
+
+.content {
+    /* The page gutter, named so that a bar which scrolls sideways can reach out into it (systm
+       Tabs, Bleed) by exactly this much. */
+    --page-gutter: calc(var(--spacing) * 8);
+    flex: 1;
+    min-width: 0;
+    /* The same top as the column's menu (16px), so a page's first line and the column's first
+       title start together, whatever the page. */
+    padding: calc(var(--spacing) * 4) var(--page-gutter) 0;
+    max-width: var(--page-max);
+    width: 100%;
+    margin: 0 auto;
+}
+
+/* The space under every page. Not bottom padding: the content stretches to the shell's height in
+   its scrolling row, so a long page overflows its box and the padding sat at the box's foot, mid-page,
+   leaving the last table against the window's edge (Notifications, Nov 2026). A block after the
+   last child is part of what overflows, so it is always the last thing scrolled to. The box itself
+   is unchanged, so a page that sizes to it (the Search preview) is not moved. */
+.content::after {
+    content: "";
+    display: block;
+    height: var(--page-gutter);
+}
+
+/* No page adds its own space at the top: the content's padding is the top on every page. */
+.content > :first-child,
+.content > :first-child > :first-child {
+    margin-top: 0;
+}
+
+/* Signed out: no column, no foot; the page is centred under the header as before. */
+.content--alone {
+    margin: 0 auto;
+}
+
+/* Section rhythm on dense pages (dataset Options, Manage team, …). One scale, on the spacing
+   token: 8× between sections, 2× from a heading to its help text or first control. The first
+   section in a page or tab carries no top margin — the title or tab bar above it spaces it. */
+.indx-section-heading {
+    margin-top: calc(var(--spacing) * 8);
+    margin-bottom: calc(var(--spacing) * 2);
+}
+
+.indx-section-heading--first {
+    margin-top: 0;
+}
+
+.indx-section-heading--danger {
+    color: var(--CSignal);
+}
+
+.indx-section-help {
+    color: var(--lv5);
+    font: var(--text-xs);
+    margin-bottom: calc(var(--spacing) * 2);
+    max-width: 560px;
+}
+
+/* Navigation — the header is the breadcrumb. The brand cell is the side column's width, so the
+   mark sits over the menu's icons and the trail starts at the content's edge. */
+.nav {
+    display: grid;
+    grid-template-columns: var(--side-now, var(--side-width)) minmax(0, 1fr);
+    align-items: center;
+    width: 100%;
+    min-height: 30px;
+}
+
+/* The way into the side column's drawer: on a phone only, before the mark. */
+.nav-sections {
+    display: none;
+}
+
+/* 18px: with the link's own 2px the mark starts at 20px, on the side menu's icon line (the
+   menu's 10px of padding plus its buttons' 10px). It sat 8px left of that until 16 Oct 2026. */
+.nav-brand {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding-left: 18px;
+    min-width: 0;
+}
+
+.nav-home {
+    display: inline-flex;
+    align-items: center;
+    /* 12px: four of the logo's own 3px cells between the mark and the name. */
+    gap: 12px;
+    flex-shrink: 0;
+    color: var(--lv7);
+    text-decoration: none;
+    border-radius: var(--radius);
+    padding: 4px 6px 4px 2px;
+}
+
+.nav-home:hover {
+    text-decoration: none;
+}
+
+.nav-instance {
+    font: var(--text-xs);
+    font-weight: var(--med);
+    color: var(--lv5);
+    white-space: nowrap;
+}
+
+/* The trail is centred in the header's second cell over the same maximum as the content, so it
+   starts where the content does whatever the window's width; the account's controls sit at the
+   window's edge, outside that box. */
+.nav-main {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 14px;
+    position: relative;
+}
+
+.nav-crumbs {
+    flex: 1;
+    min-width: 0;
+    max-width: var(--page-max);
+    margin: 0 auto;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    /* The content's gutter less the first crumb's own padding, so its icon sits on the
+       content's left edge rather than one button-padding in from it. */
+    padding-left: calc(var(--spacing) * 8 - 8px);
+}
+
+.nav-right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding-right: calc(var(--spacing) * 4);
+    flex-shrink: 0;
+    position: absolute;
+    right: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    background: var(--lv1);
+}
+
+/* Header dropdowns (Instance, personal): trigger + right-anchored Surface of ghost buttons. */
+.nav-dropdown { display: flex; align-items: center; }
+.nav-dropdown-menu { min-width: 200px; }
+
+/* The way into the command palette, shaped like a search field: a secondary Button widened, the
+   words in the quiet tone, the shortcut in a key cap at its end. Styled from its wrapper, since a
+   class passed to Button replaces its own. Narrow, it keeps the icon (see the 1000px rule). */
+.nav-jump { display: inline-flex; margin-right: 8px; }
+.nav-jump .indx-btn.indx-btn-secondary { min-width: 200px; gap: 8px; color: var(--lv5); }
+.nav-jump .indx-btn.indx-btn-secondary:hover:not(:disabled) { color: var(--lv7); }
+.nav-jump-label { flex: 1; text-align: left; }
+/* With a side column the header's button is there only on a phone, where the column is a drawer. */
+.nav-jump--phone-only { display: none; }
+@media (max-width: 768px) { .nav-jump--phone-only { display: inline-flex; } }
+
+/* The same button at the top of the side column (ConsoleSideMenu's Sidebar header): the column's
+   width, its edges in line with the items under it. In the rail the icon alone, a square like the
+   rail's items, its name in a tooltip. The Sidebar hides its header in the rail, so the rail rule
+   here is made more specific than the Sidebar's own, which loads after this file. */
+.layout .shell-side .indx-sidebar-header { padding: 0; }
+.layout .shell-side .indx-sidebar.indx-sidebar--rail .indx-sidebar-header { display: block; }
+.side-jump, .side-jump .indx-tooltip-wrapper { display: flex; width: 100%; }
+.side-jump .indx-btn.indx-btn-secondary { width: 100%; gap: 8px; color: var(--lv5); }
+.side-jump .indx-btn.indx-btn-secondary:hover:not(:disabled) { color: var(--lv7); }
+@media (min-width: 769px) {
+    .indx-sidebar--rail .side-jump .nav-jump-label,
+    .indx-sidebar--rail .side-jump kbd.nav-jump-kbd { display: none; }
+    .indx-sidebar--rail .side-jump .indx-btn.indx-btn-secondary { width: 30px; padding: 0; justify-content: center; }
+}
+/* Notification bell: square, quiet, like a ghost button. */
+.nav-bell {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 30px;
+    height: 30px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius);
+    color: var(--lv5);
+    cursor: pointer;
+}
+
+.nav-bell:hover {
+    background: var(--lv2);
+    color: var(--lv8);
+}
+
+/* In between (a tablet, a narrow window): the account's controls take their room in the row
+   instead of floating over the trail, which they covered at these widths, cutting a long
+   dataset name; the trail truncates with an ellipsis instead. The trail's centring is for the
+   wide window where the content stands at its maximum; here the content is narrower than that
+   and sits at the left either way, so nothing moves. */
+@media (max-width: 1280px) {
+    .nav-right {
+        position: static;
+        transform: none;
+    }
+
+    .nav-crumbs {
+        margin: 0;
+        max-width: none;
+    }
+}
+
+/* Narrower still: the account's controls keep their icons and lose their words (Admin, the
+   name, Agent), so the dataset's name keeps its. */
+@media (max-width: 1000px) {
+    .nav-jump .indx-btn.indx-btn-secondary { min-width: 0; }
+    /* The header's only: the column's keeps its words. */
+    .nav-jump .nav-jump-label,
+    /* Specific enough to beat the Kbd's own scoped display. */
+    .nav-jump kbd.nav-jump-kbd { display: none; }
+
+    .nav-right .nav-dropdown-label {
+        display: none;
+    }
+}
+
+/* Narrow: one row. The Sections button and the mark, the trail's last step, the account's icons.
+   The standing chip goes, so the dataset's name has the room. */
+@media (max-width: 768px) {
+    /* Narrow: one row, the header's own height, everything centred on it. The mark on the
+       content's gutter (15px: the logo sits 2px into its link), or after the Sections button
+       where there is a column, the trail beside it and the account's controls at the right. */
+    .nav {
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        gap: 4px;
+        align-items: center;
+    }
+
+    .nav-brand {
+        padding-left: calc(var(--spacing) * 3 - 2px);
+    }
+
+    /* The button's icon on the gutter, as the mark's would be: the gutter less its 10px padding. */
+    .nav-sections {
+        display: inline-flex;
+    }
+    .nav-brand:has(.nav-sections) {
+        padding-left: calc(var(--spacing) * 3 - 10px);
+        gap: 2px;
+    }
+
+    /* Three classes: the chip's own scoped rule has two, and is loaded after this file. */
+    .nav .nav-brand .indx-chip {
+        display: none;
+    }
+
+    /* nav-main steps aside so the trail and the right cluster are the grid's own cells. */
+    .nav-main {
+        display: contents;
+    }
+
+    /* Not overflow: hidden. The step's switcher menu hangs below it, positioned inside it, and
+       clipping here hid the menu on a phone; the label ellipsizes on its own. */
+    .nav-crumbs {
+        grid-column: 2;
+        margin: 0;
+        max-width: none;
+        padding-left: 0;
+    }
+
+    /* The trail is its last step: the mark beside it leads to the team's page, and the team's
+       step beside the Sections button left the dataset's name four letters. */
+    .nav-crumbs .indx-breadcrumbs-item:not(:last-child),
+    .nav-crumbs .indx-breadcrumbs-item:last-child .indx-breadcrumbs-separator {
+        display: none;
+    }
+
+    /* The last icon's edge on the content's gutter: the gutter less the button's 10px padding. */
+    .nav-right {
+        grid-column: 3;
+        gap: 0;
+        padding-right: calc(var(--spacing) * 3 - 10px);
+        position: static;
+        transform: none;
+    }
+
+    /* Room for the dataset's name: the trail loses its box's side padding (the header has its
+       own) and the account menu its caret; the icon still opens it. */
+    .nav .nav-crumbs .indx-breadcrumbs.indx-breadcrumbs {
+        padding-inline: 0;
+    }
+
+    .nav .nav-dropdown .indx-btn .indx-btn-icon-right {
+        display: none;
+    }
+
+    /* The panel covers the page instead of sitting beside it. */
+    .shell-agent--open {
+        position: fixed;
+        inset: 0 0 0 auto;
+        width: min(340px, 100%);
+        height: 100vh;
+        height: 100dvh;   /* a phone's browser bars come off the panel, so the composer stays in sight */
+        z-index: 70;
+        background: var(--lv0);
+        padding: 8px;
+    }
+    .shell-agent--open > * { width: 100%; }
+
+    /* A phone: the whole screen. 340px left a sliver of page beside it that did nothing. */
+    @media (max-width: 560px) {
+        .shell-agent--open { width: 100%; border-left: none; }
+    }
+
+    /* The column is the Sidebar's drawer over the page, opened by the header's Sections button:
+       it takes no room of its own here. */
+    .shell-side {
+        display: contents;
+    }
+
+    .nav-instance {
+        display: none;
+    }
+
+    /* The personal menu keeps its icon and caret. The space goes to the trail, which needs it
+       for the dataset name. The button's aria-label still names it. */
+    .nav-dropdown-label {
+        display: none;
+    }
+
+    .content {
+        --page-gutter: calc(var(--spacing) * 3);
+    }
+}
+
+/* Utility Classes */
+.text-muted {
+    color: var(--lv5);
+}
+
+.bg-dark {
+    background: var(--lv7);
+}
+
+.text-light {
+    color: var(--lv1);
+}
+
+.text-primary {
+    color: var(--CPureBlue);
+}
+
+.badge {
+    display: inline-block;
+    padding: 4px 8px;
+    font: var(--text-2xs);
+    font-weight: var(--semi);
+    border-radius: var(--radius);
+}
+
+.bg-success {
+    background: var(--CTeal);
+    color: var(--lv8);
+}
+
+.bg-warning {
+    background: var(--CWarning);
+    color: var(--lv8);
+}
+
+.bg-secondary {
+    background: var(--lv3);
+    color: var(--lv8);
+}
+
+.bg-danger {
+    background: var(--CSignal);
+}
+
+.text-white {
+    color: var(--lv0);
+}
+
+/* Blazor Error Boundary */
+.blazor-error-boundary {
+    background: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTYiIGhlaWdodD0iNDkiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIG92ZXJmbG93PSJoaWRkZW4iPjxkZWZzPjxjbGlwUGF0aCBpZD0iY2xpcDAiPjxyZWN0IHg9IjIzNSIgeT0iNTEiIHdpZHRoPSI1NiIgaGVpZ2h0PSI0OSIvPjwvY2xpcFBhdGg+PC9kZWZzPjxnIGNsaXAtcGF0aD0idXJsKCNjbGlwMCkiIHRyYW5zZm9ybT0idHJhbnNsYXRlKC0yMzUgLTUxKSI+PHBhdGggZD0iTTI2My41MDYgNTFDMjY0LjcxNyA1MSAyNjUuODEzIDUxLjQ4MzcgMjY2LjYwNiA1Mi4yNjU4TDI2Ny4wNTIgNTIuNzk4NyAyNjcuNTM5IDUzLjYyODMgMjkwLjE4NSA5Mi4xODMxIDI5MC41NDUgOTIuNzk1IDI5MC42NTYgOTIuOTk2QzI5MC44NzcgOTMuNTEzIDI5MSA5NC4wODE1IDI5MSA5NC42NzgyIDI5MSA5Ny4wNjUxIDI4OS4wMzggOTkgMjg2LjYxNyA5OUwyNDAuMzgzIDk5QzIzNy45NjMgOTkgMjM2IDk3LjA2NTEgMjM2IDk0LjY3ODIgMjM2IDk0LjM3OTkgMjM2LjAzMSA5NC4wODg2IDIzNi4wODkgOTMuODA3MkwyMzYuMzM4IDkzLjAxNjIgMjM2Ljg1OCA5Mi4xMzE0IDI1OS40NzMgNTMuNjI5NCAyNTkuOTYxIDUyLjc5ODUgMjYwLjQwNyA1Mi4yNjU4QzI2MS4yIDUxLjQ4MzcgMjYyLjI5NiA1MSAyNjMuNTA2IDUxWk0yNjMuNTg2IDY2LjAxODNDMjYwLjczNyA2Ni4wMTgzIDI1OS4zMTMgNjcuMTI0NSAyNTkuMzEzIDY5LjMzNyAyNTkuMzEzIDY5LjYxMDIgMjU5LjMzMiA2OS44NjA4IDI1OS4zNzEgNzAuMDg4N0wyNjEuNzk1IDg0LjAxNjEgMjY1LjM4IDg0LjAxNjEgMjY3LjgyMSA2OS43NDc1QzI2Ny44NiA2OS43MzA5IDI2Ny44NzkgNjkuNTg3NyAyNjcuODc5IDY5LjMxNzkgMjY3Ljg3OSA2Ny4xMTgyIDI2Ni40NDggNjYuMDE4MyAyNjMuNTg2IDY2LjAxODNaTTI2My41NzYgODYuMDU0N0MyNjEuMDQ5IDg2LjA1NDcgMjU5Ljc4NiA4Ny4zMDA1IDI1OS43ODYgODkuNzkyMSAyNTkuNzg2IDkyLjI4MzcgMjYxLjA0OSA5My41Mjk1IDI2My41NzYgOTMuNTI5NSAyNjYuMTE2IDkzLjUyOTUgMjY3LjM4NyA5Mi4yODM3IDI2Ny4zODcgODkuNzkyMSAyNjcuMzg3IDg3LjMwMDUgMjY2LjExNiA4Ni4wNTQ3IDI2My41NzYgODYuMDU0N1oiIGZpbGw9IiNGRkU1MDAiIGZpbGwtcnVsZT0iZXZlbm9kZCIvPjwvZz48L3N2Zz4=) no-repeat 1rem/1.8rem, var(--CSignal);
+    padding: 1rem 1rem 1rem 3.7rem;
+    color: var(--lv0);
+}
+
+.blazor-error-boundary::after {
+    content: "An error has occurred."
+}
+
+/* ========================================
+   Unauthenticated Layout Styles
+   ======================================== */
+
+/* Main Layout Container */
+.unauth-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    min-height: 100vh;
+    overflow: hidden;
+}
+
+/* Left Side - Logo Panel */
+.unauth-left {
+    background: var(--lv0);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+}
+
+/* <indx-die> fills the column, over the logo (js/indx-die.js; hidden with the column on a phone) */
+.unauth-left indx-die {
+    position: absolute;
+    inset: 0;
+}
+
+.unauth-logo-container {
+    position: relative;
+    width: 175px;
+    height: 125px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.unauth-logo {
+    width: 100%;
+    height: auto;
+    max-width: 175px;
+    opacity: 0.5;
+}
+
+/* Show light logo by default, hide dark */
+.unauth-logo-light {
+    display: block;
+}
+
+.unauth-logo-dark {
+    display: none;
+}
+
+/* Dark mode: hide light, show dark */
+@media (prefers-color-scheme: dark) {
+    :where(:root:not([data-theme="light"])) .unauth-logo-light {
+        display: none;
+    }
+
+    :where(:root:not([data-theme="light"])) .unauth-logo-dark {
+        display: block;
+    }
+}
+:where(:root[data-theme="dark"]) .unauth-logo-light {
+    display: none;
+}
+:where(:root[data-theme="dark"]) .unauth-logo-dark {
+    display: block;
+}
+
+/* Right Side - Content Panel */
+.unauth-right {
+    background: var(--lv0);
+    display: flex;
+    overflow-y: auto;
+    padding: 10px;
+}
+
+.unauth-content {
+    width: 100%;
+    height: 100%;
+    padding: calc(var(--spacing) * 8);
+    background: var(--lv1);
+    border-radius: calc(var(--radius) * 2);
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.unauth-content-inner {
+    width: 100%;
+    max-width: 300px;
+}
+
+/* Form adjustments for unauthenticated pages */
+.unauth-content a {
+    color: var(--lv5);
+    text-decoration: none;
+}
+
+.unauth-content a:hover {
+    color: var(--lv6);
+}
+
+.unauth-content h1 {
+    font: var(--text-3xl);
+    margin-bottom: calc(var(--spacing) * 4);
+    color: var(--lv8);
+}
+
+.unauth-content h2 {
+    font: var(--text-2xl);
+    margin-top: calc(var(--spacing) * 6);
+    margin-bottom: calc(var(--spacing) * 3);
+    color: var(--lv7);
+}
+
+.unauth-content h3 {
+    font: var(--text-lg);
+    margin-bottom: 40px;
+    color: var(--lv7);
+}
+
+.unauth-content h4 {
+    font: var(--text-lg);
+    margin-bottom: calc(var(--spacing) * 2);
+    color: var(--lv6);
+}
+
+.unauth-content p {
+    color: var(--lv6);
+    margin-bottom: calc(var(--spacing) * 3);
+}
+
+/* Remove Bootstrap card styles on unauthenticated pages */
+.unauth-content .card,
+.unauth-content .card-header,
+.unauth-content .card-body {
+    border: none;
+    background: transparent;
+    padding: 0;
+    margin: 0;
+}
+
+.unauth-content .container,
+.unauth-content .row,
+.unauth-content .col-md-6,
+.unauth-content .col-md-8,
+.unauth-content .col-md-10 {
+    padding: 0;
+    margin: 0 auto;
+    max-width: 300px;
+    width: 100%;
+}
+
+/* Mobile Responsive - Hide left side, full content */
+@media (max-width: 768px) {
+    .unauth-layout {
+        grid-template-columns: 1fr;
+    }
+
+    .unauth-left {
+        display: none;
+    }
+
+    .unauth-right {
+        padding: calc(var(--spacing) * 4);
+    }
+
+    .unauth-content {
+        max-width: 100%;
+        padding: 0;
+    }
+}
+
+/* Upload label — styled as a secondary micro button, used wherever a file input needs a clickable label */
+.indx-upload-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    height: 30px;
+    padding: 0 10px;
+    font: var(--text-xs);
+    font-weight: var(--med);
+    color: var(--lv6);
+    background: transparent;
+    border: 1px solid var(--lv3);
+    border-radius: var(--radius);
+    cursor: pointer;
+    white-space: nowrap;
+    box-sizing: border-box;
+    user-select: none;
+    margin: 0;
+    line-height: normal;
+}
+
+.indx-upload-label:hover {
+    border-color: var(--lv4);
+}
+
+/* Input (.indx-input) styling now lives in the library global stylesheet:
+   Indx.Systm.Blazor/wwwroot/indx-systm.css — shared by the InputField
+   component and raw <input class="indx-input"> usages. */
+
+/* Chip styling now lives with the component: Indx.Systm.Blazor/Chip.razor.css */
+
+/* ── Data tables (dataset console: field configuration, synonyms) ── */
+/* The table base styles live in systm (indx-systm.css, .indx-table). What stays here is the
+   console's own choice: a header row that sticks to the top of the page while it scrolls. */
+.indx-table thead {
+    position: sticky;
+    top: 0;
+    /* Above the body's sticky first column (StickyFirstColumn, z-index 1), which otherwise paints
+       over the header's first cell as the rows scroll under it: equal z-index, later in the tree. */
+    z-index: 3;
+}
+
+.indx-table thead tr {
+    background-color: var(--lv2);
+    box-shadow: 0 0.5px 0 var(--lv3);
+}
+
+.indx-table thead th {
+    font-weight: var(--reg);
+}
+
+/* ── Field configuration toolbar / progress (dataset console) ── */
+/* The import outcome, above the field configuration. */
+.indx-field-config-import-alert {
+    margin-top: 8px;
+}
+
+.indx-field-config-import-alert-actions {
+    margin-top: 8px;
+}
+
+.indx-table-wrap {
+    margin-bottom: 12px;
+}
+
+@media (max-width: 1440px) {
+    .indx-table-wrap {
+        overflow-x: auto;
+    }
+
+    .indx-table thead {
+        position: static;
+    }
+}
+
+.indx-field-config-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px 16px;
+    margin-top: 8px;
+    margin-bottom: 8px;
+    width: 100%;
+    padding-right: 12px;
+    box-sizing: border-box;
+    min-height: 30px;
+}
+
+/* Two-cluster toolbar: clusters sit at opposite ends side-by-side, and when the row runs out of
+   width (≈ tablet) the second cluster drops to its own row — each line left-aligned (space-between
+   leaves a single item at the start). */
+.indx-field-config-toolbar--split {
+    justify-content: space-between;
+}
+
+/* A logical cluster of toolbar controls (import/export buttons, or the display toggles). Its items
+   stay on one line so the cluster wraps as a unit, not control-by-control. */
+.indx-field-config-toolbar-group {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.indx-field-config-error {
+    font: var(--text-xs);
+    color: var(--CSignal);
+}
+
+.indx-field-config-saving {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 0;
+    width: 100%;
+    max-width: 400px;
+}
+
+.indx-field-config-saving-label {
+    font: var(--text-sm);
+    color: var(--lv5);
+    white-space: nowrap;
+    margin: 0;
+}
+
+.indx-field-config-toolbar-group--wide { gap: 16px; }
+
+/* The action row under the table: Save / Cancel (or Load and Index) on the left, export and
+   import on the right. It wraps as two groups, never inside one. */
+/* ── Page action pattern ─────────────────────────────────────────────────────────────────────
+   One layout for every page that lists things or edits them:
+     top     .indx-list-toolbar   primary "New …" first, then the filter; the count sits at the end,
+                                  and the page's Observr action (ObservrPageAction) after it, top right
+     bottom  <SaveBar>            Save then Cancel, only while there are changes, sticky
+     bottom  .indx-file-actions   export, import and whole-list actions, at the end of the row
+   Creating happens in a Modal whose buttons are .indx-form-actions: primary first, then Cancel. */
+.indx-list-toolbar {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+.indx-list-toolbar-filter { flex: 0 1 220px; min-width: 140px; }
+/* A page's Observr action (ObservrPageAction): the last thing in the top row, at its right end.
+   After the count it keeps the count's push and sits beside it. */
+.indx-page-action { margin-left: auto; }
+.indx-list-toolbar-end ~ .indx-page-action { margin-left: 12px; }
+.indx-list-toolbar-end {
+    margin-left: auto;
+    color: var(--lv4);
+    font: var(--text-xs);
+    white-space: nowrap;
+}
+.indx-file-actions {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 8px 0 16px;
+}
+.indx-form-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.indx-modal-form {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    min-width: min(380px, 80vw);
+}
+
+/* The field name filter sits left of the toggles, and takes a full line of its own when the
+   toolbar wraps. */
+.indx-field-config-filter { flex: 0 1 220px; min-width: 140px; }
+
+/* Nothing in the toolbar breaks mid-label. On a narrow screen the two file buttons use their
+   short names (the full ones are in the tooltips) and the toggles wrap as whole items. */
+.indx-field-config-toolbar-group { white-space: nowrap; }
+.indx-fc-short { display: none; }
+
+@media (max-width: 768px) {
+    .indx-fc-long { display: none; }
+    .indx-fc-short { display: inline; }
+    .indx-field-config-toolbar-group--wide { flex-wrap: wrap; gap: 8px 16px; }
+    .indx-field-config-filter { flex: 1 1 100%; order: -1; }
+}
+
+/* ── Plain text input (dataset console) ── */
+.indx-text-input {
+    padding: 6px 10px;
+    height: 30px;
+    font: var(--text-xs);
+    background: transparent;
+    border: 1px solid var(--lv3);
+    border-radius: var(--radius);
+    color: var(--lv7);
+    box-sizing: border-box;
+    min-width: 200px;
+}
+
+.indx-text-input:hover {
+    border-color: var(--lv5);
+}
+
+.indx-text-input:focus {
+    outline: none;
+    border-color: var(--lv5);
+}
+
+
+/* Observr's buttons wear its colour, so one glance says "this goes to Observr". The colour itself
+   is not decided (12 Oct 2026): not a traffic light, not the blue of the badge; until it is, the
+   buttons look like any other and the wrapper only marks them. A wrapper, since systm Button takes
+   no colour; a selector with the extra class outranks the component's isolated rules.
+   Trying (13 Oct 2026): the 1px checkerboard behind Observr's ghost buttons, as ProgressBar's
+   track has it, so the eye knows the button goes to Observr without a hue. */
+.indx-observr { display: inline-flex; }
+.indx-observr .indx-btn.indx-btn-ghost { position: relative; isolation: isolate; color: var(--lv8); }
+.indx-observr .indx-btn.indx-btn-ghost:hover:not(:disabled) { color: var(--lv8); }
+.indx-observr .indx-btn.indx-btn-ghost::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: inherit;
+    background-image: var(--pattern-checkerboard-light);
+    background-repeat: repeat;
+    background-size: 2px 2px;
+    opacity: 0.18;
+    pointer-events: none;
+}
+.indx-observr .indx-btn.indx-btn-ghost:hover::before { opacity: 0.3; }
+/* And a 2x2 lv8 square in each corner: four radial gradients, one per corner, on the same layer. */
+.indx-observr .indx-btn.indx-btn-ghost::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    background-image:
+        linear-gradient(var(--lv8), var(--lv8)),
+        linear-gradient(var(--lv8), var(--lv8)),
+        linear-gradient(var(--lv8), var(--lv8)),
+        linear-gradient(var(--lv8), var(--lv8));
+    background-size: 2px 2px;
+    background-repeat: no-repeat;
+    background-position: top left, top right, bottom left, bottom right;
+}
+
+/* The bar over a tab's content (Statistics, Status): what belongs to everything below, on one
+   line, on a phone too. The end cluster holds the controls at the right. As tall as its tallest
+   control (a micro SelectField, 30px) whether or not it is there: Statistics shows its surface
+   picker only once the numbers name a second surface, and the bar growing then moved everything
+   under it. */
+.indx-context-bar { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; min-height: 30px; }
+.indx-context-bar-end { display: flex; align-items: center; flex-wrap: nowrap; gap: 8px; min-width: 0; margin-left: auto; }
+
+/* Support: the /support pages, and the link at the foot of the
+   side column. Global, since both pages share them and their links are systm Buttons, which take
+   no class of their own: they are styled through a wrapper. */
+.support-page { display: flex; flex-direction: column; gap: 14px; }
+.support-title { margin: 0; }
+.support-quiet { color: var(--lv5); font: var(--text-sm); }
+.support-warn { margin: 0; font: var(--text-xs); color: var(--lv5); }
+.support-promise { margin: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font: var(--text-sm); color: var(--lv7); }
+.support-subject .indx-btn { max-width: 100%; justify-content: flex-start; color: var(--lv8); gap: 8px; }
+/* Support's marks are blue, Indx's colour for a message to you, not the signal red of trouble. */
+.support-unread { width: 6px; height: 6px; background: var(--CLightBlue); flex: none; }
+.support-back .indx-btn { margin-left: -10px; color: var(--lv6); }
+.support-meta { display: flex; align-items: center; gap: 10px; margin: 0; }
+.support-thread { display: flex; flex-direction: column; gap: 10px; }
+.support-message { border: 1px solid var(--lv2); border-radius: var(--radius); padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; max-width: 72ch; }
+.support-message--staff { background: var(--lv1); border-color: var(--lv1); }
+.support-message-head { display: flex; align-items: center; gap: 10px; font: var(--text-xs); }
+.support-who { display: inline-flex; align-items: center; gap: 6px; color: var(--lv8); font-weight: var(--med); }
+.support-when { margin-left: auto; color: var(--lv5); }
+.support-body { margin: 0; font: var(--text-sm); color: var(--lv7); white-space: pre-wrap; overflow-wrap: anywhere; }
+.support-diag-row { display: flex; align-items: center; gap: 8px; }
+.support-diag { margin: 0; padding: 10px 12px; background: var(--lv1); border-radius: var(--radius); font-family: var(--font-mono); font-size: 11px; line-height: 1.5; color: var(--lv6); overflow: auto; max-height: 220px; }
+
+/* The column's Support link (ConsoleSideMenu's footer), above Collapse: a ghost Button the
+   column's width, primary on /support, with the unread replies as a badge. In the rail the
+   Sidebar hides its footer's content, so the rule below shows it again with the link alone, an
+   icon like the rail's items, its name in a tooltip; the version and update line stay hidden. */
+.side-support, .side-support .indx-tooltip-wrapper { display: flex; width: 100%; }
+.side-support .indx-btn { width: 100%; justify-content: flex-start; gap: 8px; }
+.side-support-badge { margin-left: auto; padding: 0 5px; font: var(--text-2xs); font-weight: var(--med); border-radius: 3px; background: var(--CLightBlue); color: #080809; }
+.side-foot + .side-support { margin-top: 8px; }
+.layout .shell-side .indx-sidebar.indx-sidebar--rail .indx-sidebar-footer-content { display: block; }
+@media (min-width: 769px) {
+    .indx-sidebar--rail .side-foot,
+    .indx-sidebar--rail .side-support-label { display: none; }
+    .indx-sidebar--rail .side-support .indx-btn { width: 30px; padding: 0; justify-content: center; position: relative; }
+    .indx-sidebar--rail .side-support-badge { position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; padding: 0; font-size: 0; }
+    /* Get started's card is footer content too, shown again above: in the rail its own button
+       (the Sidebar's RailFooter) stands for it, so the card is hidden there. */
+    .indx-sidebar--rail .indx-sidebar-footer-content .getstarted { display: none; }
+}

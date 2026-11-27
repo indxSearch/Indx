@@ -1,0 +1,135 @@
+@page "/support/{Id:int}"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@using IndxServer.Data
+@using IndxServer.Services
+@using IndxServer.Services.Support
+@attribute [Authorize]
+@inject SupportState State
+@inject SupportClient Client
+@inject SupportOptions Options
+@inject ActiveTeamState ActiveTeam
+@inject AuthenticationStateProvider AuthState
+@inject UserManager<ApplicationUser> Users
+
+@* One ticket: the thread with Indx, a reply, and Mark solved. Opening it marks Indx's replies read
+   (the Portal is told, so the side column's badge goes for everyone who can see it). A closed
+   ticket opens again on a reply within 30 days; after that the Portal asks for a new one. *@
+
+<PageTitle>Support</PageTitle>
+
+<div class="support-page">
+    <div class="support-back"><Button Variant="ghost" Size="micro" Href="/support">← Support</Button></div>
+
+    @if (!_ready)
+    {
+        <p class="support-quiet">Loading…</p>
+    }
+    else if (!_allowed)
+    {
+        <p class="support-quiet">Support is for the instance's admins and the editors of a team.</p>
+    }
+    else if (_ticket is not { } ticket)
+    {
+        <p class="support-quiet">@(_problem == SupportProblem.NotFound ? "This ticket does not exist." : $"Indx's support could not be reached. Try again, or write to {Options.Email}.")</p>
+    }
+    else
+    {
+        var status = SupportView.Status(ticket.Status);
+        <h2 class="support-title">@ticket.Subject</h2>
+        <p class="support-meta">
+            <Chip Color="@status.Color" TextColor="@status.Text">@status.Label</Chip>
+            <span class="support-quiet">#@ticket.Id, @SupportView.Kind(ticket.Kind), opened <TimeAgo Value="ticket.CreatedAt" /> by @(ticket.Messages.FirstOrDefault(m => !m.FromStaff)?.AuthorName)@(ticket.DiagnosticsSent ? ", diagnostics sent" : "")</span>
+        </p>
+        <div class="support-thread">
+            @foreach (var m in ticket.Messages)
+            {
+                <article class="support-message @(m.FromStaff ? "support-message--staff" : null)">
+                    <header class="support-message-head">
+                        <span class="support-who">
+                            @if (m.FromStaff) { <Indx.Systm.Blazor.Icons.Support Size="14" Color="currentColor" /> }
+                            @m.AuthorName
+                        </span>
+                        <span class="support-when"><TimeAgo Value="m.CreatedAt" TooltipPosition="left" /></span>
+                    </header>
+                    <p class="support-body">@SupportView.Text(m.Body)</p>
+                </article>
+            }
+        </div>
+        <Textarea Label="Reply" Rows="4" placeholder="Write a reply" Immediate @bind-Value="_reply" />
+        @if (_error != null)
+        {
+            <Alert Variant="destructive"><Description>@_error</Description></Alert>
+        }
+        <div class="indx-form-actions">
+            <Button Variant="primary" Size="micro" Loading="_busy" Disabled="@string.IsNullOrWhiteSpace(_reply)" @onclick="ReplyAsync">Send reply</Button>
+            @if (ticket.Status != "closed")
+            {
+                <Button Variant="secondary" Size="micro" Disabled="_busy" @onclick="CloseAsync">Mark solved</Button>
+            }
+        </div>
+        <p class="support-quiet">We email you when Indx answers, and the bell lights up here.</p>
+    }
+</div>
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private bool _ready;
+    private bool _allowed;
+    private SupportTicket? _ticket;
+    private SupportProblem _problem;
+    private string? _reply;
+    private string? _error;
+    private bool _busy;
+    private ClaimsPrincipal _user = new();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        _user = (await AuthState.GetAuthenticationStateAsync()).User;
+        var userId = _user.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "";
+        if (userId.Length > 0) await ActiveTeam.EnsureInitializedAsync(userId);
+        _allowed = SupportAccess.CanUse(_user, ActiveTeam.Teams);
+        if (_allowed) await LoadAsync();
+        _ready = true;
+    }
+
+    private async Task LoadAsync()
+    {
+        var result = await Client.GetAsync(Id, seen: true);
+        _ticket = result.Value;
+        _problem = result.Problem;
+        if (_ticket != null) State.Seen(Id);
+    }
+
+    private async Task ReplyAsync()
+    {
+        _busy = true;
+        _error = null;
+        var result = await Client.ReplyAsync(Id, _reply!.Trim(), _user, await Users.GetUserAsync(_user));
+        if (result.Ok && result.Value != null)
+        {
+            _ticket = result.Value;
+            _reply = null;
+            await State.RefreshAsync();
+        }
+        else
+        {
+            _error = result.Problem == SupportProblem.Unreachable
+                ? $"Indx's support could not be reached. Try again, or write to {Options.Email}."
+                : result.Message ?? "The reply could not be sent.";
+        }
+        _busy = false;
+    }
+
+    private async Task CloseAsync()
+    {
+        _busy = true;
+        var result = await Client.CloseAsync(Id);
+        if (result.Ok) { await LoadAsync(); await State.RefreshAsync(); }
+        else _error = "The ticket could not be closed. Try again.";
+        _busy = false;
+    }
+}

@@ -1,0 +1,69 @@
+@* Export and import of the field configuration as JSON. Sits at the right end of the action row
+   under the table, next to Save / Cancel, so the top row is left to the filter and the view
+   toggles. Import merges by field name into the context's working copy; what it has to say goes
+   to the context, and FieldConfigToolbar shows it above the table. *@
+@using System.Text.Json
+@using Indx.Api
+@inject BrowserFiles Files
+
+<div class="indx-field-config-toolbar-group">
+    <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Download" title="Export field configuration as json" @onclick="ExportAsync"><span class="indx-fc-long">Export field configuration</span><span class="indx-fc-short">Export</span></Button>
+    @if (CanImport)
+    {
+        <InputFile OnChange="ImportAsync" accept=".json" style="display:none" id="@ImportInputId" />
+        <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.DynamicJson" title="Import field configuration from json" @onclick="() => Files.TriggerFileInputAsync(ImportInputId)"><span class="indx-fc-long">Import field configuration</span><span class="indx-fc-short">Import</span></Button>
+    }
+</div>
+
+@code {
+    [CascadingParameter] public DatasetContext Ctx { get; set; } = default!;
+    [Parameter] public bool CanImport { get; set; } = true;
+    /// <summary>Raised after an import changed the working copy.</summary>
+    [Parameter] public EventCallback OnImported { get; set; }
+    /// <summary>Distinguishes the two InputFile ids when both views exist for one dataset.</summary>
+    [Parameter] public string IdSuffix { get; set; } = "";
+
+    private string ImportInputId => $"fieldconfig-import{IdSuffix}-{Ctx.Name}";
+
+    private async Task ExportAsync()
+    {
+        var fields = Ctx.EditedFields;
+        if (fields == null) return;
+        var json = JsonSerializer.Serialize(fields, new JsonSerializerOptions { WriteIndented = true });
+        await Files.DownloadAsync($"{Ctx.Name}-field-config.json", json);
+    }
+
+    private async Task ImportAsync(InputFileChangeEventArgs e)
+    {
+        Ctx.FieldImportOutcome = null;
+        try
+        {
+            using var stream = e.File.OpenReadStream(maxAllowedSize: 1_000_000);
+            using var reader = new StreamReader(stream);
+            var json = await reader.ReadToEndAsync();
+            var imported = JsonSerializer.Deserialize<FieldProxy[]>(json, new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            if (imported == null || imported.Length == 0)
+            {
+                Ctx.FieldImportOutcome = new("Invalid or empty configuration file.", Failed: true, NothingImported: true);
+                return;
+            }
+            var current = Ctx.EditedFields;
+            if (current == null) return;
+
+            var result = FieldConfigImport.Merge(current, imported);
+            if (FieldConfigImport.Describe(result, imported.Length) is { } message)
+                Ctx.FieldImportOutcome = new(message, Failed: false, NothingImported: result.Matched == 0);
+
+            await OnImported.InvokeAsync();
+        }
+        catch (Exception ex)
+        {
+            Ctx.FieldImportOutcome = new(ex.Message, Failed: true, NothingImported: true);
+        }
+        finally
+        {
+            // The alert is rendered by another component, above the table.
+            Ctx.NotifyChanged();
+        }
+    }
+}

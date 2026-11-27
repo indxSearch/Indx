@@ -1,0 +1,114 @@
+@* Ported from the React @indxsearch/systm SearchField. Search-as-you-type friendly: reports
+   Value on every keystroke (oninput), and does not write the typed text back into the box, so
+   a slow handler cannot eat keystrokes (see LiveInputState). *@
+<div class="searchfield @SizeClass @(Filled ? "filled" : "")">
+    @if (!string.IsNullOrEmpty(Label))
+    {
+        <label for="@_id" class="label">@Label</label>
+    }
+    <div class="container">
+        @if (ShowSearchIcon)
+        {
+            <span class="icon" aria-hidden="true"><Indx.Systm.Blazor.Icons.Search Size="@_iconSize" Color="currentColor" /></span>
+        }
+        <input id="@_id"
+               @key="_live.Key"
+               @ref="_input"
+               type="search"
+               class="input @(HasError ? "error" : "")"
+               value="@_live.Rendered"
+               placeholder="@Placeholder"
+               disabled="@Disabled"
+               autocomplete="off"
+               @oninput="OnInput"
+               aria-invalid="@(HasError ? "true" : "false")"
+               @attributes="AdditionalAttributes" />
+        @if (RightContent is not null || (Clearable && !string.IsNullOrEmpty(_live.Text)))
+        {
+            <div class="right">
+                @RightContent
+                @if (Clearable && !string.IsNullOrEmpty(_live.Text))
+                {
+                    <Button Variant="ghost" Size="micro" @onclick="Clear">Clear</Button>
+                }
+            </div>
+        }
+    </div>
+    @if (!string.IsNullOrEmpty(Error))
+    {
+        <span class="error-text" role="alert">@Error</span>
+    }
+</div>
+
+@code {
+    [Parameter] public string? Value { get; set; }
+    [Parameter] public EventCallback<string?> ValueChanged { get; set; }
+    [Parameter] public string? Label { get; set; }
+    [Parameter] public string? Placeholder { get; set; }
+    [Parameter] public string? Error { get; set; }
+    /// <summary>"micro" or "default".</summary>
+    [Parameter] public string Size { get; set; } = "default";
+    [Parameter] public bool ShowSearchIcon { get; set; } = true;
+    /// <summary>Show a ghost "Clear" button when there's text (default true).</summary>
+    [Parameter] public bool Clearable { get; set; } = true;
+    /// <summary>A filled field, the grey of a checkbox, with no line: for a search inside a panel
+    /// (a long facet's own search). As the React systm's <c>filled</c>.</summary>
+    [Parameter] public bool Filled { get; set; }
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string? Id { get; set; }
+    [Parameter] public RenderFragment? RightContent { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private bool HasError => !string.IsNullOrEmpty(Error);
+    private string _id => Id ?? _generatedId;
+    private readonly string _generatedId = $"search-{Guid.NewGuid():N}";
+    private int _iconSize => Size == "micro" ? 14 : 21;
+    private string SizeClass => Size == "micro" ? "size-micro" : "size-default";
+
+    private readonly LiveInputState _live = new();
+    private ElementReference _input;
+    private string? _lastParameter;
+    private bool _initialized;
+    private bool _focusAfterRender;
+
+    protected override void OnParametersSet()
+    {
+        if (!_initialized)
+        {
+            _initialized = true;
+            _lastParameter = Value;
+            _live.Set(Value);
+            return;
+        }
+        // Only a Value the parent actually changed counts. A parent that echoes the typed text
+        // back (two-way binding) is not changing anything, and one that never binds Value at
+        // all keeps passing the same null; neither may reset the box. So _lastParameter is the
+        // last value received, never what was typed: had typing overwritten it, an unbound
+        // parent's unchanging null would read as a change and empty the box at every key.
+        if (string.Equals(Value, _lastParameter, StringComparison.Ordinal)) return;
+        _lastParameter = Value;
+        if (string.Equals(Value ?? "", _live.Text ?? "", StringComparison.Ordinal)) return; // the echo
+        _live.Set(Value);
+    }
+
+    private async Task OnInput(ChangeEventArgs e)
+    {
+        var text = e.Value?.ToString();
+        _live.Typed(text);
+        await ValueChanged.InvokeAsync(text);
+    }
+
+    private async Task Clear()
+    {
+        // Replaces the element, so put the caret back where the user was working.
+        _focusAfterRender = _live.Set("");
+        await ValueChanged.InvokeAsync("");
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!_focusAfterRender) return;
+        _focusAfterRender = false;
+        try { await _input.FocusAsync(); } catch { /* prerender or a disposed circuit */ }
+    }
+}

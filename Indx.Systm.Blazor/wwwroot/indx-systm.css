@@ -1,0 +1,451 @@
+﻿/* Systm Design Tokens — single source of truth for all Blazor apps.
+   Pair with fonts/fonts.css, which holds the @font-face rules and sets no variables.
+   --font-family is set here and only here. Two files setting it on :root is how the Blazor apps
+   ended up rendering the fallback while shipping a paid font: equal specificity, so the later link won. */
+
+:root {
+    --spacing: 5px;
+    --radius: 1px;
+
+    --lv0: #FFFFFF;
+    --lv1: #FBFBFB;
+    --lv2: #EFEFEF;
+    --lv3: #CFCFCF;
+    --lv4: #757575;
+    --lv5: #4A4A50;
+    --lv6: #1A1A21;
+    --lv7: #121215;
+    --lv8: #080809;
+
+    --CSignal: #FF4238;
+    --CTeal: #72F5C6;
+    --CPureBlue: #0000ff;
+    --CLightBlue: #6B9EFF;
+    --CWarning: #FFC107;
+
+    /* Semantic: "confirmed / success" — teal is weak on white, so use pure blue
+       on light mode; teal reads well on dark (overridden below). */
+    --CConfirmed: var(--CPureBlue);
+
+    /* Semantic: "on / enabled" — green on light mode, teal on dark (overridden below).
+       Used by ToggleSwitch's positive variant. */
+    --CPositive: var(--CPureBlue);
+    --CPositiveHandle: #FFFFFF;
+
+    /* FONT FAMILY */
+    /* The brand font where its files are present, Geist everywhere else (see fonts/fonts.css).
+       Arial is the last resort should the Geist file itself fail to load. */
+    --font-family: 'FunktionalGrotesk', 'Geist', Arial, sans-serif;
+    /* Code, commands, keys and file names. Geist Mono ships beside Geist (fonts/fonts.css). */
+    --font-mono: 'Geist Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+    /* TEXT — line-height tuned per scale: looser for body (wraps to multiple lines),
+       tighter for large display sizes. Controls (buttons/inputs) use fixed heights with
+       centered text, so the body bump doesn't change their metrics. */
+    --text-2xs: 350 10px/1.5 var(--font-family);
+    --text-xs: 350 11px/1.5 var(--font-family);
+    --text-sm: 350 13px/1.5 var(--font-family);
+    --text-base: 350 15px/1.5 var(--font-family);
+    --text-lg: 350 17px/1.4 var(--font-family);
+    --text-xl: 350 19px/1.4 var(--font-family);
+    --text-2xl: 350 24px/1.25 var(--font-family);
+    --text-3xl: 350 30px/1.2 var(--font-family);
+    --text-4xl: 350 36px/1.15 var(--font-family);
+
+    /* The patterns, the same set as indx-systm's globals/patterns.css (ported 13 Oct 2026): the
+       2x2 checkerboard, spaced checkerboards (4, 6, 8, 10) and grids (6, 12, 24), each with a
+       light (dark ink) and a dark (white ink) variant; dark mode swaps the light one below. */
+    --pattern-checkerboard-light: url("data:image/svg+xml,%3Csvg width='2' height='2' viewBox='0 0 2 2' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect y='1' width='1' height='1' fill='%23080809'/%3E%3Crect x='1' width='1' height='1' fill='%23080809'/%3E%3C/svg%3E");
+    --pattern-checkerboard-dark: url("data:image/svg+xml,%3Csvg width='2' height='2' viewBox='0 0 2 2' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect y='1' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='1' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+    --pattern-checkerboard-spaced-4-light: url("data:image/svg+xml,%3Csvg width='4' height='4' viewBox='0 0 4 4' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23080809'/%3E%3Crect x='2' y='2' width='1' height='1' fill='%23080809'/%3E%3C/svg%3E");
+    --pattern-checkerboard-spaced-4-dark: url("data:image/svg+xml,%3Csvg width='4' height='4' viewBox='0 0 4 4' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3Crect x='2' y='2' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+    --pattern-checkerboard-spaced-6-light: url("data:image/svg+xml,%3Csvg width='6' height='6' viewBox='0 0 6 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23080809'/%3E%3Crect x='3' y='3' width='1' height='1' fill='%23080809'/%3E%3C/svg%3E");
+    --pattern-checkerboard-spaced-6-dark: url("data:image/svg+xml,%3Csvg width='6' height='6' viewBox='0 0 6 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3Crect x='3' y='3' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+    --pattern-checkerboard-spaced-8-light: url("data:image/svg+xml,%3Csvg width='8' height='8' viewBox='0 0 8 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23080809'/%3E%3Crect x='4' y='4' width='1' height='1' fill='%23080809'/%3E%3C/svg%3E");
+    --pattern-checkerboard-spaced-8-dark: url("data:image/svg+xml,%3Csvg width='8' height='8' viewBox='0 0 8 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3Crect x='4' y='4' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+    --pattern-checkerboard-spaced-10-light: url("data:image/svg+xml,%3Csvg width='10' height='10' viewBox='0 0 10 10' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23080809'/%3E%3Crect x='5' y='5' width='1' height='1' fill='%23080809'/%3E%3C/svg%3E");
+    --pattern-checkerboard-spaced-10-dark: url("data:image/svg+xml,%3Csvg width='10' height='10' viewBox='0 0 10 10' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3Crect x='5' y='5' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+    --pattern-grid-6-light: url("data:image/svg+xml,%3Csvg width='6' height='6' viewBox='0 0 6 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23080809'/%3E%3C/svg%3E");
+    --pattern-grid-6-dark: url("data:image/svg+xml,%3Csvg width='6' height='6' viewBox='0 0 6 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+    --pattern-grid-12-light: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23080809'/%3E%3C/svg%3E");
+    --pattern-grid-12-dark: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+    --pattern-grid-24-light: url("data:image/svg+xml,%3Csvg width='24' height='24' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23080809'/%3E%3C/svg%3E");
+    --pattern-grid-24-dark: url("data:image/svg+xml,%3Csvg width='24' height='24' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+
+    /* DATA VIZ (Nov 2026): seven soft hues for series, parts and categories, taken in order and
+       never skipped; an eighth and beyond go under Other, in lv4. Each hue sits at its own
+       lightness, which keeps neighbours apart for colourblind readers. Light on white (about 2:1),
+       so a chart here always has a legend and labels. Text stays in the levels: the colour goes on
+       the marks. The mockup and the checks behind them: apps/components, /colors. */
+    --viz1: #5F96DC; /* blue */
+    --viz2: #F0AB64; /* apricot */
+    --viz3: #3CC5E2; /* cyan */
+    --viz4: #8D77C8; /* violet */
+    --viz5: #68DDB8; /* mint */
+    --viz6: #CB84C4; /* orchid */
+    --viz7: #7F9C45; /* moss */
+
+    --light: 300;
+    --book: 350;
+    --reg: 400;
+    --med: 500;
+    --semi: 600;
+    --bold: 700;
+}
+
+/* Dark mode via system preference */
+@media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+        --pattern-checkerboard-light: url("data:image/svg+xml,%3Csvg width='2' height='2' viewBox='0 0 2 2' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect y='1' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='1' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+        --pattern-checkerboard-spaced-4-light: url("data:image/svg+xml,%3Csvg width='4' height='4' viewBox='0 0 4 4' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3Crect x='2' y='2' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+        --pattern-checkerboard-spaced-6-light: url("data:image/svg+xml,%3Csvg width='6' height='6' viewBox='0 0 6 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3Crect x='3' y='3' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+        --pattern-checkerboard-spaced-8-light: url("data:image/svg+xml,%3Csvg width='8' height='8' viewBox='0 0 8 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3Crect x='4' y='4' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+        --pattern-checkerboard-spaced-10-light: url("data:image/svg+xml,%3Csvg width='10' height='10' viewBox='0 0 10 10' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3Crect x='5' y='5' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+        --pattern-grid-6-light: url("data:image/svg+xml,%3Csvg width='6' height='6' viewBox='0 0 6 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+        --pattern-grid-12-light: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+        --pattern-grid-24-light: url("data:image/svg+xml,%3Csvg width='24' height='24' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+
+        --lv0: #080809;
+        --lv1: #121215;
+        --lv2: #1A1A21;
+        --lv3: #393941;
+        --lv4: #565661;
+        --lv5: #8F8F97;
+        --lv6: #EFEFEF;
+        --lv7: #FBFBFB;
+        --lv8: #FFFFFF;
+
+        /* Teal reads well on dark backgrounds. */
+        --CConfirmed: var(--CTeal);
+        --CPositive: var(--CTeal);
+        --CPositiveHandle: #080809;
+
+        --viz1: #6DA0E0;
+        --viz2: #F6B676;
+        --viz3: #59CEE8;
+        --viz4: #9582CC;
+        --viz5: #7DE5C3;
+        --viz6: #D290CB;
+        --viz7: #89A556;
+    }
+}
+:root[data-theme="dark"] {
+    --pattern-checkerboard-light: url("data:image/svg+xml,%3Csvg width='2' height='2' viewBox='0 0 2 2' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect y='1' width='1' height='1' fill='%23ffffff'/%3E%3Crect x='1' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+    --pattern-checkerboard-spaced-4-light: url("data:image/svg+xml,%3Csvg width='4' height='4' viewBox='0 0 4 4' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3Crect x='2' y='2' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+    --pattern-checkerboard-spaced-6-light: url("data:image/svg+xml,%3Csvg width='6' height='6' viewBox='0 0 6 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3Crect x='3' y='3' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+    --pattern-checkerboard-spaced-8-light: url("data:image/svg+xml,%3Csvg width='8' height='8' viewBox='0 0 8 8' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3Crect x='4' y='4' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+    --pattern-checkerboard-spaced-10-light: url("data:image/svg+xml,%3Csvg width='10' height='10' viewBox='0 0 10 10' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3Crect x='5' y='5' width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+    --pattern-grid-6-light: url("data:image/svg+xml,%3Csvg width='6' height='6' viewBox='0 0 6 6' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+    --pattern-grid-12-light: url("data:image/svg+xml,%3Csvg width='12' height='12' viewBox='0 0 12 12' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+    --pattern-grid-24-light: url("data:image/svg+xml,%3Csvg width='24' height='24' viewBox='0 0 24 24' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Crect width='1' height='1' fill='%23ffffff'/%3E%3C/svg%3E");
+
+    --lv0: #080809;
+    --lv1: #121215;
+    --lv2: #1A1A21;
+    --lv3: #393941;
+    --lv4: #565661;
+    --lv5: #8F8F97;
+    --lv6: #EFEFEF;
+    --lv7: #FBFBFB;
+    --lv8: #FFFFFF;
+
+    /* Teal reads well on dark backgrounds. */
+    --CConfirmed: var(--CTeal);
+    --CPositive: var(--CTeal);
+    --CPositiveHandle: #080809;
+
+    --viz1: #6DA0E0;
+    --viz2: #F6B676;
+    --viz3: #59CEE8;
+    --viz4: #9582CC;
+    --viz5: #7DE5C3;
+    --viz6: #D290CB;
+    --viz7: #89A556;
+}
+
+/* Light or dark, chosen per user in IndxServer (Nov 2026). With no data-theme the system decides, as
+   above; data-theme="light" or "dark" fixes it. Every dark rule in the systm and the apps is written
+   twice for this: in the media query, unless the page says light, and again for data-theme="dark".
+   A fixed theme also sets color-scheme, so scrollbars and native controls follow it. */
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
+
+
+/* Pixl icons are pixel art on a 7x5 grid. Text widths beside them (a label, a name) leave them on a
+   fraction of a pixel, which a 1x screen draws as a soft edge; crispEdges snaps their edges to
+   the screen's pixels wherever they land. Every pixl icon shares this viewBox. */
+svg[viewBox="0 0 7 5"] {
+    shape-rendering: crispEdges;
+}
+
+/* Selected text: a level rather than the browser's blue, which sat badly on the dark theme. lv3 is the
+   fields' own selection; the text goes to lv8 so grey text stays readable on it in both themes. */
+::selection {
+    background: var(--lv3);
+    color: var(--lv8);
+}
+
+/* InputField — the text input box. A reusable class: used both by the InputField
+   component and directly on raw <input> elements. The InputField wrapper/label
+   live in InputField.razor.css (scoped); the box style is global so it can be
+   shared. */
+.indx-input {
+    font: var(--text-xs);
+    padding: 10px;
+    height: 30px;
+    border: 1px solid var(--lv3);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--lv7);
+    box-sizing: border-box;
+    width: 100%;
+}
+.indx-input:not(:disabled):hover { border-color: var(--lv5); }
+.indx-input:not(:disabled):active { border-color: var(--lv5); }
+.indx-input:focus { outline: none; border-color: var(--lv5); }
+.indx-input::placeholder { color: var(--lv5); }
+.indx-input:disabled { opacity: 0.6; cursor: not-allowed; }
+.indx-input::selection { background: var(--lv3); }
+.indx-input[type="number"]::-webkit-inner-spin-button,
+.indx-input[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.indx-input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
+.indx-input-error { border-color: var(--CSignal); }
+.indx-input-error:focus { border-color: var(--CSignal); }
+.indx-input-error-text { font: var(--text-2xs); color: var(--CSignal); }
+.indx-input-border-bottom { padding: 0; border: none; border-bottom: 1px solid var(--lv3); border-radius: 0; }
+.indx-input-border-bottom:not(:disabled):hover { border-bottom-color: var(--lv5); }
+.indx-input-border-bottom:not(:disabled):active { border-bottom-color: var(--lv5); }
+.indx-input-border-bottom:focus { outline: none; border-bottom-color: var(--lv5); }
+.indx-input-border-bottom.indx-input-error { border-bottom-color: var(--CSignal); }
+/* Ghost: reads as its text until it is edited, for a value that sits inline (the number in a
+   SliderField). Pointed at, it takes a ghost button's tint; the stroke comes only while it is being
+   edited. Each rule has the specificity of the box's own, so it wins by coming after; the resting
+   one is doubled, because an app's own input[type=number] rule (the console's app.css) outranks a
+   single class and drew the stroke back. */
+.indx-input.indx-input-ghost { border-color: transparent; }
+.indx-input-ghost:not(:disabled):hover { border-color: transparent; background: var(--lv2); }
+.indx-input-ghost:not(:disabled):active { border-color: transparent; }
+.indx-input-ghost:not(:disabled):focus { border-color: var(--lv5); background: transparent; }
+.indx-input.indx-input-ghost.indx-input-error,
+.indx-input-ghost.indx-input-error:not(:disabled):hover,
+.indx-input-ghost.indx-input-error:not(:disabled):focus { border-color: var(--CSignal); }
+.indx-input-border-bottom.indx-input-error:focus { border-bottom-color: var(--CSignal); }
+
+/* Table — port of indx-systm Table.module.css. Global, not scoped, because rows and cells are
+   children of the Table component and are often plain tr / td with attributes of their own. */
+.indx-table {
+    width: 100%;
+    border-collapse: collapse;
+    font: var(--text-sm);
+    background-color: var(--lv0);
+}
+.indx-table-caption {
+    caption-side: top;
+    text-align: left;
+    padding: 10px 15px;
+    font: var(--text-sm);
+    font-weight: var(--med);
+    color: var(--lv7);
+}
+.indx-table th,
+.indx-table td {
+    text-align: left;
+    padding: 0 15px;
+    height: 40px;
+    border: 0.5px solid var(--lv3);
+}
+.indx-table thead tr { background-color: var(--lv2); }
+.indx-table tbody tr { background-color: transparent; }
+.indx-table tbody td { font-weight: var(--reg); }
+.indx-table-cell-inner { display: flex; align-items: center; justify-content: space-between; }
+.indx-table-cell-label { min-width: 50%; flex-shrink: 0; }
+.indx-table-cell-content { display: flex; align-items: center; gap: 8px; }
+.indx-table-value { font: var(--text-xs); font-weight: var(--book); color: var(--lv5); }
+.indx-table-icon { display: flex; align-items: center; justify-content: center; width: 14px; height: 14px; color: var(--lv6); }
+
+/* Scrollable: the frame scrolls sideways, the page does not. */
+.indx-table-scroll { overflow-x: auto; max-width: 100%; }
+.indx-table-scroll:focus-visible { outline: 2px solid var(--lv5); outline-offset: 2px; }
+
+/* bleedEnd: the frame reaches into the gutter on the end side, so a table that has to scroll
+   runs to the edge of the screen. There is no padding to match it. Padding would let the table
+   be scrolled past the point where its end reaches the screen edge, pulling it back in to the
+   page margin, and that last stretch brings nothing new into view. Instead the table is kept
+   narrower than the frame by the same amount, so a table that fits still ends at the page
+   margin, and one that does not scrolls until its end meets the screen edge and stops. The
+   start side is left alone: a pinned first column belongs at the page margin from the first
+   pixel of scroll. No fade, unlike Tabs: a table running off the edge already says it scrolls. */
+.indx-table-bleed-end {
+    margin-inline-end: calc(-1 * var(--table-bleed));
+    max-width: none;
+}
+
+.indx-table-bleed-end > .indx-table {
+    width: calc(100% - var(--table-bleed));
+}
+.indx-table-bleed-end:focus-visible { outline-offset: -2px; }
+
+/* StickyFirstColumn: the first cell of every row stays at the frame's left edge. It needs an
+   opaque background, or the scrolling cells show through it. Collapsed borders do not travel
+   with a sticky cell, so the line on its right edge is drawn by a pseudo-element. No shadow:
+   the line is what separates it, as everywhere else in the system. */
+.indx-table-sticky-first th:first-child,
+.indx-table-sticky-first td:first-child {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background-color: var(--lv0);
+}
+.indx-table-sticky-first thead th:first-child { z-index: 2; background-color: var(--lv2); }
+.indx-table-sticky-first th:first-child::after,
+.indx-table-sticky-first td:first-child::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: -0.5px;
+    width: 1px;
+    background: var(--lv3);
+}
+
+/* The left edge is drawn the same way, and the cells' own left border is removed. With
+   collapsed borders half of the table's outer border lies outside the first cell, so the cell
+   starts a quarter of a pixel in from the frame's edge. Pinning pulls it to the true edge as
+   soon as scrolling starts, which showed as the whole table nudging sideways. Without that
+   border the cell starts at the edge, stays there, and the drawn line is its only left border.
+   One device pixel, like the 0.5px borders around it: 1px on a standard screen, 0.5px on a
+   dense one. */
+.indx-table-sticky-first th:first-child,
+.indx-table-sticky-first td:first-child {
+    border-left: 0;
+}
+
+.indx-table-sticky-first th:first-child::before,
+.indx-table-sticky-first td:first-child::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: 0;
+    width: 1px;
+    background: var(--lv3);
+}
+
+@media (min-resolution: 2dppx) {
+    .indx-table-sticky-first th:first-child::before,
+    .indx-table-sticky-first td:first-child::before {
+        width: 0.5px;
+    }
+}
+
+/* ResizableColumns: fixed widths, set per column by Table.razor.js, and a handle at each header's
+   right edge. The handle is the column's own border, widened for the pointer: nothing shows until
+   it is pointed at or focused, then the line darkens. The cells cut what does not fit. The React
+   Table's resizableColumns (Table.module.css) is the same. */
+.indx-table-resizable { table-layout: fixed; }
+/* A width is the column's whole width, padding and all, as the reader dragged it. */
+.indx-table-resizable > thead > tr > th { position: relative; box-sizing: border-box; }
+/* One line per cell, as data grids do: a narrow column cuts its text instead of making its row
+   tall. A table nested in a cell (an opened row's detail) is its own; a cell
+   that should wrap says data-wrap, as data grids let a column wrap its text: give it room, as the
+   last column has. */
+.indx-table-resizable > thead > tr > th,
+.indx-table-resizable > tbody > tr > td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.indx-table-resizable > tbody > tr > td[data-wrap] { white-space: normal; overflow-wrap: anywhere; }
+.indx-table-column-handle {
+    /* The right 8px of the cell, which cuts what overflows; the next header's left 6px is its lead
+       (data-lead), so the border is a 14px target from both sides, as Resizable's line is. */
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 8px;
+    z-index: 3;
+    touch-action: none;
+}
+.indx-table-column-handle[data-lead] { right: auto; left: 0; width: 6px; }
+.indx-table-column-handle::after {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 1px;
+    background: transparent;
+}
+.indx-table-column-handle[data-lead]::after { content: none; }
+.indx-table-column-handle:hover::after,
+.indx-table-column-handle[data-hot]::after,
+.indx-table-column-handle:focus-visible::after,
+.indx-table-column-handle[data-dragging]::after { background: var(--lv6); }
+.indx-table-column-handle:focus-visible { outline: none; }
+/* The pixl resize cursor, as Resizable has it, on the handles and over the whole table while a
+   column is dragged; important, so cursors.css's arrow and I-beam do not win. */
+.indx-table-column-handle, .indx-table-resizable[data-resizing], .indx-table-resizable[data-resizing] * { cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V3H12V18ZM6 15H3V12H6V15ZM18 15H15V12H18V15ZM3 12H0V9H3V12ZM21 12H18V9H21V12ZM6 9H3V6H6V9ZM18 9H15V6H18V9Z" fill="%231A1A21"/></svg>') 10 10, col-resize !important; }
+.indx-table-resizable[data-resizing] { user-select: none; }
+@media (prefers-color-scheme: dark) { :where(:root:not([data-theme="light"])) .indx-table-column-handle, :where(:root:not([data-theme="light"])) .indx-table-resizable[data-resizing], :where(:root:not([data-theme="light"])) .indx-table-resizable[data-resizing] * { cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V3H12V18ZM6 15H3V12H6V15ZM18 15H15V12H18V15ZM3 12H0V9H3V12ZM21 12H18V9H21V12ZM6 9H3V6H6V9ZM18 9H15V6H18V9Z" fill="%23EFEFEF"/></svg>') 10 10, col-resize !important; } }
+:where(:root[data-theme="dark"]) .indx-table-column-handle, :where(:root[data-theme="dark"]) .indx-table-resizable[data-resizing], :where(:root[data-theme="dark"]) .indx-table-resizable[data-resizing] * { cursor: url('data:image/svg+xml,<svg width="21" height="21" viewBox="0 0 21 21" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M12 18H9V3H12V18ZM6 15H3V12H6V15ZM18 15H15V12H18V15ZM3 12H0V9H3V12ZM21 12H18V9H21V12ZM6 9H3V6H6V9ZM18 9H15V6H18V9Z" fill="%23EFEFEF"/></svg>') 10 10, col-resize !important; }
+
+/* ── Spinner keyframes (generated) ── */
+@keyframes indx-spinner-2 {
+  0% { opacity: 1; }
+  50% { opacity: 0; }
+  100% { opacity: 0; }
+}
+@keyframes indx-spinner-3 {
+  0% { opacity: 1; }
+  33.3333% { opacity: 0; }
+  100% { opacity: 0; }
+}
+@keyframes indx-spinner-4 {
+  0% { opacity: 1; }
+  25% { opacity: 0; }
+  100% { opacity: 0; }
+}
+@keyframes indx-spinner-6 {
+  0% { opacity: 1; }
+  16.6667% { opacity: 0; }
+  100% { opacity: 0; }
+}
+@keyframes indx-spinner-8 {
+  0% { opacity: 1; }
+  12.5% { opacity: 0; }
+  100% { opacity: 0; }
+}
+@keyframes indx-spinner-12 {
+  0% { opacity: 1; }
+  8.3333% { opacity: 0; }
+  100% { opacity: 0; }
+}
+@keyframes indx-spinner-16 {
+  0% { opacity: 1; }
+  6.25% { opacity: 0; }
+  100% { opacity: 0; }
+}
+@keyframes indx-spinner-18 {
+  0% { opacity: 1; }
+  5.5556% { opacity: 0; }
+  100% { opacity: 0; }
+}
+@keyframes indx-spinner-20 {
+  0% { opacity: 1; }
+  5% { opacity: 0; }
+  100% { opacity: 0; }
+}
+@keyframes indx-spinner-28 {
+  0% { opacity: 1; }
+  3.5714% { opacity: 0; }
+  100% { opacity: 0; }
+}
+@keyframes indx-spinner-37 {
+  0% { opacity: 1; }
+  2.7027% { opacity: 0; }
+  100% { opacity: 0; }
+}
+/* ── end spinner keyframes ── */
+
+/* SortableList: while an item is held, no text is selected as the pointer passes over the page. */
+html.indx-sortable-dragging { user-select: none; -webkit-user-select: none; }
+/* The browser's move cursor on the whole page while an item is held; systm's own wins where the
+   page has turned its cursors on (cursors.css, !important). */
+html.indx-sortable-dragging, html.indx-sortable-dragging * { cursor: move; }

@@ -1,0 +1,92 @@
+@using System.Globalization
+@implements IDisposable
+@inject IndxServer.Services.ExportProgress Progress
+@* "Download data as JSON", and how far the download has come. Used on the Options tab and on the
+   upload flow's stuck and error panels. The download stays a plain link the browser streams, so a
+   dataset of any size never passes through the Blazor connection; the link carries a token, the
+   export endpoint counts the records it writes under it, and this reads the count twice a second.
+   Before the first record the database is sorting the dataset by key, which is most of the wait on
+   a large one, so that phase has a name of its own. *@
+
+<div class="ddl">
+    <Button Variant="secondary" Size="micro" IconLeft="DatasetIcons.Download" Loading="@_running"
+            Href="@_href" download="@($"{Ctx.Name}.json")" @onclick="Start">Download data as JSON</Button>
+    @if (_running || _finished != null)
+    {
+        <div class="ddl-progress">
+            @if (_running && Total is > 0 && _written > 0)
+            {
+                <ProgressBar Value="@(100.0 * _written / Total.Value)" />
+            }
+            <span class="ddl-text" aria-live="polite">@Text</span>
+        </div>
+    }
+    else if (ShowCount && Total is { } n)
+    {
+        <span class="ddl-text">@n.ToString("N0", CultureInfo.InvariantCulture) documents</span>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired] public DatasetContext Ctx { get; set; } = default!;
+    [Parameter, EditorRequired] public string TeamName { get; set; } = default!;
+    /// <summary>The document count beside the button while nothing runs (the Options tab).</summary>
+    [Parameter] public bool ShowCount { get; set; }
+
+    private Guid _token = Guid.NewGuid();
+    private bool _running;
+    private long _written;
+    private string? _finished;
+    private Timer? _poll;
+    private DateTimeOffset _clicked;
+
+    private long? Total => Ctx.Status?.DocumentCount is > 0 and var s ? s : Ctx.KeepAlive?.RecordCount;
+
+    private string _href => $"api/teams/{Uri.EscapeDataString(TeamName)}/datasets/{Uri.EscapeDataString(Ctx.Name)}/export?progress={_token}";
+
+    private string Text =>
+        _finished ?? (_written == 0
+            ? "Preparing the file…"
+            : Total is > 0
+                ? $"{_written.ToString("N0", CultureInfo.InvariantCulture)} of {Total.Value.ToString("N0", CultureInfo.InvariantCulture)} documents"
+                : $"{_written.ToString("N0", CultureInfo.InvariantCulture)} documents");
+
+    // Runs as the browser follows the link; the token is already in it.
+    private void Start()
+    {
+        _running = true; _written = 0; _finished = null; _clicked = DateTimeOffset.UtcNow;
+        _poll?.Dispose();
+        _poll = new Timer(_ => InvokeAsync(Tick), null, TimeSpan.FromMilliseconds(500), TimeSpan.FromMilliseconds(500));
+    }
+
+    private void Tick()
+    {
+        var entry = Progress.Get(_token);
+        if (entry == null)
+        {
+            // The browser never asked (a blocked download, a closed tab): give up quietly.
+            if (DateTimeOffset.UtcNow - _clicked > TimeSpan.FromSeconds(30)) Stop(null);
+            else return;
+        }
+        else
+        {
+            _written = entry.Written;
+            if (entry.Done)
+                Stop(entry.Failed
+                    ? "The download stopped before the end."
+                    : $"Downloaded {entry.Written.ToString("N0", CultureInfo.InvariantCulture)} documents.");
+        }
+        StateHasChanged();
+    }
+
+    private void Stop(string? message)
+    {
+        _poll?.Dispose(); _poll = null;
+        Progress.Forget(_token);
+        _token = Guid.NewGuid(); // the next click is a download of its own
+        _running = false;
+        _finished = message;
+    }
+
+    public void Dispose() => _poll?.Dispose();
+}

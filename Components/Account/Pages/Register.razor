@@ -1,0 +1,292 @@
+﻿@page "/account/register"
+@layout UnauthenticatedLayout
+
+@using System.ComponentModel.DataAnnotations
+@using System.Text
+@using System.Text.Encodings.Web
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.WebUtilities
+@using Microsoft.AspNetCore.Identity.UI.Services;
+@using IndxServer.Data
+@using IndxServer.Services
+@using IndxServer.Components.Account.Shared
+
+
+
+@inject UserManager<ApplicationUser> UserManager
+@inject IUserStore<ApplicationUser> UserStore
+@inject SignInManager<ApplicationUser> SignInManager
+@inject IEmailSender EmailSender
+@inject ILogger<Register> Logger
+@inject NavigationManager NavigationManager
+@inject IdentityRedirectManager RedirectManager
+@inject RegistrationValidator RegistrationValidator
+@inject IndxServer.Services.InstanceSettingsService InstanceSettingsService
+@inject IndxServer.Services.UserProvisioningService UserProvisioning
+@inject IndxServer.Services.InviteService Invites
+
+
+<PageTitle>Register</PageTitle>
+
+<h3>Create a new account</h3>
+
+<StatusMessage Message="@Message" />
+@if (_invite != null)
+{
+    @* The link from an invite email: who it is for, and where they land. *@
+    <div style="margin: 0 0 20px;">
+        <Alert>
+            @if (_invite.Team != null)
+            {
+                <text>You're invited to join the team <strong>@_invite.Team.Name</strong> on @InstanceSettingsService.Load().InstanceName, as @(_invite.Role?.ToLowerInvariant() ?? "viewer"). Create your account with <strong>@_invite.Email</strong> to accept.</text>
+            }
+            else
+            {
+                <text>You're invited to @InstanceSettingsService.Load().InstanceName. Create your account with <strong>@_invite.Email</strong> to accept.</text>
+            }
+        </Alert>
+    </div>
+}
+else if (_inviteGone)
+{
+    <div style="margin: 0 0 20px;">
+        <Alert>This invitation has expired or was withdrawn. Ask whoever invited you for a new one.</Alert>
+    </div>
+}
+@if (RegistrationValidator.GetCurrentMode() == RegistrationMode.Closed && _invite == null)
+{
+    <div style="padding: 20px; border: 1px solid var(--CWarning); border-radius: var(--radius); background: rgba(255, 193, 7, 0.1); margin: 20px 0;">
+        <strong>Registration Closed</strong><br />
+        @RegistrationValidator.GetRegistrationInfoMessage()
+    </div>
+}
+else
+{
+    <EditForm Model="Input" asp-route-returnUrl="@ReturnUrl" method="post" OnValidSubmit="RegisterUser" FormName="register">
+        <DataAnnotationsValidator />
+        <ValidationSummary style="color: var(--CSignal);" role="alert" />
+
+        <div style="margin-bottom: 10px;">
+            <InputField @bind-Value="Input.Email" type="email" autocomplete="username" placeholder="Email" id="email" />
+            <ValidationMessage For="() => Input.Email" />
+        </div>
+
+        @if (RegistrationValidator.GetCurrentMode() == RegistrationMode.EmailDomain)
+        {
+            <p style="font: var(--text-xs); color: var(--lv5); margin-bottom: 10px;">
+                @RegistrationValidator.GetRegistrationInfoMessage()
+            </p>
+        }
+
+        <div style="margin-bottom: 10px;">
+            <InputField type="password" @bind-Value="Input.Password" autocomplete="new-password" placeholder="Password" id="password" />
+            <ValidationMessage For="() => Input.Password" />
+        </div>
+
+        <div style="margin-bottom: 10px;">
+            <InputField type="password" @bind-Value="Input.ConfirmPassword" autocomplete="new-password" placeholder="Confirm Password" id="confirm-password" />
+            <ValidationMessage For="() => Input.ConfirmPassword" />
+        </div>
+
+        <p style="font: var(--text-xs); color: var(--lv5); margin-bottom: 20px;">
+            Passwords must have at least one non alphanumeric character, one digit ('0'-'9'), and one uppercase ('A'-'Z').
+        </p>
+
+        @* Invited to a team, they join it and get none of their own, so the name is asked only
+           where it may be used (AskTeamName). *@
+        @if (AskTeamName)
+        {
+            <div style="margin-bottom: 10px;">
+                <InputField @bind-Value="Input.TeamName" placeholder="Team name (optional)" id="teamName" />
+                <p style="font: var(--text-xs); color: var(--lv5); margin-top: 4px;">
+                    Your datasets are owned by a team. Leave blank to use a personal team named after your email.
+                    @if (_invite == null)
+                    {
+                        <text> If you were invited to a team, you join that team instead.</text>
+                    }
+                </p>
+            </div>
+        }
+
+        <Button Type="submit" Variant="secondary">Register</Button>
+
+        <div style="margin-top: 40px; display: flex; flex-direction: column;">
+            <a href="/account/login" style="font: var(--text-sm); margin-bottom: 20px;">Already have an account? Log in</a>
+        </div>
+    </EditForm>
+}
+
+@code {
+    private IEnumerable<IdentityError>? identityErrors;
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = new();
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    /// <summary>The token of an invite email's link (InviteService.TokenParameter).</summary>
+    [SupplyParameterFromQuery(Name = "invite")]
+    private string? InviteToken { get; set; }
+
+    private IndxServer.Data.Invite? _invite;
+    private bool _inviteGone;
+
+    /// <summary>
+    /// Whether the team name may be used. From the invite link the page knows: not for an invite
+    /// to a team, which is joined instead, yes for one to the instance alone. Without the link,
+    /// Invite and Closed mode admit only invited addresses, so the name is not asked (an invite
+    /// to the instance alone gets the team named after the email, which can be renamed); Open
+    /// and Email domain ask, saying a team invite takes its place. Until Nov 2026 it was asked
+    /// of everyone without the link, including people invited to a team.
+    /// </summary>
+    private bool AskTeamName => _invite != null
+        ? _invite.TeamId == null
+        : RegistrationValidator.GetCurrentMode() is RegistrationMode.Open or RegistrationMode.EmailDomain;
+
+    /// <summary>Registered through the invite's link with the invited address: the email reached
+    /// them, so the address is confirmed and no verification email is sent.</summary>
+    private bool ConfirmedByInvite =>
+        _invite != null && string.Equals(_invite.Email, Input.Email?.Trim(), StringComparison.OrdinalIgnoreCase);
+
+    protected override async Task OnInitializedAsync()
+    {
+        // First run: the very first account is the administrator and is created through the
+        // dedicated setup flow (account + team + instance), not this bare form.
+        if (!InstanceSettingsService.Load().SetupComplete)
+        {
+            RedirectManager.RedirectTo("account/setup");
+        }
+        _invite = await Invites.FindByTokenAsync(InviteToken);
+        _inviteGone = !string.IsNullOrWhiteSpace(InviteToken) && _invite == null;
+        if (_invite != null && string.IsNullOrWhiteSpace(Input.Email)) Input.Email = _invite.Email;
+    }
+
+    private string? Message
+    {
+        get
+        {
+            if (identityErrors is null) return null;
+
+            // Filter out DuplicateUserName errors if DuplicateEmail exists (since username = email in this app)
+            var errors = identityErrors;
+            if (errors.Any(e => e.Code == "DuplicateEmail") && errors.Any(e => e.Code == "DuplicateUserName"))
+            {
+                errors = errors.Where(e => e.Code != "DuplicateUserName");
+            }
+
+            return $"Error: {string.Join(", ", errors.Select(error => error.Description))}";
+        }
+    }
+
+    public async Task RegisterUser(EditContext editContext)
+    {
+        // First user always gets through — they become the admin
+        var isFirstUser = !UserManager.Users.Any();
+
+        if (!isFirstUser)
+        {
+            var allowedResult = RegistrationValidator.ValidateRegistrationAllowed(Input.Email);
+            if (!allowedResult.IsValid)
+            {
+                identityErrors = new[] { new IdentityError { Description = allowedResult.ErrorMessage ?? "Registration not allowed" } };
+                return;
+            }
+
+            var emailResult = RegistrationValidator.ValidateEmail(Input.Email);
+            if (!emailResult.IsValid)
+            {
+                identityErrors = new[] { new IdentityError { Description = emailResult.ErrorMessage ?? "Email not allowed" } };
+                return;
+            }
+        }
+
+        var user = CreateUser();
+        user.EmailConfirmed = ConfirmedByInvite;
+
+        await UserStore.SetUserNameAsync(user, Input.Email, CancellationToken.None);
+        var emailStore = GetEmailStore();
+        await emailStore.SetEmailAsync(user, Input.Email, CancellationToken.None);
+        var result = await UserManager.CreateAsync(user, Input.Password);
+
+        if (!result.Succeeded)
+        {
+            identityErrors = result.Errors;
+            return;
+        }
+
+        Logger.LogInformation("User created a new account with password.");
+
+        // Role, personal team, admin notification and invite consumption — shared with the
+        // OAuth paths via UserProvisioningService so the registration flows can't drift.
+        await UserProvisioning.ProvisionNewUserAsync(user, Input.Email, Input.TeamName);
+
+        var userId = await UserManager.GetUserIdAsync(user);
+        var code = await UserManager.GenerateEmailConfirmationTokenAsync(user);
+        code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
+        var callbackUrl = NavigationManager.GetUriWithQueryParameters(
+            NavigationManager.ToAbsoluteUri("account/confirm-email").AbsoluteUri,
+            new Dictionary<string, object?> { ["userId"] = userId, ["code"] = code, ["returnUrl"] = ReturnUrl });
+        if (user.Email != null && !user.EmailConfirmed)
+        {
+            var instanceName = InstanceSettingsService.Load().InstanceName;
+            await EmailSender.SendEmailAsync(user.Email, IndxServer.Services.EmailTemplates.Subject(instanceName, "Please verify your email"),
+                IndxServer.Services.EmailTemplates.VerifyEmail(instanceName, callbackUrl));
+        }
+
+        if (InstanceSettingsService.Load().RequireEmailVerification && !user.EmailConfirmed)
+        {
+            RedirectManager.RedirectTo(
+                "account/register-confirmation",
+                new() { ["email"] = Input.Email, ["returnUrl"] = ReturnUrl });
+        }
+
+        await SignInManager.SignInAsync(user, isPersistent: false);
+        RedirectManager.RedirectTo(ReturnUrl);
+
+    }
+
+    private ApplicationUser CreateUser()
+    {
+        try
+        {
+            return Activator.CreateInstance<ApplicationUser>();
+        }
+        catch
+        {
+            throw new InvalidOperationException($"Can't create an instance of '{nameof(ApplicationUser)}'. " +
+                $"Ensure that '{nameof(ApplicationUser)}' is not an abstract class and has a parameterless constructor.");
+        }
+    }
+
+    private IUserEmailStore<ApplicationUser> GetEmailStore()
+    {
+        if (!UserManager.SupportsUserEmail)
+        {
+            throw new NotSupportedException("The default UI requires a user store with email support.");
+        }
+        return (IUserEmailStore<ApplicationUser>)UserStore;
+    }
+
+    private sealed class InputModel
+    {
+        [Required]
+        [EmailAddress]
+        [Display(Name = "Email")]
+        public string Email { get; set; } = "";
+
+        [Required]
+        [StringLength(100, ErrorMessage = "The {0} must be at least {2} and at max {1} characters long.", MinimumLength = 6)]
+        [DataType(DataType.Password)]
+        [Display(Name = "Password")]
+        public string Password { get; set; } = "";
+
+        [DataType(DataType.Password)]
+        [Display(Name = "Confirm password")]
+        [Compare("Password", ErrorMessage = "The password and confirmation password do not match.")]
+        public string ConfirmPassword { get; set; } = "";
+
+        [Display(Name = "Team name")]
+        public string? TeamName { get; set; }
+    }
+}

@@ -1,0 +1,166 @@
+@page "/admin/monitor"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@using Microsoft.AspNetCore.Authorization
+@using IndxServer.Monitor
+@using IndxServer.Components.Datasets
+@using Indx.Systm.Blazor
+@attribute [Authorize(Roles = "Admin")]
+@implements IDisposable
+@inject MonitorState State
+
+<PageTitle>Admin — Monitor</PageTitle>
+
+
+@* The same stream the terminal monitor shows, for the deployments where there is no terminal to
+   show it in -- which is every Azure one. Admin only: a line names the team whose dataset changed,
+   so a member of one team must not read another's activity here. *@
+<div style="display: flex; align-items: center; gap: 16px; margin-bottom: 24px;">
+    <div>
+        <h2 style="margin-bottom: 4px;">Monitor</h2>
+        <p style="color: var(--lv5);">What this server has been doing, newest first.</p>
+    </div>
+</div>
+
+@if (_snapshot is not { } snapshot)
+{
+    <p style="color: var(--lv5);">Waiting for the first reading…</p>
+}
+else
+{
+    @* The instance at a glance. CPU is this process's share of the cores over the last second,
+       the view from inside the box. Memory is resident against what the runtime may use, the
+       machine's or the container's limit: resident rather than the managed heap, because the
+       engine keeps its score arrays in unmanaged memory through SpanAlloc and the heap
+       understates it. The native pool is that memory, and its block count is the exact figure:
+       heap and resident both move with paging, a steady count still means balanced alloc/free. *@
+    <div class="admin-monitor-stats">
+        <StatGroup Columns="6">
+            <Stat Label="CPU" LabelIcon="DatasetIcons.Cpu" Hint="This process's share of all cores over the last second.">
+                <Figure><BarMeter Shape="ring" Size="48" Value="@snapshot.Process.CpuPercent" Max="100" Format="@(v => $"{v:0} %")" Zones="Pressure" /></Figure>
+                <ChildContent>of @Environment.ProcessorCount cores</ChildContent>
+            </Stat>
+            @* What the process holds, in RAM or packed away (5 Nov 2026): the working set alone read
+               193 MB on a Mac holding 3.9 GB, the rest compressed while nobody searched. Where the
+               machine can be read the ring is the machine (10 Nov 2026): on App Service every app
+               and slot of the plan shares the instance, and each read "of 12 GB" for itself. *@
+            @if (snapshot.Process.InstanceMb > 0)
+            {
+                <Stat Label="Memory" LabelIcon="DatasetIcons.Ram" Hint="What Indx holds, then the memory in use on the whole machine, every program on it together, which the ring shows: on App Service the plan's instance, shared by every app and deployment slot on the plan. What Indx holds counts memory whether in RAM or set aside by the system while idle (compressed on macOS, paged out on Windows, swapped on Linux), which a search brings back, and the unmanaged memory the search engine allocates itself.">
+                    <Figure><BarMeter Shape="ring" Size="48" Value="@snapshot.Process.InstanceUsedMb" Max="@snapshot.Process.InstanceMb" Format="@(v => $"{v / snapshot.Process.InstanceMb * 100:0} %")" Zones="Pressure" /></Figure>
+                    <ChildContent><span>Indx @Gb(snapshot.Process.HeldMb)</span><span class="admin-monitor-line">Machine @Gb(snapshot.Process.InstanceUsedMb) of @Gb(snapshot.Process.InstanceMb) in use</span></ChildContent>
+                </Stat>
+            }
+            else
+            {
+                <Stat Label="Memory" LabelIcon="DatasetIcons.Ram" Hint="What the process holds, against what the runtime may use on this machine or in this container, whether in RAM or set aside by the system while idle (compressed on macOS, paged out on Windows, swapped on Linux), which a search brings back: on Windows the private bytes, as App Service reports them, with its working set as in RAM. It includes the unmanaged memory the search engine allocates itself, which the managed heap does not.">
+                    <Figure><BarMeter Shape="ring" Size="48" Value="@snapshot.Process.HeldMb" Max="@Math.Max(snapshot.Process.AvailableMb, 1)" Format="@(v => $"{v / Math.Max(snapshot.Process.AvailableMb, 1) * 100:0} %")" Zones="Pressure" /></Figure>
+                    <ChildContent>@Gb(snapshot.Process.HeldMb) of @Gb(snapshot.Process.AvailableMb)@if (snapshot.Process.PackedAway) {<text>, @Gb(snapshot.Process.WorkingSetMb) in RAM</text>}</ChildContent>
+                </Stat>
+            }
+            <Stat Label="Native pool" Hint="The unmanaged memory the search engine holds for its score arrays, and the count of those allocations. A steady count means they are being released." Value="@Gb(snapshot.Process.NativePoolMb)">
+                @* The count only: with the heap beside it the line changed width every second and
+                   jumped between one line and two (12 Nov 2026). *@
+                @snapshot.Process.NativeBlocks.ToString("N0") blocks
+            </Stat>
+            <Stat Label="Searches" Hint="Counted since the monitor started." Value="@snapshot.SearchesTotal.ToString("N0")">
+                since the monitor started
+            </Stat>
+            <Stat Label="Avg searches per minute" Hint="Over the last minute; the line is the last hour, one reading a minute." Value="@snapshot.SearchesPerMinute.ToString("N0")">
+                <Sparkline Values="snapshot.RateHistory" Width="100%" Height="16" Fill="true" Baseline="true" Class="admin-monitor-spark" AriaLabel="Searches a minute, the last hour" />
+            </Stat>
+            <Stat Label="Datasets" Hint="One cell a dataset: ready in the ink, hibernated dim, an error in the signal red." Value="@snapshot.Datasets.Count.ToString("N0")">
+                @if (snapshot.Datasets.Count > 0)
+                {
+                    <Waffle Segments="DatasetsByState(snapshot)" Columns="@snapshot.Datasets.Count" Rows="1" Cell="4"
+                            Format="@((f, v) => v.ToString("N0"))" AriaLabel="Datasets by state" />
+                }
+            </Stat>
+        </StatGroup>
+
+    </div>
+
+    @if (_events.Count == 0)
+    {
+        @* Not an error: a server that has just started has nothing to report yet, and saying so
+           is better than an empty box that looks broken. *@
+        <EmptyState Size="compact" Icon="DatasetIcons.Calls" Title="Nothing yet">
+            Dataset state changes, field configuration changes and anything the server logs appear here as they happen.
+        </EmptyState>
+    }
+    else
+    {
+        @* Scrollable so that a long line widens the frame and never the page. No widths on the
+           header cells: a fixed Time and Source leave a phone nothing for the column that matters,
+           and at that width the row stacks instead (Monitor.razor.css). *@
+        @* The wrapper is not decoration. Scoped CSS compiles ::deep to "[scope] .selector", so the
+           rules in Monitor.razor.css need an element authored in THIS file above the table to
+           carry the scope attribute. systm Table renders its own wrapper, so without this there is
+           no such ancestor and the whole stylesheet silently matches nothing. *@
+        <div class="admin-monitor-table-wrap">
+        <Table Scrollable BleedEnd="var(--page-gutter)" ResizableColumns ColumnStorageKey="admin-monitor" AriaLabel="Server activity" Class="admin-monitor-table">
+            <thead>
+                <tr><th scope="col" data-column="time" data-width="140">Time</th><th scope="col" data-column="source" data-width="180">Source</th><th scope="col" data-column="what" data-width="400">What</th></tr>
+            </thead>
+            <tbody>
+                @foreach (var item in _events)
+                {
+                    <tr>
+                        <td style="color: var(--lv5);">
+                            <TimeAgo Value="@item.AtUtc.UtcDateTime" TooltipPosition="left" />
+                        </td>
+                        <td style="color: var(--lv5);">@item.Source</td>
+                        <td data-wrap>@item.Text</td>
+                    </tr>
+                }
+            </tbody>
+        </Table>
+        </div>
+
+        <p style="color: var(--lv5); margin-top: 24px;">
+            The most recent @_events.Count. These are kept in memory only, so they start again
+            when the server restarts.
+        </p>
+    }
+}
+
+@code {
+    private MonitorSnapshot? _snapshot;
+    private List<MonitorEvent> _events = [];
+
+    protected override void OnInitialized()
+    {
+        State.Changed += OnChanged;
+        Read();
+    }
+
+    // Raised from the collector's timer, off the circuit thread.
+    private void OnChanged() => _ = InvokeAsync(() => { Read(); StateHasChanged(); });
+
+    private void Read()
+    {
+        _snapshot = State.Latest;
+        _events = [.. State.Events().Reverse()];
+    }
+
+    public void Dispose() => State.Changed -= OnChanged;
+
+    // Cool blue when idle, teal when fine, the warning amber from 70 percent, the signal red from
+    // 85, as the terminal monitor's gauges.
+    private static readonly BarMeter.Zone[] Pressure = [new(0, "var(--CLightBlue)"), new(0.3, "var(--CTeal)"), new(0.7, "var(--CWarning)"), new(0.85, "var(--CSignal)")];
+
+    private static string Gb(long mb) => mb >= 1024 ? $"{mb / 1024.0:0.0} GB" : $"{mb:N0} MB";
+
+    /// <summary>The largest four datasets by loaded documents, the rest as one segment.</summary>
+
+    /// <summary>Ready, hibernated, then the in-between states, then error in the signal red.</summary>
+    private static List<Waffle.Segment> DatasetsByState(MonitorSnapshot s)
+    {
+        var byPhase = s.Datasets.GroupBy(d => d.Phase).ToDictionary(g => g.Key, g => g.Count());
+        var segments = new List<Waffle.Segment>();
+        void Add(string phase, string? color = null) { if (byPhase.Remove(phase, out var n) && n > 0) segments.Add(new(phase, n, color)); }
+        Add("Ready"); Add("Hibernated");
+        foreach (var (phase, n) in byPhase.Where(kv => kv.Key != "Error").OrderByDescending(kv => kv.Value)) segments.Add(new(phase, n));
+        Add("Error", "var(--CSignal)");
+        return segments;
+    }
+}

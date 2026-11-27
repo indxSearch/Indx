@@ -1,0 +1,83 @@
+@* Numbered pages: previous, the pages around the current one, next. The current page is the
+   secondary button, as a current tab; the others are ghost. Port of the React Pagination in
+   indx-systm (26 Nov 2026). With PageHref the pages are links, for a page that keeps its page
+   number in the address; without it they are buttons that call OnPageChange. *@
+@if (PageCount >= 2)
+{
+    var current = Math.Clamp(Page, 1, PageCount);
+    <nav class="indx-pagination @Class" aria-label="@AriaLabel" @attributes="AdditionalAttributes">
+        <ul class="indx-pagination-list indx-pagination-@Size">
+            <li>
+                <Button Variant="ghost" Size="@Size" IconLeft="Previous" aria-label="@PreviousLabel"
+                        Href="@HrefOf(current - 1)" Disabled="@(Disabled || current == 1)" @onclick="@(() => Go(current - 1, current))" />
+            </li>
+            @foreach (var (p, i) in Items(current, PageCount, Siblings).Select((p, i) => (p, i)))
+            {
+                <li @key="@(p?.ToString() ?? $"gap{i}")">
+                    @if (p is int number)
+                    {
+                        <Button Variant="@(number == current ? "secondary" : "ghost")" Size="@Size"
+                                aria-label="@(PageLabel?.Invoke(number) ?? $"Page {number}")"
+                                aria-current="@(number == current ? "page" : null)"
+                                Href="@HrefOf(number)" Disabled="@Disabled" @onclick="@(() => Go(number, current))">@number</Button>
+                    }
+                    else
+                    {
+                        <span class="indx-pagination-gap" aria-hidden="true">…</span>
+                    }
+                </li>
+            }
+            <li>
+                <Button Variant="ghost" Size="@Size" IconLeft="Next" aria-label="@NextLabel"
+                        Href="@HrefOf(current + 1)" Disabled="@(Disabled || current == PageCount)" @onclick="@(() => Go(current + 1, current))" />
+            </li>
+        </ul>
+    </nav>
+}
+
+@code {
+    /// <summary>The page shown, from 1.</summary>
+    [Parameter] public int Page { get; set; } = 1;
+    /// <summary>How many pages there are. Below 2 nothing is drawn.</summary>
+    [Parameter] public int PageCount { get; set; }
+    [Parameter] public EventCallback<int> OnPageChange { get; set; }
+    /// <summary>The address of a page: the pages are then links, not buttons.</summary>
+    [Parameter] public Func<int, string>? PageHref { get; set; }
+    /// <summary>Pages listed on each side of the current one; the first and the last are always listed.</summary>
+    [Parameter] public int Siblings { get; set; } = 1;
+    /// <summary>"micro" (default) or "default".</summary>
+    [Parameter] public string Size { get; set; } = "micro";
+    /// <summary>Turns every page off, as while the page it asked for is on its way.</summary>
+    [Parameter] public bool Disabled { get; set; }
+    [Parameter] public string PreviousLabel { get; set; } = "Previous page";
+    [Parameter] public string NextLabel { get; set; } = "Next page";
+    /// <summary>What a page is called to a screen reader. Default "Page 3".</summary>
+    [Parameter] public Func<int, string>? PageLabel { get; set; }
+    [Parameter] public string AriaLabel { get; set; } = "Pages";
+    [Parameter] public string? Class { get; set; }
+    [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+
+    private static readonly RenderFragment<int> Previous = size => @<ChevronLeft Size="@size" />;
+    private static readonly RenderFragment<int> Next = size => @<ChevronRight Size="@size" />;
+
+    private string? HrefOf(int page) => PageHref != null && page >= 1 && page <= PageCount ? PageHref(page) : null;
+
+    private Task Go(int page, int current) =>
+        PageHref == null && page != current && page >= 1 && page <= PageCount ? OnPageChange.InvokeAsync(page) : Task.CompletedTask;
+
+    /// <summary>The pages to list: the first, the last, the current with its siblings, and a gap
+    /// (null) where pages are left out. A gap of one page lists that page instead, as it takes the
+    /// same room. The same as the React paginationItems.</summary>
+    public static IReadOnlyList<int?> Items(int page, int pageCount, int siblings = 1)
+    {
+        var from = Math.Max(1, Math.Min(page - siblings, pageCount - 2 * siblings - 2));
+        var to = Math.Min(pageCount, Math.Max(page + siblings, 2 * siblings + 3));
+        var items = new List<int?>();
+        if (from > 1) items.Add(1);
+        if (from == 3) items.Add(2); else if (from > 3) items.Add(null);
+        for (var p = from; p <= to; p++) items.Add(p);
+        if (to == pageCount - 2) items.Add(pageCount - 1); else if (to < pageCount - 2) items.Add(null);
+        if (to < pageCount) items.Add(pageCount);
+        return items;
+    }
+}

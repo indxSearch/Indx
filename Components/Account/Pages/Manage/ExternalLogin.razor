@@ -1,0 +1,325 @@
+﻿@page "/account/external-login"
+
+@using System.Security.Claims
+@using Microsoft.AspNetCore.Authentication
+@using System.Text
+@using Microsoft.AspNetCore.WebUtilities
+@using Microsoft.AspNetCore.Identity.UI.Services
+@using Microsoft.AspNetCore.Identity
+@using IndxServer.Data
+@using IndxServer.Services
+
+@inject SignInManager<ApplicationUser> SignInManager
+@inject UserManager<ApplicationUser> UserManager
+@inject IUserStore<ApplicationUser> UserStore
+@inject NavigationManager NavigationManager
+@inject IdentityRedirectManager RedirectManager
+@inject ILogger<ExternalLogin> Logger
+@inject RegistrationValidator RegistrationValidator
+@inject UserProvisioningService UserProvisioning
+@inject EntraSignIn Entra
+@inject IEmailSender EmailSender
+@inject InstanceSettingsService InstanceSettingsService
+
+<PageTitle>Processing login</PageTitle>
+
+<div style="text-align: center; margin: 40px 0;">
+    <h3>Processing external login...</h3>
+    <p style="color: var(--lv5); margin-top: 10px;">Please wait while we complete your sign-in.</p>
+</div>
+
+@code {
+    public const string LoginCallbackAction = "LoginCallback";
+
+    /// <summary>The callback of a login being added to the signed-in account (the account page).</summary>
+    public const string LinkCallbackAction = "LinkLoginCallback";
+
+    private ExternalLoginInfo externalLoginInfo = default!;
+
+    [CascadingParameter]
+    private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromQuery]
+    private string? RemoteError { get; set; }
+
+    [SupplyParameterFromQuery]
+    private string? ReturnUrl { get; set; }
+
+    [SupplyParameterFromQuery]
+    private string? Action { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (RemoteError is not null)
+        {
+            Logger.LogWarning("Remote error from external provider: {Error}", RemoteError);
+            NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString($"Error from external provider: {RemoteError}")}");
+            return;
+        }
+
+        var info = await SignInManager.GetExternalLoginInfoAsync();
+        if (info is null)
+        {
+            Logger.LogWarning("Failed to load external login information");
+            NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString("Error loading external login information.")}");
+            return;
+        }
+
+        externalLoginInfo = info;
+
+        if (HttpMethods.IsGet(HttpContext.Request.Method))
+        {
+            if (Action == LoginCallbackAction)
+            {
+                await OnLoginCallbackAsync();
+                return;
+            }
+            if (Action == LinkCallbackAction)
+            {
+                await OnLinkCallbackAsync();
+                return;
+            }
+
+            // We should only reach this page via the login callback, so redirect back to
+            // the login page if we get here some other way.
+            RedirectManager.RedirectTo("account/login");
+        }
+    }
+
+    /// <summary>
+    /// Adds the login that came back to the account that is signed in, and to no other: the
+    /// external login is read with that account's id as the XSRF value it was sent out with
+    /// (the link-external-login endpoint). The address the provider gives plays no part.
+    /// </summary>
+    private async Task OnLinkCallbackAsync()
+    {
+        string Back(string name, string value) => $"/account/manage?{name}={Uri.EscapeDataString(value)}";
+
+        var current = await UserManager.GetUserAsync(HttpContext.User);
+        if (current == null)
+        {
+            NavigationManager.NavigateTo("/account/login");
+            return;
+        }
+        var info = await SignInManager.GetExternalLoginInfoAsync(current.Id);
+        // Spent either way: the external cookie is for this one round.
+        await HttpContext.SignOutAsync(IdentityConstants.ExternalScheme);
+        if (info == null || info.LoginProvider == EntraSignIn.Scheme)
+        {
+            NavigationManager.NavigateTo(Back("linkError", "The sign-in could not be added. Try again."));
+            return;
+        }
+
+        var result = await UserManager.AddLoginAsync(current, info);
+        if (!result.Succeeded)
+        {
+            Logger.LogWarning("Adding {Provider} to {Email} failed: {Errors}", info.LoginProvider, current.Email,
+                string.Join(", ", result.Errors.Select(e => e.Description)));
+            NavigationManager.NavigateTo(Back("linkError", result.Errors.Any(e => e.Code == "LoginAlreadyAssociated")
+                ? $"That {info.ProviderDisplayName ?? info.LoginProvider} account already signs in to another account here."
+                : "The sign-in could not be added."));
+            return;
+        }
+        Logger.LogInformation("{Email} added {Provider} as a way to sign in", current.Email, info.LoginProvider);
+        NavigationManager.NavigateTo(Back("linked", info.ProviderDisplayName ?? info.LoginProvider));
+    }
+
+    private async Task OnLoginCallbackAsync()
+    {
+        // Entra ID has its own rules: the account is the directory's person, not the address, and
+        // the role comes with every sign-in (EntraSignIn).
+        if (externalLoginInfo.LoginProvider == EntraSignIn.Scheme)
+        {
+            var entra = await Entra.SignInAsync(externalLoginInfo);
+            if (entra.User == null)
+            {
+                Logger.LogWarning("Entra ID sign-in refused: {Reason}", entra.Refusal);
+                NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString(entra.Refusal ?? "Sign-in refused.")}");
+                return;
+            }
+            await SignInManager.SignInAsync(entra.User, isPersistent: false, EntraSignIn.Scheme);
+            RedirectManager.RedirectTo(ReturnUrl ?? "/");
+            return;
+        }
+
+        // Sign in the user with this external login provider if the user already has a login.
+        var result = await SignInManager.ExternalLoginSignInAsync(
+            externalLoginInfo.LoginProvider,
+            externalLoginInfo.ProviderKey,
+            isPersistent: false,
+            bypassTwoFactor: true);
+
+        if (result.Succeeded)
+        {
+            Logger.LogInformation(
+                "{Name} logged in with {LoginProvider} provider.",
+                externalLoginInfo.Principal.Identity?.Name,
+                externalLoginInfo.LoginProvider);
+            RedirectManager.RedirectTo(ReturnUrl ?? "/account/api-key");
+        }
+        else if (result.IsLockedOut)
+        {
+            NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString("Sign-in for this account is paused for a few minutes after too many wrong passwords. Try again then.")}");
+            return;
+        }
+        else if (result.IsNotAllowed)
+        {
+            // The login is linked, to an account whose address is not confirmed yet.
+            NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString("Confirm your email address first: use the link we sent you.")}");
+            return;
+        }
+
+        // If the user does not have an account, automatically create one using the OAuth email
+        var email = externalLoginInfo.Principal.FindFirstValue(ClaimTypes.Email);
+        if (string.IsNullOrEmpty(email))
+        {
+            Logger.LogWarning("Email claim not found from external provider {Provider}", externalLoginInfo.LoginProvider);
+            NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString("Email claim not found from external provider.")}");
+            return;
+        }
+
+        // Only an address the provider vouches for finds an account or proves itself (ExternalEmail).
+        var emailVerified = ExternalEmail.IsVerified(externalLoginInfo.Principal);
+
+        // Check if an account with this email already exists.
+        var existingUser = await UserManager.FindByEmailAsync(email);
+        if (existingUser != null)
+        {
+            if (!emailVerified)
+            {
+                // The address is only claimed: it does not sign anyone in as the account that has it.
+                Logger.LogWarning("{Provider} sign-in for {Email} refused: the address has an account and the provider does not vouch for it",
+                    externalLoginInfo.LoginProvider, email);
+                NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString("An account with this email address already exists. Sign in with its password; you can then add this sign-in on your account page.")}");
+                return;
+            }
+            if (!existingUser.EmailConfirmed)
+            {
+                // The existing account was registered without verifying ownership of the address.
+                // The OAuth provider has now verified it, so we take over: confirm the email,
+                // remove the unverified password (locks out whoever registered it), then link.
+                existingUser.EmailConfirmed = true;
+                await UserManager.UpdateAsync(existingUser);
+                await UserManager.RemovePasswordAsync(existingUser);
+                Logger.LogWarning("Took over unverified account for {Email} via {Provider}", email, externalLoginInfo.LoginProvider);
+            }
+
+            var addLoginResult = await UserManager.AddLoginAsync(existingUser, externalLoginInfo);
+            if (addLoginResult.Succeeded)
+            {
+                Logger.LogInformation("Linked {Provider} to existing account {Email}", externalLoginInfo.LoginProvider, email);
+                await SignInManager.SignInAsync(existingUser, isPersistent: false, externalLoginInfo.LoginProvider);
+                RedirectManager.RedirectTo(ReturnUrl ?? "/account/api-key");
+            }
+            else
+            {
+                Logger.LogError("Failed to link {Provider} to existing account {Email}: {Errors}",
+                    externalLoginInfo.LoginProvider, email,
+                    string.Join(", ", addLoginResult.Errors.Select(e => e.Description)));
+                NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString("Failed to link the sign-in provider to your account.")}");
+            }
+            return;
+        }
+
+        Logger.LogInformation("Creating new user account for OAuth email: {Email}", email);
+
+        // Validate registration is allowed
+        var allowedResult = RegistrationValidator.ValidateRegistrationAllowed(email);
+        if (!allowedResult.IsValid)
+        {
+            Logger.LogWarning("OAuth registration blocked - registration is closed. Email: {Email}", email);
+            NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString(allowedResult.ErrorMessage ?? "Registration not allowed")}");
+            return;
+        }
+
+        // Validate email domain if required
+        var emailResult = RegistrationValidator.ValidateEmail(email);
+        if (!emailResult.IsValid)
+        {
+            Logger.LogWarning("OAuth registration blocked - email domain not allowed. Email: {Email}", email);
+            NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString(emailResult.ErrorMessage ?? "Email not allowed")}");
+            return;
+        }
+
+        Logger.LogInformation("Email validation passed for OAuth signup: {Email}", email);
+
+        // Create user automatically with OAuth email
+        var emailStore = GetEmailStore();
+        var user = CreateUser();
+
+        await UserStore.SetUserNameAsync(user, email, CancellationToken.None);
+        await emailStore.SetEmailAsync(user, email, CancellationToken.None);
+        // Confirmed when the provider vouches for the address. A claimed one makes an account like a
+        // registration's: unconfirmed, so no invite to the address is accepted for it
+        // (UserProvisioningService) until its owner follows the link sent to it.
+        // The instance's first account is its owner setting it up, as Setup's own form confirms it:
+        // there is no account or invite yet for the address to reach.
+        user.EmailConfirmed = emailVerified || !UserManager.Users.Any();
+
+        var createResult = await UserManager.CreateAsync(user);
+        if (createResult.Succeeded)
+        {
+            // Role, personal team, admin notification and invite consumption — shared with
+            // Register via UserProvisioningService so the flows can't drift. OAuth has no
+            // team-name field, so the team name falls back to the email prefix.
+            await UserProvisioning.ProvisionNewUserAsync(user, email);
+
+            var addLoginResult = await UserManager.AddLoginAsync(user, externalLoginInfo);
+            if (addLoginResult.Succeeded)
+            {
+                if (!user.EmailConfirmed)
+                {
+                    var code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(await UserManager.GenerateEmailConfirmationTokenAsync(user)));
+                    var callbackUrl = NavigationManager.GetUriWithQueryParameters(
+                        NavigationManager.ToAbsoluteUri("account/confirm-email").AbsoluteUri,
+                        new Dictionary<string, object?> { ["userId"] = user.Id, ["code"] = code, ["returnUrl"] = ReturnUrl });
+                    var instanceName = InstanceSettingsService.Load().InstanceName;
+                    await EmailSender.SendEmailAsync(email, EmailTemplates.Subject(instanceName, "Please verify your email"),
+                        EmailTemplates.VerifyEmail(instanceName, callbackUrl));
+                    if (InstanceSettingsService.Load().RequireEmailVerification)
+                    {
+                        RedirectManager.RedirectTo("account/register-confirmation", new() { ["email"] = email, ["returnUrl"] = ReturnUrl });
+                        return;
+                    }
+                }
+                Logger.LogInformation("User created an account using {Name} provider.", externalLoginInfo.LoginProvider);
+                await SignInManager.SignInAsync(user, isPersistent: false, externalLoginInfo.LoginProvider);
+                RedirectManager.RedirectTo(ReturnUrl ?? "/account/api-key");
+            }
+            else
+            {
+                Logger.LogError("Failed to add external login: {Errors}", string.Join(", ", addLoginResult.Errors.Select(e => e.Description)));
+                NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString("Failed to link external login.")}");
+            }
+        }
+        else
+        {
+            Logger.LogError("Failed to create user: {Errors}", string.Join(", ", createResult.Errors.Select(e => e.Description)));
+            var errorMessage = string.Join(", ", createResult.Errors.Select(e => e.Description));
+            NavigationManager.NavigateTo($"/account/login?error={Uri.EscapeDataString(errorMessage)}");
+        }
+    }
+
+
+    private ApplicationUser CreateUser()
+    {
+        try
+        {
+            return Activator.CreateInstance<ApplicationUser>();
+        }
+        catch
+        {
+            throw new InvalidOperationException($"Can't create an instance of '{nameof(ApplicationUser)}'. " +
+                $"Ensure that '{nameof(ApplicationUser)}' is not an abstract class and has a parameterless constructor");
+        }
+    }
+
+    private IUserEmailStore<ApplicationUser> GetEmailStore()
+    {
+        if (!UserManager.SupportsUserEmail)
+        {
+            throw new NotSupportedException("The default UI requires a user store with email support.");
+        }
+        return (IUserEmailStore<ApplicationUser>)UserStore;
+    }
+}

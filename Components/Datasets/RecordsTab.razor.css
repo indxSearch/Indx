@@ -1,0 +1,117 @@
+.records-tab { margin-top: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+
+.records-toolbar { align-items: center; flex-wrap: wrap; gap: 8px 12px; margin: 0; container: records-toolbar / inline-size; }
+.records-search { flex: 1 1 200px; max-width: 320px; }
+.records-order { display: inline-flex; align-items: center; gap: 6px; }
+.records-end { display: inline-flex; align-items: center; gap: 8px; }
+.records-count { color: var(--lv5); font: var(--text-xs); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.records-label { color: var(--lv5); font: var(--text-xs); white-space: nowrap; }
+.records-note { color: var(--lv5); font: var(--text-sm); margin: 0; }
+.records-faint { color: var(--lv5); font: var(--text-xs); margin: 0; }
+.records-error { color: var(--CSignal); font: var(--text-xs); margin: 0; }
+.records-spacer { flex: 1; }
+/* One row holds the toolbar down to about 700px. Narrower, wrapping left the search on a line of
+   its own in the middle with the count wherever it fell. So the search goes under the buttons, the
+   full width; narrower still the count and the scan go under it too, just above the table they
+   count. Measured on the toolbar, not the window: the side menu takes its share above 768px. */
+@container records-toolbar (max-width: 700px) {
+    .records-search { order: 1; flex: 1 1 100%; max-width: none; }
+}
+@container records-toolbar (max-width: 500px) {
+    .records-end { order: 2; flex: 1 1 100%; justify-content: space-between; margin-left: 0; }
+}
+
+/* The filter, column and header menus: a systm Popover, each control a row of its own. */
+.records-tab ::deep .records-menu { width: 300px; padding: 12px; display: flex; flex-direction: column; gap: 8px; }
+/* Labels from the left, as in a systm menu; a full-width button would centre them. */
+.records-tab ::deep .records-menu .indx-btn { justify-content: flex-start; }
+.records-tab ::deep .records-columns { width: 380px; max-height: 420px; overflow-y: auto; gap: 6px; }
+/* A field in the Columns menu, its roles as Field configuration has them on the right. */
+.records-column-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.records-roles { margin-left: auto; display: inline-flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px; }
+.records-menu-row { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.records-menu-pair { flex-direction: row; gap: 8px; }
+.records-menu-actions { display: flex; justify-content: flex-start; }
+/* A field's values, the commonest first: searched, not scrolled through by the thousand. */
+.records-values { display: flex; flex-direction: column; gap: 1px; max-height: 260px; overflow-y: auto; }
+.records-value-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.records-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+
+/* A column header: the name as the Key header is set, the menu a small button beside it, and
+   under it, with a report, what the report says of the field. */
+.records-head, .records-key-head { vertical-align: middle; white-space: nowrap; }
+.records-head-row { display: flex; align-items: center; gap: 2px; min-height: 30px; }
+.records-head--num .records-head-row { justify-content: flex-end; }
+.records-head-name { white-space: nowrap; }
+/* Key and Matched lead with an icon; a little more room between it and the name. */
+.records-key-head .records-head-name { margin-left: 5px; }
+.records-head-sort { display: inline-flex; color: var(--lv6); }
+.records-head-note { display: flex; align-items: center; gap: 4px; padding-bottom: 6px; font: var(--text-xs); font-weight: var(--reg); color: var(--lv5); white-space: nowrap; }
+.records-head--num .records-head-note { justify-content: flex-end; }
+.records-num { text-align: right; font-variant-numeric: tabular-nums; }
+.records-missing { color: var(--lv4); font-style: italic; }
+/* Something a search treats badly: the ink, medium, with the warning icon. Never a colour. */
+.records-issue { display: inline-flex; align-items: center; gap: 4px; font: var(--text-xs); font-weight: var(--med); color: var(--lv8); white-space: nowrap; }
+.records-head-note.records-issue { display: flex; }
+.records-issue ::deep svg, .records-key ::deep svg { flex: none; }
+
+/* The whole row opens its record in place, as a Search preview hit opens. */
+.records-row { cursor: pointer; }
+.records-row:hover > td, .records-row:focus-visible > td { background: var(--lv1); }
+.records-row:focus-visible { outline: none; }
+.records-row--open > td, .records-row--open:hover > td { background: var(--lv2); }
+.records-key { display: inline-flex; align-items: center; gap: 4px; font: var(--text-xs); font-family: var(--font-mono); color: var(--lv5); white-space: nowrap; }
+.records-fixed { display: inline-flex; color: var(--lv6); }
+.records-cell { white-space: nowrap; }
+/* A long value's tooltip: more of it than the standard measure takes. */
+.records-tab ::deep .indx-tooltip.records-tip { max-width: min(420px, calc(100vw - 32px)); font-weight: var(--reg); white-space: pre-wrap; }
+
+/* An open record stays in view while the table scrolls sideways under it. The table's first
+   column is sticky, and the open row's one cell is its first, so without the first rule the whole
+   table-wide cell was sticky and the record slid off with the columns. Instead the cell scrolls,
+   and the record inside it holds still at the frame's left edge, as wide as the frame shows
+   (100cqw: the frame is the size container). */
+.records-tab ::deep .records-frame { container-type: inline-size; }
+.records-expanded > td { position: static; background: var(--lv1); padding: 8px 0 12px; cursor: default; }
+.records-expanded > td::before, .records-expanded > td::after { display: none; }
+.records-detail {
+    /* The frame runs into the page's gutter (BleedEnd, as Field configuration's table), so the
+       record keeps the gutter clear on its right. */
+    /* No wider than its cell either: the cell starts inside the table's left border, so a record as
+       wide as the frame ended a pixel past the table's right edge and the frame scrolled by that much
+       whenever the table itself fitted. */
+    position: sticky; left: 0; box-sizing: border-box; width: 100cqw; max-width: 100%; padding: 0 calc(var(--page-gutter) + 20px) 0 15px;
+    display: flex; flex-direction: column; gap: 10px; align-items: flex-start;
+}
+.records-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px 24px; width: 100%; }
+.records-json { margin: 0; font-family: var(--font-mono); font-size: 12px; line-height: 1.5; color: var(--lv7); white-space: pre-wrap; overflow-wrap: anywhere; width: 100%; }
+.records-group { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding-top: 6px; border-top: 0.5px solid var(--lv3); }
+.records-group-title { margin: 0; color: var(--lv7); font: var(--text-xs); font-weight: var(--med); }
+.records-field { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.records-field-name { color: var(--lv5); font: var(--text-xs); font-family: var(--font-mono); }
+.records-field-value { color: var(--lv8); font: var(--text-sm); overflow-wrap: anywhere; white-space: pre-wrap; }
+
+.records-pager { display: flex; align-items: center; gap: 4px; }
+.records-pager .records-count { margin-right: 8px; }
+
+/* A search's hits: the fields the words were met in, and each word marked where a cell holds it as typed. */
+.records-matched { font: var(--text-xs); color: var(--lv7); white-space: nowrap; }
+.records-mark { background: var(--lv3); color: var(--lv8); border-radius: 2px; padding: 0 1px; }
+/* On the dark theme lv3 hardly parts from a row's tone: a notch up. */
+@media (prefers-color-scheme: dark) { :where(:root:not([data-theme="light"])) .records-mark { background: var(--lv4); } }
+:where(:root[data-theme="dark"]) .records-mark { background: var(--lv4); }
+.records-words { display: flex; flex-direction: column; gap: 4px; width: 100%; padding-bottom: 6px; }
+.records-word { display: flex; align-items: baseline; gap: 8px; font: var(--text-xs); }
+.records-word-text { color: var(--lv8); font-weight: var(--med); }
+.records-word--missing .records-word-text { color: var(--lv5); font-weight: var(--reg); text-decoration: line-through; }
+
+/* The Table's ResizableColumns fix the widths and cut what overflows; a value stays on one line.
+   The open record's cell is not a column: it wraps, and shows all of itself. */
+.records-tab ::deep .records-table .records-expanded > td { overflow: visible; white-space: normal; }
+
+/* Cold storage under an opened record's fields: kept beside it, opened one item at a time. */
+.records-cold { display: flex; flex-direction: column; gap: 8px; width: 100%; padding-top: 6px; border-top: 0.5px solid var(--lv3); }
+.records-cold-title { display: inline-flex; align-items: center; gap: 6px; }
+.records-cold-item { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.records-cold-head { display: flex; align-items: center; gap: 8px; min-width: 0; }

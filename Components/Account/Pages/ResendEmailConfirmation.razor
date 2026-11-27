@@ -1,0 +1,144 @@
+@page "/account/resend-email-confirmation"
+@layout UnauthenticatedLayout
+@using System.ComponentModel.DataAnnotations
+@using System.Text
+@using System.Text.Encodings.Web
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.WebUtilities
+@using Microsoft.AspNetCore.Identity.UI.Services
+@using IndxServer.Data
+@inject UserManager<ApplicationUser> UserManager
+@inject IEmailSender EmailSender
+@inject NavigationManager NavigationManager
+@inject ILogger<ResendEmailConfirmation> Logger
+@inject IndxServer.Services.InstanceSettingsService InstanceSettingsService
+
+<PageTitle>Resend email confirmation</PageTitle>
+
+<h3>Resend email confirmation</h3>
+
+@if (emailSent)
+{
+    <div style="padding: 20px; border: 1px solid var(--CTeal); border-radius: var(--radius); background: rgba(114, 245, 198, 0.1); margin: 20px 0;">
+        <h4>Email sent</h4>
+        <p>
+            We've sent a new confirmation email to <strong>@Input.Email</strong>.
+        </p>
+        <p>
+            Please check your inbox and click the confirmation link.
+        </p>
+    </div>
+
+    <div style="padding: 20px; border: 1px solid var(--CLightBlue); border-radius: var(--radius); background: rgba(107, 158, 255, 0.1); margin: 20px 0;">
+        <strong>Didn't receive the email?</strong>
+        <ul style="margin-bottom: 0;">
+            <li>Check your spam/junk folder</li>
+            <li>Make sure you entered the correct email address</li>
+            <li>Wait a few minutes - it may take time to arrive</li>
+        </ul>
+    </div>
+
+    <div style="margin-top: 40px;">
+        <Button Href="/account/login" Variant="secondary">Back to log in</Button>
+    </div>
+}
+else
+{
+    @if (!string.IsNullOrEmpty(errorMessage))
+    {
+        <div style="padding: 20px; border: 1px solid var(--CSignal); border-radius: var(--radius); background: rgba(255, 66, 56, 0.1); margin: 20px 0;">
+            @errorMessage
+        </div>
+    }
+
+    <EditForm Model="Input" OnValidSubmit="OnValidSubmitAsync" FormName="resend-email">
+        <DataAnnotationsValidator />
+
+        <div style="margin-bottom: 20px;">
+            <InputField @bind-Value="Input.Email"
+                        type="email"
+                        autocomplete="username"
+                        placeholder="Email"
+                        id="email" />
+            <ValidationMessage For="() => Input.Email" />
+        </div>
+
+        <Button Type="submit" Variant="secondary" Disabled="@isProcessing">
+            @if (isProcessing) { <span>Sending...</span> }
+            else { <span>Resend confirmation email</span> }
+        </Button>
+
+        <div style="margin-top: 40px; display: flex; flex-direction: column;">
+            <a href="/account/login" style="font: var(--text-sm);">Back to log in</a>
+        </div>
+    </EditForm>
+}
+
+@code {
+    private string? errorMessage;
+    private bool isProcessing = false;
+    private bool emailSent = false;
+
+    [SupplyParameterFromForm]
+    private InputModel Input { get; set; } = new();
+
+    private async Task OnValidSubmitAsync()
+    {
+        isProcessing = true;
+        errorMessage = null;
+
+        try
+        {
+            var user = await UserManager.FindByEmailAsync(Input.Email);
+
+            // Always show success message (security best practice - prevent email enumeration)
+            if (user != null)
+            {
+                // Only send if email is not already confirmed
+                if (!await UserManager.IsEmailConfirmedAsync(user))
+                {
+                    var userId = await UserManager.GetUserIdAsync(user);
+                    var code = await UserManager.GenerateEmailConfirmationTokenAsync(user);
+                    code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
+
+                    var callbackUrl = NavigationManager.GetUriWithQueryParameters(
+                        NavigationManager.ToAbsoluteUri("account/confirm-email").AbsoluteUri,
+                        new Dictionary<string, object?> { ["userId"] = userId, ["code"] = code });
+
+                    var instanceName = InstanceSettingsService.Load().InstanceName;
+                    await EmailSender.SendEmailAsync(
+                        Input.Email,
+                        IndxServer.Services.EmailTemplates.Subject(instanceName, "Please verify your email"),
+                        IndxServer.Services.EmailTemplates.ResendConfirmation(instanceName, callbackUrl));
+
+                    Logger.LogInformation("Resent confirmation email to {Email}", Input.Email);
+                }
+                else
+                {
+                    Logger.LogInformation("Email confirmation requested for already confirmed email: {Email}", Input.Email);
+                }
+            }
+            else
+            {
+                Logger.LogWarning("Email confirmation requested for non-existent email: {Email}", Input.Email);
+            }
+
+            // Always show success (security best practice)
+            emailSent = true;
+            isProcessing = false;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error resending email confirmation");
+            errorMessage = "An error occurred while sending the confirmation email. Please try again.";
+            isProcessing = false;
+        }
+    }
+
+    private sealed class InputModel
+    {
+        [Required]
+        [EmailAddress]
+        public string Email { get; set; } = "";
+    }
+}

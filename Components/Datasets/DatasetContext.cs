@@ -1,0 +1,429 @@
+using IndxServer.Engine;
+using Indx.Api;
+
+using IndxServer.Data;
+using IndxServer.Models;
+using IndxServer.Services;
+
+namespace IndxServer.Components.Datasets
+{
+    /// <summary>
+    /// Everything the dataset console knows about one dataset of the active team, shared by
+    /// <see cref="DatasetPanel"/> and its tab components through a cascading value. One
+    /// instance per (team, dataset); the panel creates it, the tabs mutate it and call
+    /// <see cref="NotifyChanged"/> so the panel re-renders the parts it owns (status table,
+    /// tab nav). Replaces the name-keyed dictionaries the single-page console used to hold.
+    /// </summary>
+    public sealed class DatasetContext : IDisposable
+    {
+        internal DatasetContext(IDatasetEngines engines, string name, string teamId, string? role, IReadOnlyList<(Team Team, string Role)> myTeams)
+        {
+            Engines = engines;
+            Name = name;
+            TeamId = teamId;
+            Role = role;
+            MyTeams = myTeams;
+        }
+
+        /// <summary>The engine registry, injectable so tabs are testable without a live engine.</summary>
+        internal IDatasetEngines Engines { get; }
+
+        // ── Identity ──────────────────────────────────────────────────────────
+        public string Name { get; }
+        /// <summary>The engine registry's owner key: the team id.</summary>
+        public string TeamId { get; }
+        public string? Role { get; }
+        public bool IsAdmin => TeamRoles.CanAdmin(Role);
+        public bool IsEditor => TeamRoles.CanWrite(Role);
+        public IReadOnlyList<(Team Team, string Role)> MyTeams { get; set; }
+        /// <summary>The owning team's name, for URLs; null only if the caller's team list is stale.</summary>
+        public string? TeamName => MyTeams.FirstOrDefault(t => t.Team.Id.ToString() == TeamId).Team?.Name;
+
+        // ── Engine view ───────────────────────────────────────────────────────
+        public SystemStatus? Status { get; set; }
+        internal IndxServerInternalApi.KeepAliveInfo? KeepAlive { get; set; }
+        /// <summary>True once <see cref="RefreshStatus"/> has succeeded at least once. Until then
+        /// the engine state is unknown and nothing state-dependent (upload prompt, wake panel,
+        /// tab nav) should render — an unknown state must not look like an empty dataset.</summary>
+        public bool HasStatus => Status != null && KeepAlive != null;
+        /// <remarks>While a wake is being cancelled this reads Created, not the engine. The engine's
+        /// status object is live, and a cancelled load parks it in Error (a cancelled index in
+        /// Loaded) for the moment before it is disposed. That is the debris of a teardown the user
+        /// asked for, and showing it made a successful cancel flash an error screen.</remarks>
+        public SystemState EngineState => IsCancellingWake ? SystemState.Created : Status?.SystemState ?? SystemState.Created;
+        /// <summary>A Created engine with records persisted on disk is hibernated (manual datasets
+        /// stay this way until woken; timed/pinned wake themselves on access), not an empty dataset.</summary>
+        public bool IsHibernated => EngineState == SystemState.Created && (KeepAlive?.RecordCount ?? 0) > 0;
+        public bool IsTransitional => EngineState is SystemState.Loading or SystemState.Loaded or SystemState.Indexing;
+
+        public void RefreshStatus()
+        {
+            try
+            {
+                // A timed/pinned dataset that is not loaded would be loaded and indexed by GetState
+                // itself (ResolveEngine's lazy auto-load), synchronously on this circuit: opening an
+                // idle-evicted dataset froze the console for as long as the index took, with nothing
+                // on screen (Oct 2026). Nor is it woken in the background: the console must be able
+                // to open a dataset without loading it, since that is how its data is rescued when
+                // the instance ran out of memory loading it. It shows as hibernated instead, with
+                // Wake up, and Options (download, keep-alive, delete) open.
+                var before = Engines.GetKeepAliveInfo(Name, TeamId);
+                var engine = Engines.FindSearchEngine(Name, TeamId);
+                bool wouldAutoLoad = before.KeepAliveTimeHrs != 0 && !before.Ready && before.RecordCount > 0
+                    && (engine == null || engine.IsDisposed || engine.Status.SystemState == SystemState.Created)
+                    && Engines.GetWakeProgress(Name, TeamId) == null && !Engines.IsWorkInProgress(Name, TeamId);
+                if (wouldAutoLoad)
+                {
+                    // After a restart there may be no engine at all yet, and building its shell is
+                    // GetState's job; a blank status reads as Created, which is what it is.
+                    Status = engine is { IsDisposed: false } ? engine.Status : new SystemStatus();
+                    KeepAlive = before;
+                    return;
+                }
+
+                // Status first: the keep-alive view (Ready, remaining time) must describe the
+                // engine after any load GetState did.
+                var status = Engines.GetState(Name, TeamId);
+                var keepAlive = Engines.GetKeepAliveInfo(Name, TeamId);
+                Status = status;
+                KeepAlive = keepAlive;
+            }
+            catch (Exception ex)
+            {
+                // Dataset may be mid-transition; keep the last known view.
+                Console.WriteLine($"[DatasetContext] status refresh failed for {Name}: {ex.Message}");
+            }
+        }
+
+        public IServerSearchEngine? FindEngine() => Engines.FindSearchEngine(Name, TeamId);
+
+        /// <summary>
+        /// Clears the engine's last error message — on a Ready dataset, the last call the engine
+        /// refused. The message is written by the engine and never reset by it, so without this it
+        /// stays until a newer error replaces it. Only on Ready: in Error state the message is the
+        /// reason the dataset is broken, and clearing it would hide that.
+        /// </summary>
+        public void ClearErrorMessage()
+        {
+            if (EngineState != SystemState.Ready) return;
+            // Outside Indexing the engine's Status getter returns its live status object, so this is
+            // the write that sticks; Status here is normally that same object, cleared for the view.
+            if (FindEngine()?.Status is { SystemState: SystemState.Ready } live)
+                live.ErrorMessage = string.Empty;
+            if (Status != null)
+                Status.ErrorMessage = string.Empty;
+            NotifyChanged();
+        }
+
+        // ── Field configuration spine ─────────────────────────────────────────
+        /// <summary>The configuration as the engine currently has it (baseline for dirty checks).</summary>
+        public FieldProxy[]? SavedFields { get; private set; }
+        /// <summary>The user's working copy. Mutated in place by the field table; shared by
+        /// reference with the search preview, the boost condition builder and the key-field row.</summary>
+        public FieldProxy[]? EditedFields { get; private set; }
+        public bool HasFieldConfig => SavedFields != null;
+
+        /// <summary>Re-reads the configuration from the engine and resets the working copy.</summary>
+        public void RefreshFieldsFromEngine()
+        {
+            var fields = FindEngine()?.GetFieldConfiguration();
+            SetSavedFields(fields);
+        }
+
+        /// <summary>Loads the configuration only if none is held yet (the console's original
+        /// "populate on first sight of Ready" rule).</summary>
+        public void EnsureFieldsLoaded()
+        {
+            if (!HasFieldConfig) RefreshFieldsFromEngine();
+        }
+
+        public void SetSavedFields(FieldProxy[]? fields)
+        {
+            SavedFields = fields;
+            EditedFields = fields?.Select(DeepCopy).ToArray();
+        }
+
+        public void ClearFields()
+        {
+            SavedFields = null;
+            EditedFields = null;
+        }
+
+        public void CancelEdits()
+        {
+            EditedFields = SavedFields?.Select(DeepCopy).ToArray();
+            EditedProfiles = SavedProfiles?.Copy();
+        }
+
+        // ── Field profiles (Nov 2026) ─────────────────────────────────────────
+        /// <summary>The dataset's own profiles and assignments as stored (FieldProfileStore), the
+        /// baseline for the dirty check; an empty set when it has none. Null until the field tab
+        /// has read them.</summary>
+        public DatasetFieldProfiles? SavedProfiles { get; private set; }
+        /// <summary>The working copy: changed by the field table and the profile editor, saved
+        /// with the fields. A profile's values reach the engine through the fields that have it,
+        /// written onto <see cref="EditedFields"/> as they change.</summary>
+        public DatasetFieldProfiles? EditedProfiles { get; private set; }
+
+        public void SetSavedProfiles(DatasetFieldProfiles? profiles)
+        {
+            SavedProfiles = profiles?.Copy() ?? new DatasetFieldProfiles();
+            EditedProfiles = SavedProfiles.Copy();
+        }
+
+        private bool ProfilesDirty => EditedProfiles != null && !EditedProfiles.SameAs(SavedProfiles);
+
+        public bool IsDirty
+        {
+            get
+            {
+                var original = SavedFields;
+                var edited = EditedFields;
+                if (ProfilesDirty) return true;
+                if (original == null || edited == null) return false;
+                for (int i = 0; i < original.Length && i < edited.Length; i++)
+                {
+                    var o = original[i]; var e = edited[i];
+                    if ((o.WordMatching ?? false) != (e.WordMatching ?? false)) return true;
+                    if ((o.Filterable ?? false) != (e.Filterable ?? false)) return true;
+                    if ((o.Facetable ?? false) != (e.Facetable ?? false)) return true;
+                    if ((o.Sortable ?? false) != (e.Sortable ?? false)) return true;
+                    if ((o.PatternMatching ?? false) != (e.PatternMatching ?? false)) return true;
+                    if ((o.Embeddable ?? false) != (e.Embeddable ?? false)) return true;
+                    if (o.Weight != e.Weight) return true;
+                    if (o.BM25b != e.BM25b) return true;
+                    if (o.BM25k1 != e.BM25k1) return true;
+                    if (!(o.IndexSizes ?? []).SequenceEqual(e.IndexSizes ?? [])) return true;
+                    if (o.NumberOfStartCharacters != e.NumberOfStartCharacters) return true;
+                    if (o.NumberOfStopCharacters != e.NumberOfStopCharacters) return true;
+                    if (o.Tolerance != e.Tolerance) return true;
+                    if (o.RerankWeight != e.RerankWeight) return true;
+                    if (FieldProfiles.StartsOf(o) != FieldProfiles.StartsOf(e)) return true;
+                    if ((o.CaseSensitive ?? false) != (e.CaseSensitive ?? false)) return true;
+                    if (!(o.TextRules ?? []).AsSpan().SequenceEqual(e.TextRules ?? [])) return true;
+                }
+                return false;
+            }
+        }
+
+        /// <summary>True when at least one field is searched, by its words or by pattern — or when
+        /// no configuration is held yet, in which case the engine's own defaults apply and nothing
+        /// should be blocked.</summary>
+        public bool HasSearchable => EditedFields == null || EditedFields.Any(f => f.WordMatching == true || f.PatternMatching == true);
+
+        public static FieldProxy DeepCopy(FieldProxy f) => new FieldProxy
+        {
+            FieldName = f.FieldName,
+            FieldType = f.FieldType,
+            IsArray = f.IsArray,
+            Optional = f.Optional,
+            SampleValue = f.SampleValue,
+            WordMatching = f.WordMatching ?? false,
+            Filterable = f.Filterable ?? false,
+            Facetable = f.Facetable ?? false,
+            Sortable = f.Sortable ?? false,
+            PatternMatching = f.PatternMatching ?? false,
+            Embeddable = f.Embeddable ?? false,
+            Weight = f.Weight,
+            BM25b = f.BM25b,
+            BM25k1 = f.BM25k1,
+            // Not shown in the console yet, but carried, so an export holds them and a save sends
+            // back what the engine has instead of nothing.
+            IndexSizes = f.IndexSizes is { } sizes ? (int[])sizes.Clone() : null,
+            NumberOfStartCharacters = f.NumberOfStartCharacters,
+            NumberOfStopCharacters = f.NumberOfStopCharacters,
+            // A searched field's profile values (Nov 2026): carried so the profile shown is the
+            // engine's, and a save sends them back.
+            Tolerance = f.Tolerance,
+            RerankWeight = f.RerankWeight,
+            TypingPrefixFrom = f.TypingPrefixFrom,
+            CaseSensitive = f.CaseSensitive,
+            TextRules = f.TextRules is { } rules ? [.. rules] : null,
+        };
+
+        // ── Upload hand-off ───────────────────────────────────────────────────
+        /// <summary>The uploaded file after Analyze (schema scan) and before Load &amp; Index.
+        /// Held open (DeleteOnClose temp file) until Load consumes it or the context is disposed.</summary>
+        public FileStream? BufferedFile { get; private set; }
+        public bool IsAnalyzed => BufferedFile != null;
+        public string? AnalyzeWarning { get; set; }
+
+        public void SetBufferedFile(FileStream? stream)
+        {
+            if (ReferenceEquals(BufferedFile, stream)) return;
+            try { BufferedFile?.Dispose(); } catch { /* best effort */ }
+            BufferedFile = stream;
+        }
+
+        /// <summary>Hands the buffered stream to the caller (Load) and forgets it.</summary>
+        public FileStream? TakeBufferedFile()
+        {
+            var s = BufferedFile;
+            BufferedFile = null;
+            return s;
+        }
+
+        // ── Operation state (drives the status chip, tab gating and progress bars) ──
+        public bool IsUploading { get; set; }
+        public bool IsAnalyzing { get; set; }
+        public int UploadProgress { get; set; }
+        public bool IsLoadIndexing { get; set; }
+        public int LoadProgress { get; set; }
+        public int IndexProgress { get; set; }
+        public bool IsIndexingPhase { get; set; }
+        /// <summary>The progress bars are showing a wake the server is running (as opposed to this
+        /// page's own upload load). Only a wake can be cancelled back to hibernation.</summary>
+        public bool IsWaking { get; set; }
+        public bool IsCancellingWake { get; set; }
+        /// <summary>A field-configuration save is rebuilding the index on a shadow engine.</summary>
+        public bool IsSaving { get; set; }
+        public int ShadowBuildPercent { get; set; }
+        /// <summary>Error from the last upload, load &amp; index, or wake — shown in the fields tab.</summary>
+        public string? OperationError { get; set; }
+
+        /// <summary>The last Load and Index failed while the uploaded file is still held, so the
+        /// same file can be loaded again once the cause is fixed. Null otherwise. Kept apart from
+        /// <see cref="OperationError"/> because it replaces the generic engine-error alert rather
+        /// than adding a line to the page.</summary>
+        public LoadFailure? LoadFailure { get; set; }
+
+        /// <summary>What Init had to say about the file's types (25 Oct 2026): the sum first, then
+        /// one line per field whose later values were of another type than its first. The text of
+        /// the engine's RecoverableErrors, shown until the next upload. Null when there was nothing.</summary>
+        public List<string>? AnalyzeNotes { get; set; }
+
+        /// <summary>What Load left out for the same reason, the sum first, then one line per field
+        /// with its count. Null when nothing was left out.</summary>
+        public List<string>? LoadWarnings { get; set; }
+
+        /// <summary>The RecoverableErrors of one operation as lines: the sum (the last entry, written
+        /// without a count) first, then each field with its count.</summary>
+        public static List<string>? WarningLines(IReadOnlyList<ProcessErrorCount> errors, string source)
+        {
+            var own = errors.Where(e => e.Error.Source == source).ToList();
+            if (own.Count == 0)
+                return null;
+            var lines = new List<string>(own.Count);
+            var sum = own[^1];
+            lines.Add(sum.Error.Message);
+            foreach (var e in own.Take(own.Count - 1))
+                lines.Add(e.Count > 1 ? $"{e.Error.Message} ({e.Count:N0})" : e.Error.Message);
+            return lines;
+        }
+
+        /// <summary>What the last field configuration import had to say, or null. It lives here
+        /// because the import buttons sit under the table while the alert sits above it, in a
+        /// different component. Cleared by Dismiss and by the next import.</summary>
+        public FieldImportOutcome? FieldImportOutcome { get; set; }
+        public bool IsBusy => IsUploading || IsLoadIndexing || IsSaving;
+
+        // ── UI state shared between tabs ──────────────────────────────────────
+        public string ActiveTab { get; set; } = "fields";
+
+        /// <summary>A tab the address asked for that a sleeping dataset cannot open (Boost rules
+        /// on a hibernated one, say, from the command palette). The page shows the wake view, and
+        /// the panel opens this tab once the dataset is Ready, so Wake up leads where the link
+        /// was going. Cleared when the user picks a tab.</summary>
+        public string? WakeTab { get; set; }
+
+        /// <summary>A rule the Categories tab asks the Boost rules tab to start: a value condition per
+        /// level of the category (one for a path field, one per field of a group). The Boost rules
+        /// tab takes it when it next renders and clears it; nothing is saved until the editor saves.</summary>
+        public BoostDraftRule? BoostDraft { get; set; }
+        public sealed record BoostDraftRule(string Name, IReadOnlyList<(string Field, string Value)> Conditions);
+
+        // ── Change notification ───────────────────────────────────────────────
+        /// <summary>Raised by tabs after they change shared state, so the panel (status table,
+        /// tab nav) and sibling tabs can re-render.</summary>
+        public event Action? Changed;
+        public void NotifyChanged() => Changed?.Invoke();
+
+        /// <summary>Raised after a Replace so the search preview drops its cached results.</summary>
+        public event Action? DocumentsReplaced;
+        public void NotifyDocumentsReplaced() => DocumentsReplaced?.Invoke();
+
+        /// <summary>Raised when this dataset was deleted, transferred or hibernated — the shell
+        /// reloads the team's dataset list.</summary>
+        public event Func<Task>? DatasetListChanged;
+        public Task NotifyDatasetListChangedAsync() => DatasetListChanged?.Invoke() ?? Task.CompletedTask;
+
+        /// <summary>Raised with the new name after a rename — the host navigates there, since the
+        /// name is in the URL and this context is bound to the old one.</summary>
+        public event Func<string, Task>? Renamed;
+
+        /// <summary>Renames the dataset. Runs off the circuit (a Ready engine reloads under the
+        /// new key). Returns the message to show on refusal, null on success.</summary>
+        public async Task<string?> RenameAsync(string newName)
+        {
+            var error = await Task.Run(() => Engines.RenameDataSet(Name, TeamId, newName));
+            if (error != null) return error;
+            SetBufferedFile(null);
+            if (Renamed != null) await Renamed(newName.Trim());
+            return null;
+        }
+
+        // ── Dataset-level operations shared by more than one tab ─────────────
+
+        /// <summary>Deletes the dataset. Runs off the circuit (engine disposal can take
+        /// seconds) and tells the shell to reload its list. Returns false on failure.</summary>
+        public async Task<bool> DeleteAsync()
+        {
+            try
+            {
+                var ok = await Task.Run(() => Engines.DeleteDataSet(Name, TeamId));
+                if (!ok)
+                {
+                    // The dataset is still there: say so, in the modal and on the page.
+                    OperationError = $"Could not delete '{Name}'. It is still here; see the server log for why.";
+                    NotifyChanged();
+                    return false;
+                }
+                SetBufferedFile(null);
+                await NotifyDatasetListChangedAsync();
+                return true;
+            }
+            catch (Exception ex)
+            {
+                OperationError = $"Could not delete '{Name}': {ex.Message}";
+                NotifyChanged();
+                return false;
+            }
+        }
+
+        /// <summary>Unloads the engine from memory (data stays on disk). Only durable for
+        /// Off (client-managed) datasets; timed/pinned reload on the next access. Sleep, not
+        /// Dispose: the shell stays registered, so nothing can race a corpse.</summary>
+        public async Task HibernateAsync()
+        {
+            await Task.Run(() => Engines.SleepDataSetInstance(Name, TeamId));
+            IndxServer.Engine.IndxServerInternalApi.ManagerOrNull?.ReportChange(
+                Name, TeamId, Services.DatasetChangeKind.Hibernate, new { reason = "manual" });
+            // A hibernated dataset isn't Ready: land on Status, where its Wake up view lives.
+            ActiveTab = "status";
+            RefreshStatus();
+            await NotifyDatasetListChangedAsync();
+        }
+
+        public static string FormatBytes(long bytes)
+        {
+            if (bytes >= 1_073_741_824) return $"{bytes / 1_073_741_824.0:F1} GB";
+            if (bytes >= 1_048_576) return $"{bytes / 1_048_576.0:F1} MB";
+            if (bytes >= 1024) return $"{bytes / 1024.0:F1} KB";
+            return $"{bytes} B";
+        }
+
+        public void Dispose()
+        {
+            SetBufferedFile(null);
+        }
+    }
+
+    /// <param name="Title">What went wrong, in the engine's words.</param>
+    /// <param name="Advice">What to do about it on this page.</param>
+    public sealed record LoadFailure(string Title, string Advice);
+
+    /// <param name="Message">What to tell the user.</param>
+    /// <param name="Failed">The file could not be read at all.</param>
+    /// <param name="NothingImported">It was read, but no field took its configuration.</param>
+    public sealed record FieldImportOutcome(string Message, bool Failed, bool NothingImported);
+}

@@ -1,0 +1,22 @@
+/* Wide enough for the report's table; the host is how a page's scoped rule reaches the dialog
+   (FieldProfileManagerModal does the same). */
+.data-check-host ::deep .data-check-modal { max-width: 640px; width: 94vw; gap: 14px; }
+.data-check-text { margin: 0; font: var(--text-sm); color: var(--lv7); }
+.data-check-when { margin: 0; font: var(--text-sm); color: var(--lv5); }
+.data-check-outdated { color: var(--lv8); font-weight: var(--med); }
+.data-check-faint { margin: 0; font: var(--text-xs); color: var(--lv5); }
+.data-check-error { margin: 0; font: var(--text-sm); color: var(--CSignal); }
+.data-check-progress { display: flex; flex-direction: column; gap: 10px; }
+.data-check-progress-line { display: flex; justify-content: space-between; font: var(--text-sm); color: var(--lv7); font-variant-numeric: tabular-nums; }
+.data-check-pct { color: var(--lv8); font-weight: var(--med); }
+.data-check-section { display: flex; flex-direction: column; gap: 6px; }
+.data-check-section-head { display: flex; flex-direction: column; gap: 2px; }
+.data-check-finding { display: flex; align-items: flex-start; gap: 12px; }
+.data-check-finding-text { flex: 1; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.data-check-finding-head { font: var(--text-sm); font-weight: var(--med); color: var(--lv8); }
+.data-check-field { overflow-wrap: anywhere; }
+.data-check-num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.data-check-share { color: var(--lv5); }
+.data-check-action { width: 1%; white-space: nowrap; }
+.data-check-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.data-check-clear { margin-left: auto; }

@@ -1,0 +1,228 @@
+.indx-barmeter {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+
+.indx-barmeter-label {
+    font: var(--text-xs);
+    color: var(--lv5);
+}
+
+/* The bars: a 2px bar every 4px, from the left edge, 14px tall. The dim row is the track; the
+   fill is the same row in the ink, clipped at the value, so bars never straddle the edge
+   differently in the two tones. The row ends on a bar's gap, never on a cut bar. */
+.indx-barmeter-bars {
+    position: relative;
+    height: 14px;
+    background-image: repeating-linear-gradient(to right, var(--lv3) 0 2px, transparent 2px 4px);
+    background-size: calc(100% - 2px) 100%;
+    background-repeat: no-repeat;
+}
+
+.indx-barmeter-fill {
+    position: absolute;
+    inset: 0;
+    /* Clipped at the value, snapped to the 4px pitch where the browser can round, so the fill
+       ends on a gap and never through a bar. */
+    clip-path: inset(0 calc(100% - var(--meter-fill, 0%)) 0 0);
+    color: var(--lv8);
+    background-image: repeating-linear-gradient(to right, currentColor 0 2px, transparent 2px 4px);
+    background-size: calc(100% - 2px) 100%;
+    background-repeat: no-repeat;
+}
+
+.indx-barmeter-foot {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    font: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+}
+
+.indx-barmeter-value {
+    color: var(--lv7);
+}
+
+.indx-barmeter-max {
+    color: var(--lv5);
+    text-align: right;
+}
+
+/* A zone's tick: the one bar where it starts, in its colour, over the fill, so the thresholds
+   are seen before they are reached. */
+.indx-barmeter-zone-mark {
+    clip-path: inset(0 calc(100% - var(--zone-from, 0%) - 2px) 0 var(--zone-from, 0%));
+    z-index: 1;
+}
+
+@supports (width: round(1px, 2px)) {
+    .indx-barmeter-fill {
+        clip-path: inset(0 calc(100% - round(var(--meter-fill, 0%), 4px)) 0 0);
+    }
+
+    .indx-barmeter-zone-mark {
+        clip-path: inset(0 calc(100% - round(var(--zone-from, 0%), 4px) - 2px) 0 round(var(--zone-from, 0%), 4px));
+    }
+}
+
+/* Segments: the row as shares. Each segment is the fill clipped to its span, in its own tone,
+   with its name and share in a head above, and a hairline at each boundary through the bars and
+   a little above them, never up through the heads, so a narrow segment's head is not cut. The
+   last head sits against the right edge, since its segment may be too narrow to hold it. */
+.indx-barmeter-shares {
+    position: relative;
+    padding-top: 34px;
+}
+
+.indx-barmeter-segment {
+    clip-path: inset(0 calc(100% - var(--seg-to, 100%)) 0 var(--seg-from, 0%));
+}
+
+@supports (width: round(1px, 2px)) {
+    .indx-barmeter-segment {
+        clip-path: inset(0 calc(100% - round(var(--seg-to, 100%), 4px)) 0 round(var(--seg-from, 0%), 4px));
+    }
+}
+
+.indx-barmeter-head {
+    position: absolute;
+    top: 0;
+    left: var(--seg-from, 0%);
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    padding-left: 8px;
+    padding-right: 8px;
+    white-space: nowrap;
+}
+
+.indx-barmeter-head:first-child {
+    padding-left: 0;
+}
+
+.indx-barmeter-head-last {
+    left: auto;
+    right: 0;
+    align-items: flex-end;
+    padding-left: 0;
+}
+
+.indx-barmeter-head-name {
+    font: var(--text-xs);
+    color: var(--lv5);
+}
+
+.indx-barmeter-head-share {
+    font: var(--text-sm);
+    color: var(--lv7);
+    font-variant-numeric: tabular-nums;
+}
+
+/* The legend, in place of the heads: the bars sit at the top, the list beneath. */
+.indx-barmeter-shares-legend {
+    padding-top: 0;
+}
+
+.indx-barmeter-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 12px;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+}
+
+.indx-barmeter-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.indx-barmeter-swatch {
+    width: 4px;
+    height: 4px;
+    flex: none;
+}
+
+.indx-barmeter-legend-name {
+    color: var(--lv7);
+}
+
+.indx-barmeter-legend-share {
+    color: var(--lv5);
+}
+
+.indx-barmeter-divider {
+    position: absolute;
+    bottom: 0;
+    height: 20px;
+    pointer-events: none;
+    left: var(--seg-from, 0%);
+    width: 1px;
+    background: var(--lv3);
+}
+
+@supports (width: round(1px, 2px)) {
+    .indx-barmeter-divider {
+        left: calc(round(var(--seg-from, 0%), 4px) - 1px);
+    }
+}
+
+/* The ring: the same bars as radial lines around a circle.
+   The value and ceiling sit in the middle, the label beneath. currentColor is the ink, or the
+   Color parameter set inline on the meter. */
+.indx-barmeter-ring {
+    align-items: center;
+    width: var(--meter-size, 72px);
+    color: var(--lv8);
+}
+
+.indx-barmeter-dial {
+    position: relative;
+    width: var(--meter-size, 72px);
+    height: var(--meter-size, 72px);
+}
+
+.indx-barmeter-svg {
+    display: block;
+}
+
+.indx-barmeter-svg line {
+    stroke-width: 2px;
+    stroke-linecap: butt;
+}
+
+.indx-barmeter-lit {
+    stroke: currentColor;
+}
+
+.indx-barmeter-dim {
+    stroke: var(--lv3);
+}
+
+/* The bar where a zone starts: its tick, in the zone's colour. */
+.indx-barmeter-zone-bar {
+    stroke: currentColor;
+}
+
+.indx-barmeter-centre {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    font: var(--text-xs);
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+    line-height: 1.1;
+}
+
+.indx-barmeter-ring .indx-barmeter-label {
+    text-align: center;
+}

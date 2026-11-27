@@ -1,0 +1,453 @@
+﻿@* One dataset of the active team: alerts, the tab components, and the sections it publishes to
+   the console's side column (SideMenuState). Owns the DatasetContext the tabs share, loads status/field config on first display, and
+   polls the engine while it is loading or indexing in the background.
+
+   Hosted by Pages/DatasetPage.razor, one panel per page. Visible is kept as a parameter so a
+   host can mount the panel hidden and show it later (the tests do); status loads on the first
+   visible render. *@
+@using Indx.Api
+@implements IDisposable
+@inject IndxServer.Services.StatisticsService Statistics
+@inject IDatasetEngines Engines
+@inject IServiceProvider PanelServices
+@inject BoostRuleStore BoostStore
+@inject BuryRuleStore BuryStore
+@inject NavigationManager Nav
+@inject IndxServer.Services.SearchOrAsk.SearchOrAskService SearchOrAsk
+@inject IndxServer.Services.SideMenuState Menu
+@inject IndxServer.Services.Webhooks.WebhookStore Webhooks
+
+@* The header slot (the console's breadcrumb row, with DatasetStatus in its actions) sits
+   outside the Surface so it lands at exactly the same spot as on the team page — the
+   Surface's own padding would otherwise nudge it. *@
+@if (Header != null)
+{
+    <div hidden="@(!Visible)">@Header(Ctx)</div>
+}
+
+<div class="indx-dataset-card" hidden="@(!Visible)">
+    <div class="indx-dataset-card-inner">
+        <Surface Transparent>
+            <CascadingValue Value="Ctx" IsFixed>
+
+                @* ── Alerts — only rendered when the engine reports one. ── *@
+                <DatasetAlerts Ctx="Ctx" />
+
+                @* ── The sections, in the side column. The full set is always laid out in the
+                   same order. Sections that need a built index are disabled (with the reason)
+                   until the dataset is Ready, so the column keeps its shape from the first upload
+                   onward. Error shows only what can act on it. A sleeping dataset (hibernated, or
+                   created and not yet loaded) shows the whole menu disabled with nothing open: the
+                   view is Wake up / Delete or the upload, and the column keeps the page's shape.
+                   Role rules hide, never disable: disabled means "not yet". ── *@
+                @{
+                    var engineState = Ctx.EngineState;
+                    var isReady = engineState == SystemState.Ready;
+                    var showNav = ShowNav;
+                    var tab = Ctx.ActiveTab;
+                    // Not Ready and not Error: the not-yet sections are shown disabled.
+                    var pending = !isReady && engineState != SystemState.Error;
+                    // Asleep: hibernated, not loaded, waking, or created and empty. The upload flow
+                    // is the content (Wake up, its progress, or the upload). A hibernated dataset's
+                    // data is all there, so Options (download, keep-alive, transfer, delete) and
+                    // Statistics need no engine and open; the wake view sits under Status, where a
+                    // dataset's state is read; the rest waits for Wake up (24 Oct 2026).
+                    var asleep = IsAsleep;
+                    var sleepTab = !asleep ? tab
+                        : Ctx.IsHibernated && tab is "options" or "statistics" ? tab
+                        : tab == "webhooks" && Ctx.IsAdmin ? tab
+                        : Ctx.IsHibernated ? "status" : null;
+                    if (!Ctx.HasStatus || !Visible) PublishMenu(null, tab);
+                    else if (showNav) PublishMenu(NavItems(isReady, pending), tab);
+                    else PublishMenu(SleepingItems(), sleepTab);
+                }
+
+                @* Below Editor these are shown read-only: say so once, above them. Categories is not
+                   among them: a viewer browses it fully, and its editing parts are simply absent. *@
+                @if (!Ctx.IsEditor && !asleep && tab is "fields" or "boosts" or "synonyms" or "query-parameters" or "search-or-ask")
+                {
+                    <div class="indx-readonly-note">
+                        <Alert>You can view this as a @(Ctx.Role?.ToLowerInvariant() ?? "viewer"). An editor or admin of the team changes it.</Alert>
+                    </div>
+                }
+
+                @* ── Tabs. All stay mounted so edit state survives switching; only the active one renders. ── *@
+                <UploadFlow Active="@(asleep ? sleepTab is null or "status" : tab == "fields")" />
+                <FieldConfigTab Active="@(tab == "fields" && isReady)" />
+                <RecordsTab Active="@(tab == "records" && isReady)" />
+                <CategoriesTab Active="@(tab == "categories" && isReady)" />
+                <FiltersTab Active="@(tab == "filters" && isReady)" />
+                <SearchPreviewTab Active="@(tab == "search")" />
+                <StatusTab Active="@(tab == "status" && !asleep)" />
+                <OptionsTab Active="@(sleepTab == "options")" />
+                <RankingRulesTab Active="@(tab == "boosts")" />
+                <SynonymsTab Active="@(tab == "synonyms")" />
+                <QueryParametersTab Active="@(tab == "query-parameters")" />
+                <SearchOrAskTab Active="@(tab == "search-or-ask")" />
+                <StatisticsTab Active="@(sleepTab == "statistics")" />
+                <WebhooksTab Active="@(sleepTab == "webhooks")" />
+
+            </CascadingValue>
+        </Surface>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired] public string Name { get; set; } = "";
+    [Parameter, EditorRequired] public string TeamId { get; set; } = "";
+    [Parameter] public string? Role { get; set; }
+    [Parameter] public IReadOnlyList<(Data.Team Team, string Role)> MyTeams { get; set; } = [];
+    /// <summary>Whether this is the selected dataset. Hidden panels stay mounted.</summary>
+    [Parameter] public bool Visible { get; set; }
+    /// <summary>Rendered above everything with this panel's context — the console puts its
+    /// breadcrumb row here so the row can show the dataset's state.</summary>
+    [Parameter] public RenderFragment<DatasetContext>? Header { get; set; }
+    /// <summary>The dataset was deleted, transferred or hibernated; the shell reloads its list.</summary>
+    [Parameter] public EventCallback OnDatasetListChanged { get; set; }
+    /// <summary>The dataset was renamed; the host navigates to the new name.</summary>
+    [Parameter] public EventCallback<string> OnRenamed { get; set; }
+    /// <summary>Called once with the panel's context, so the host can render state (the header
+    /// breadcrumb's status chip) outside the panel.</summary>
+    [Parameter] public Action<DatasetContext>? OnContextCreated { get; set; }
+
+    public DatasetContext Ctx { get; private set; } = default!;
+
+    private bool _loaded;
+    private CancellationTokenSource? _pollCts;
+
+    protected override void OnInitialized()
+    {
+        Ctx = new DatasetContext(Engines, Name, TeamId, Role, MyTeams);
+        Ctx.Changed += OnCtxChanged;
+        Ctx.DatasetListChanged += () => OnDatasetListChanged.InvokeAsync();
+        Ctx.Renamed += newName => OnRenamed.InvokeAsync(newName);
+        OnContextCreated?.Invoke(Ctx);
+    }
+
+    // Listened for only in a live circuit: a static render (the tests' HtmlRenderer) has a
+    // NavigationManager that was never initialised, and removing a handler from it throws.
+    private bool _listening;
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        if (!firstRender) return;
+        Nav.LocationChanged += OnLocationChanged;
+        _listening = true;
+        // Get started's Open a dataset, for whoever is signed in (a live circuit only, as here).
+        if (PanelServices.GetService(typeof(IndxServer.Services.OnboardingService)) is IndxServer.Services.OnboardingService onboarding)
+            _ = onboarding.MarkAsync(TeamId, "open");
+    }
+
+    /// <summary>A jump to another tab of this dataset (the command palette, a link) changes only
+    /// ?tab=, and the page is not created again: open the tab the address now names. SyncAddress's
+    /// own replace lands here too, naming the tab already open, and changes nothing. A sleeping
+    /// dataset takes the tabs it can open (OpenAddressTab).</summary>
+    private void OnLocationChanged(object? sender, Microsoft.AspNetCore.Components.Routing.LocationChangedEventArgs e)
+    {
+        if (!Visible) return;
+        if (IndxServer.Services.TeamRoutes.DatasetFromPath(Nav.ToBaseRelativePath(e.Location)) != Name) return;
+        _ = InvokeAsync(() =>
+        {
+            if (!OpenAddressTab()) return;
+            Ctx.NotifyChanged();
+            StateHasChanged();
+        });
+    }
+
+    protected override void OnParametersSet()
+    {
+        Ctx.MyTeams = MyTeams;
+        if (Visible && !_loaded)
+        {
+            _loaded = true;
+            Ctx.RefreshStatus();
+            if (Ctx.EngineState == SystemState.Ready) Ctx.EnsureFieldsLoaded();
+            // Opens on the tab the address names (?tab=), so a refresh or a link lands where it
+            // was; a sleeping dataset too, for the tabs it can open (OpenAddressTab).
+            OpenAddressTab();
+            StartPollingIfTransitional();
+            // The tab components rendered once already (before status was known) and Blazor
+            // skips children whose parameters did not change — tell them the context moved.
+            Ctx.NotifyChanged();
+        }
+    }
+
+    private void OnCtxChanged()
+    {
+        StartPollingIfTransitional();
+        _ = InvokeAsync(() =>
+        {
+            // Woken: open the tab the link asked for while the dataset slept. Its notification
+            // brings this handler back round to sync the address and render.
+            if (OpenWakeTab()) { Ctx.NotifyChanged(); return; }
+            SyncAddress();
+            StateHasChanged();
+        });
+    }
+
+    /// <summary>Chosen in the side column, which is another component: the context's event is
+    /// what re-renders this panel and its tabs, and keeps the address in step.</summary>
+    private void SelectTab(string tab)
+    {
+        // A tab picked by hand replaces the one a link left waiting for Wake up.
+        Ctx.WakeTab = null;
+        if (Ctx.ActiveTab == tab) return;
+        Ctx.ActiveTab = tab;
+        Ctx.NotifyChanged();
+    }
+
+    private string? _published;
+
+    /// <summary>Hands the sections to the side column, grouped as the plan lays them out, with
+    /// the open one marked. Called from the render so the rendering tests see what the page
+    /// published; it tells the column only when something changed, since the column is another
+    /// component and re-renders on the event.</summary>
+    private void PublishMenu(List<Tabs.TabItem>? items, string? active)
+    {
+        if (items == null)
+        {
+            if (_published != null) { _published = null; Menu.Clear(this); }
+            return;
+        }
+        var signature = active + "|" + string.Join(";", items.Select(i => $"{i.Value}:{i.Disabled}:{i.Badge}"));
+        if (signature == _published) return;
+        _published = signature;
+        Menu.Set(this, GroupSections(items), active, SelectTab);
+    }
+
+    /// <summary>Overview · Data · Relevance · Try it · Settings. A group with nothing in it (a
+    /// viewer's Relevance) is left out; an item no group names goes last, so a new tab is never lost.</summary>
+    internal static IReadOnlyList<SideMenuGroup> GroupSections(IReadOnlyList<Tabs.TabItem> items)
+    {
+        var layout = new (string Title, string[] Keys)[]
+        {
+            ("Overview", ["status", "statistics"]),
+            ("Data", ["fields", "records", "categories", "filters", "webhooks"]),
+            ("Relevance", ["query-parameters", "boosts", "synonyms"]),
+            ("Try it", ["search", "search-or-ask"]),
+            ("Settings", ["options"]),
+        };
+        var groups = new List<SideMenuGroup>();
+        var placed = new HashSet<string>();
+        foreach (var (title, keys) in layout)
+        {
+            var members = keys.Select(k => items.FirstOrDefault(i => i.Value == k)).Where(i => i != null).Select(i => ToMenuItem(i!)).ToList();
+            if (members.Count == 0) continue;
+            foreach (var k in keys) placed.Add(k);
+            groups.Add(new SideMenuGroup(title, members));
+        }
+        var rest = items.Where(i => !placed.Contains(i.Value)).Select(ToMenuItem).ToList();
+        if (rest.Count > 0) groups.Add(new SideMenuGroup(null, rest));
+        return groups;
+    }
+
+    // Search or ask carries the lab mark in the column, as its page carries the Experimental chip.
+    private static SideMenuItem ToMenuItem(Tabs.TabItem i) =>
+        new(i.Value, i.Label, i.Icon, Href: null, Disabled: i.Disabled, Title: i.Title, Badge: i.Badge, BadgeTitle: i.BadgeTitle,
+            Experimental: i.Value == "search-or-ask");
+
+    private const string TabQuery = "tab";
+
+    /// <summary>The sections are the full menu: Ready, or a dataset that can be worked on in
+    /// another state (analysed and not yet loaded for an editor, Error for an admin).</summary>
+    private bool ShowNav =>
+        Ctx.EngineState == SystemState.Ready
+        || (Ctx.IsAnalyzed && !Ctx.IsLoadIndexing && Ctx.IsEditor)
+        || (Ctx.EngineState == SystemState.Error && Ctx.IsAdmin && !Ctx.IsLoadIndexing);
+
+    /// <summary>Hibernated, not loaded, waking, or created and empty: the sleeping menu
+    /// (SleepingItems), and the upload flow or the wake view as the content.</summary>
+    private bool IsAsleep => Ctx.HasStatus && Visible && !ShowNav;
+
+    /// <summary>The address, or null in a static render (the tests' HtmlRenderer), whose
+    /// NavigationManager was never initialised and throws when asked.</summary>
+    private Uri? Address()
+    {
+        try { return new Uri(Nav.Uri); }
+        catch (InvalidOperationException) { return null; }
+    }
+
+    /// <summary>The tab the address names (?tab=), or null.</summary>
+    private string? AddressTab()
+    {
+        if (Address() is not { } address) return null;
+        var requested = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(address.Query)
+            .TryGetValue(TabQuery, out var v) ? v.ToString() : null;
+        return string.IsNullOrEmpty(requested) ? null : requested;
+    }
+
+    private static bool Opens(IEnumerable<Tabs.TabItem> items, string? tab) =>
+        tab != null && items.Any(i => i.Value == tab && !i.Disabled);
+
+    /// <summary>
+    /// Opens the tab the address names, when the dataset in its state can show it to this user,
+    /// and says whether the open tab changed. Ready: any enabled section, else Status. Asleep:
+    /// the sections that need no engine (Options and Statistics while hibernated, Webhooks for
+    /// an admin); a section that needs one shows the wake view (or the upload) and is kept in
+    /// <see cref="DatasetContext.WakeTab"/> for when the dataset is Ready. Navigation never wakes
+    /// a dataset. Other states (loading, Error) choose their own view. A stale link, or a viewer
+    /// handed an editor's, falls back the same way.
+    /// </summary>
+    private bool OpenAddressTab()
+    {
+        var requested = AddressTab();
+        // ?tab=buries from before Nov 2026 opens the one list the bury rules are in now.
+        if (requested == "buries") requested = "boosts";
+        string tab;
+        if (Ctx.EngineState == SystemState.Ready)
+            tab = Opens(NavItems(isReady: true, pending: false), requested) ? requested! : "status";
+        else if (IsAsleep)
+        {
+            if (Opens(SleepingItems(), requested)) { tab = requested!; Ctx.WakeTab = null; }
+            else
+            {
+                tab = Ctx.IsHibernated ? "status" : "fields";
+                Ctx.WakeTab = Ctx.IsHibernated && Opens(NavItems(isReady: true, pending: false), requested) ? requested : null;
+            }
+        }
+        else return false;
+        if (tab == Ctx.ActiveTab) return false;
+        Ctx.ActiveTab = tab;
+        return true;
+    }
+
+    /// <summary>Once the dataset is Ready, opens the tab a link asked for while it slept.</summary>
+    private bool OpenWakeTab()
+    {
+        if (Ctx.WakeTab is not { } tab || Ctx.EngineState != SystemState.Ready) return false;
+        Ctx.WakeTab = null;
+        if (tab == Ctx.ActiveTab || !Opens(NavItems(isReady: true, pending: false), tab)) return false;
+        Ctx.ActiveTab = tab;
+        return true;
+    }
+
+    /// <summary>Keeps ?tab= in step with the open tab, replacing the history entry rather than
+    /// adding one, so Back still leaves the dataset. Status is the default and is left out. While
+    /// the dataset is Ready, and while it sleeps on a tab it can open: the wake view keeps a tab
+    /// waiting for Wake up in the address, so a refresh keeps it too. The other states choose
+    /// their own view and leave the address alone.</summary>
+    private void SyncAddress()
+    {
+        if (!Visible) return;
+        string? want;
+        if (Ctx.EngineState == SystemState.Ready) want = Ctx.ActiveTab == "status" ? null : Ctx.ActiveTab;
+        else if (IsAsleep && Opens(SleepingItems(), Ctx.ActiveTab)) want = Ctx.ActiveTab == "status" ? Ctx.WakeTab : Ctx.ActiveTab;
+        else return;
+        if (Address() is not { } address) return;
+        var query = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(address.Query);
+        var have = query.TryGetValue(TabQuery, out var v) ? v.ToString() : null;
+        if (want == have) return;
+        Nav.NavigateTo(Nav.GetUriWithQueryParameter(TabQuery, want), replace: true);
+    }
+
+    private const string NotYet = "Available after the index is built";
+    private const string Asleep = "Available once the dataset is awake";
+
+    /// <summary>The menu of a dataset that cannot be worked on yet: every section the role would
+    /// see, disabled with the reason, so the column holds the page's shape while the content is
+    /// the wake view or the upload.</summary>
+    private List<Tabs.TabItem> SleepingItems()
+    {
+        var reason = Ctx.IsHibernated ? Asleep : NotYet;
+        return NavItems(isReady: false, pending: true)
+            .Select(i => Ctx.IsHibernated && i.Value is "status" or "options" or "statistics"
+                || i.Value == "webhooks"
+                ? i with { Disabled = false, Title = null, Badge = null, BadgeTitle = null }
+                : i with { Disabled = true, Title = reason, Badge = null, BadgeTitle = null })
+            .ToList();
+    }
+
+    /// <summary>The sections, in the order the side column lays them out before grouping. One that
+    /// needs a Ready engine is disabled with the reason; role rules leave one out instead.</summary>
+    private List<Tabs.TabItem> NavItems(bool isReady, bool pending)
+    {
+        var items = new List<Tabs.TabItem>(6);
+        Tabs.TabItem Tab(string value, string label, RenderFragment<int> icon, bool enabled, string? badge = null, string? badgeTitle = null) =>
+            new(label, value, icon, Disabled: !enabled, Title: enabled ? null : NotYet, Badge: badge, BadgeTitle: badgeTitle);
+
+        if (isReady || pending) items.Add(Tab("status", "Status", DatasetIcons.Status, isReady));
+        items.Add(Tab("fields", "Field configuration", DatasetIcons.FieldConfiguration, true));
+        // The records as a table, read through a search: needs the built index.
+        if (isReady || pending) items.Add(Tab("records", "Records", DatasetIcons.Records, isReady));
+        // The categories of a catalogue, read from a facet: needs the built index.
+        if (isReady || pending) items.Add(Tab("categories", "Categories", DatasetIcons.Categories, isReady));
+        // The filters a search page offers, from the values of the built index.
+        if (isReady || pending) items.Add(Tab("filters", "Filters", DatasetIcons.Filter, isReady));
+        // Configuration only, read on every search: needs no built index. Every role sees it;
+        // below Editor read-only (ReadOnlyArea), as boost rules, synonyms and Search or ask.
+        if (isReady || pending)
+            items.Add(Tab("query-parameters", "Query parameters", DatasetIcons.QueryParameters, true));
+        // Settings need no built index; the tester inside the tab says when it needs one. Only
+        // while the instance shows the experimental feature (admin settings) and a team admin has
+        // switched it on for this dataset (Options).
+        if ((isReady || pending) && SearchOrAsk.ShownFor(Ctx.TeamId, Ctx.Name))
+            items.Add(Tab("search-or-ask", "Search or ask", DatasetIcons.SearchOrAsk, true));
+        if (isReady || pending) items.Add(Tab("search", "Search preview", DatasetIcons.Search, isReady));
+        // Statistics live in their own store, so the tab works even for a hibernated dataset -
+        // it reads no engine (titles fall back to keys) and must never wake one.
+        if (Statistics.Enabled) items.Add(Tab("statistics", "Statistics", DatasetIcons.Statistics, true));
+        if (isReady || pending)
+        {
+            // Boost and bury rules in one list (Nov 2026), so one badge for the expired of both.
+            var expired = isReady && Ctx.IsEditor ? ExpiredRules(BoostStore) + ExpiredRules(BuryStore) : 0;
+            items.Add(Tab("boosts", "Boost rules", DatasetIcons.Boost, isReady,
+                expired > 0 ? expired.ToString() : null,
+                expired > 0 ? $"{expired} expired boost or bury rule(s), no longer applying" : null));
+            items.Add(Tab("synonyms", "Synonyms", DatasetIcons.Synonym, isReady));
+        }
+        // Needs no built index: a webhook's first full sync is how an empty dataset gets its documents.
+        if (Ctx.IsAdmin)
+        {
+            var held = HeldWebhookBatches();
+            items.Add(Tab("webhooks", "Webhooks", DatasetIcons.Webhooks, true,
+                held > 0 ? held.ToString() : null,
+                held > 0 ? $"{held} webhook batch(es) held by the brake, waiting for you" : null));
+        }
+        if (Ctx.IsAdmin) items.Add(Tab("options", "Options", DatasetIcons.Sliders, true));
+        return items;
+    }
+
+    /// <summary>Enabled rules whose window has closed — the ones an editor most needs to notice,
+    /// since they look live until someone opens the tab. The store caches, so this is cheap.</summary>
+    private int ExpiredRules(IRankingRuleStore store)
+    {
+        var today = DateOnly.FromDateTime(DateTime.Today);
+        return store.LoadRules(Ctx.TeamId, Ctx.Name).Count(r => r.Enabled && r.ActiveUntil is { } u && u < today);
+    }
+
+    /// <summary>Batches the webhooks' brake holds for an admin: the badge says they wait.</summary>
+    private int HeldWebhookBatches() => Webhooks.List(Ctx.TeamId, Ctx.Name).Sum(h => Webhooks.Held(h.Id).Count);
+
+    /// <summary>While the engine loads or indexes in the background (a load started from the API,
+    /// or a page reopened mid-operation), refresh the status once a second until it settles, and
+    /// pick up the field configuration the moment it becomes Ready.</summary>
+    private void StartPollingIfTransitional()
+    {
+        if (_pollCts != null || !Ctx.IsTransitional || Ctx.IsLoadIndexing) return;
+        _pollCts = new CancellationTokenSource();
+        var cts = _pollCts;
+        _ = ProgressPoller.RunAsync(TimeSpan.FromSeconds(1),
+            () =>
+            {
+                Ctx.RefreshStatus();
+                if (Ctx.EngineState == SystemState.Ready) Ctx.EnsureFieldsLoaded();
+                // Once the upload flow has attached to a wake it polls for itself, faster.
+                return Ctx.IsTransitional && !Ctx.IsLoadIndexing;
+            },
+            () => InvokeAsync(() => { StateHasChanged(); Ctx.NotifyChanged(); }),
+            cts.Token).ContinueWith(_ =>
+            {
+                if (ReferenceEquals(_pollCts, cts)) _pollCts = null;
+                cts.Dispose();
+            });
+    }
+
+    public void Dispose()
+    {
+        if (_listening) Nav.LocationChanged -= OnLocationChanged;
+        Menu.Clear(this);
+        Ctx.Changed -= OnCtxChanged;
+        _pollCts?.Cancel();
+        Ctx.Dispose();
+    }
+}

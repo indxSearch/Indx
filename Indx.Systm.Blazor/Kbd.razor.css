@@ -1,0 +1,21 @@
+/* After shadcn's Kbd: a filled cap with no outline, the muted surface and text, the page's own
+   font at a small size and medium weight. The face's tone, never a shadow, sets it off. */
+.indx-kbd {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    box-sizing: border-box;
+    min-width: 20px;
+    height: 20px;
+    padding: 0 4px;
+    border-radius: 3px;
+    background: var(--lv2);
+    color: var(--lv5);
+    font: var(--text-xs);
+    font-weight: var(--med);
+    line-height: 1;
+    white-space: nowrap;
+    user-select: none;
+}
+.indx-kbd ::deep svg { width: 12px; height: 12px; }

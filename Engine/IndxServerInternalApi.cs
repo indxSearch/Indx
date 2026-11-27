@@ -1,0 +1,2334 @@
+﻿using System.Collections.Concurrent;
+using System.Collections.Immutable;
+using Indx.Api;
+using Indx.Http;
+using Indx.Embeddings;
+using Indx.Storage;
+using IndxServer.Models;
+namespace IndxServer.Engine
+{
+    /// <summary>
+    /// In-process registry of <see cref="SearchEngine"/> instances, keyed by the owning team.
+    /// Datasets are owned by a team: the storage layer's owner column holds a team id (GUID
+    /// string) where it historically held a user id. Authorization (who may touch a team's
+    /// datasets) is decided in the controllers via team membership, so this class no longer
+    /// carries any per-user sharing/grantee logic — it just maps (dataSetName, teamId) to an engine.
+    /// </summary>
+    internal sealed partial class IndxServerInternalApi
+    {
+        #region Public Methods
+        /// <summary>
+        /// The engine to analyse into: the dataset's own when it is unloaded, else a new one in its
+        /// place, the old disposed. The replacement is taken out and built as every instance is
+        /// (<see cref="DisposeDataSetInstance"/>, <see cref="GetOrCreateInstance"/>), under the
+        /// registry's lock and with the dataset's name, team, keep-alive and synonym list. Until 16
+        /// Nov 2026 this changed the registry with no lock held and built a bare instance, which
+        /// read as pinned and had no synonyms. Throws <see cref="ShadowBusyException"/> while a
+        /// rebuild runs: its engine would be swapped into an instance no longer in the registry.
+        /// </summary>
+        public IServerSearchEngine? FindSearchEngineForInit(string dataSetName, string teamId)
+        {
+            var matcher = FindInstance(dataSetName, teamId);
+            if (matcher == null)
+                return null;
+            if (matcher.Status.SystemState == SystemState.Created)
+                return matcher;
+            if (_shadowBuildsInProgress.ContainsKey(MakeKey(dataSetName, teamId)))
+                throw new ShadowBusyException(dataSetName);
+            DisposeDataSetInstance(dataSetName, teamId);
+            return FindInstance(dataSetName, teamId);
+        }
+        public IServerSearchEngine? FindSearchEngine(string dataSetName, string teamId)
+        {
+            return FindInstance(dataSetName, teamId);
+        }
+        #endregion Public Methods
+
+        #region Internal Fields
+        internal const string logFileName = "IndxServer.log";
+        #endregion Internal Fields
+
+        #region Internal Properties
+        // API will not get used before after program.cs has executed App.Run. It will however, call
+        // IndxServerInternalAPI.StartUpSystem first, ensuring Manager cannot be null.
+
+        internal static IndxServerInternalApi Manager
+        {
+            get => _manager ?? throw new InvalidOperationException(
+                "Manager not initialized. Call StartUpSystem during startup.");
+            private set => _manager = value;
+        }
+
+        #endregion Internal Properties
+
+        #region Internal Methods
+        /// <summary>
+        /// Builds the process-wide dataset registry and initialises it. Called once during startup,
+        /// before anything resolves <see cref="Manager"/>; a second call throws rather than
+        /// replacing a registry that already owns live engines.
+        /// </summary>
+        /// <param name="dbConnectionString">Where the datasets live — the search database
+        /// (<c>indx.db</c>), holding the documents and the per-dataset configuration. The registry
+        /// keeps it for every engine it later builds.</param>
+        /// <param name="loggerFactory">The host's. The registry logs through it and hands it to every
+        /// engine, so what they log goes where the rest of the server's logging goes (the file, the
+        /// console or monitor, Application Insights) rather than to a file of its own.</param>
+        /// <param name="licensePath">An explicit licence file. Empty means look for one, which is
+        /// the usual case: <c>GetLicensePath()</c> scans the data directory and prefers a company
+        /// licence over a developer one. Held for the life of the process and read again whenever
+        /// an engine is built, including on a shadow rebuild.</param>
+        internal static void StartUpSystem(string dbConnectionString, ILoggerFactory loggerFactory, string licensePath = "")
+        {
+            if (_manager != null)  // Check the backing field directly
+            {
+                throw new InvalidOperationException("IndxServerInternalApi.StartUpSystem shall only be called once");
+            }
+            LicensePath = licensePath;
+            Manager = new IndxServerInternalApi(dbConnectionString, loggerFactory);
+            Manager.InitializeSystem();
+        }
+
+        /// <summary>
+        /// Resets the static Manager so the next startup can reinitialize cleanly.
+        /// Called from the application host's ApplicationStopped event.
+        /// </summary>
+        internal static void Shutdown()
+        {
+            _manager = null;
+            SearchDbConnectionString = "";
+            LicensePath = "";
+        }
+        internal static string SearchDbConnectionString { get; private set; } = "";
+        internal static string LicensePath { get; private set; } = "";
+        // Clock for keep-alive last-used stamping and idle-eviction. Overridable so tests can advance
+        // time (FakeTimeProvider) without real waits. Defaults to the system clock.
+        internal static TimeProvider TimeProvider { get; set; } = TimeProvider.System;
+
+        /// <summary>
+        /// The only configuration number ever written to <c>DataSet.IndxConfiguration</c>. Written by
+        /// <c>DatasetsController.CreateOrOpen</c> and read back here — the two must agree.
+        /// </summary>
+        internal const int DefaultConfigurationNumber = 400;
+
+        /// <summary>
+        /// Resolves a dataset's persisted configuration to the parameters its engine is built with.
+        /// <para>
+        /// The <c>DataSet.IndxConfiguration</c> column stays: it is where a serialized configuration
+        /// will live once anything but the default is supported. Until then 400 is the only value
+        /// written, and it means <see cref="ConfigurationParameters.Default"/> — so this is the one
+        /// place that knows it, instead of the four casts to a profile enum this replaced.
+        /// </para>
+        /// <para>
+        /// An unrecognised number resolves to the default rather than throwing. The engine is built
+        /// inside the registry lock on a request path, so throwing here would turn a stale column
+        /// value into a 500 for a dataset whose documents are perfectly fine.
+        /// </para>
+        /// </summary>
+        internal static ConfigurationParameters ResolveConfiguration(int? persisted, string dataSetName)
+        {
+            if (persisted is null or DefaultConfigurationNumber)
+                return ConfigurationParameters.Default;
+
+            // Cold path: CreateOrOpen writes DefaultConfigurationNumber and nothing else can write
+            // this column, so reaching here means a hand-edited or future-written row.
+            _manager?._logger.LogWarning(
+                "Dataset '{DataSet}' carries configuration {Configuration}, which is not supported; opening with the default.",
+                dataSetName, persisted);
+            return ConfigurationParameters.Default;
+        }
+
+        /// <summary>
+        /// The configuration a dataset's engine is built with: <see cref="ResolveConfiguration"/>,
+        /// with the dataset's own text rules as the engine's normalizer when it has any (17 Nov
+        /// 2026, <see cref="Services.DatasetTextRuleStore"/>) and its shortest word as the
+        /// tokenizer's (18 Nov 2026). Rules that cannot be built are
+        /// logged and left out: a dataset must open.
+        /// </summary>
+        internal static ConfigurationParameters ConfigurationFor(int? persisted, string dataSetName, string teamId)
+        {
+            var configuration = ResolveConfiguration(persisted, dataSetName);
+            try
+            {
+                return Services.DatasetTextRuleStore.Apply(configuration, _manager?._textRuleStore?.Load(teamId, dataSetName));
+            }
+            catch (Exception ex)
+            {
+                _manager?._logger.LogError(ex, "Dataset '{DataSet}': its text rules could not be built; opening with Indx's own.", dataSetName);
+                return configuration;
+            }
+        }
+
+        /// <summary>The largest filter cache a dataset can be created with, in megabytes.</summary>
+        internal const int MostFilterCacheMB = 65_536;
+
+        /// <summary>The filter cache the dataset was created with, in megabytes; the engine's default
+        /// when none was given.</summary>
+        internal static int FilterCacheMBFor(string dataSetName, string teamId) =>
+            _manager?._metadataStore?.LoadFilterCacheMB(teamId, dataSetName) ?? SearchEngine.DefaultFilterCacheMB;
+
+        internal void SaveFilterCacheMB(string dataSetName, string teamId, int megabytes) =>
+            (_metadataStore ?? throw new InvalidOperationException("No metadata store is attached."))
+                .SaveFilterCacheMB(teamId, dataSetName, megabytes);
+
+        internal static string GetLicensePath()
+        {
+            // If explicitly configured, use that
+            if (!string.IsNullOrWhiteSpace(LicensePath) && File.Exists(LicensePath))
+                return Path.GetFullPath(LicensePath);
+
+            // Auto-detect in ./IndxData directory
+            var dataDir = IndxServer.Services.DataPaths.Current;
+            if (Directory.Exists(dataDir))
+            {
+                var licenses = Directory.GetFiles(dataDir, "*.license");
+                if (licenses.Length > 0)
+                {
+                    // Prefer company licenses over developer licenses
+                    // (company licenses typically have company names, not "developer")
+                    var companyLicense = licenses.FirstOrDefault(l =>
+                        !Path.GetFileName(l).Equals("indx-developer.license", StringComparison.OrdinalIgnoreCase));
+
+                    if (companyLicense != null)
+                        return Path.GetFullPath(companyLicense);
+
+                    // Fall back to first license found
+                    return Path.GetFullPath(licenses[0]);
+                }
+            }
+
+            // No license found - return empty string (100k document limit)
+            return string.Empty;
+        }
+        /// <summary>
+        /// After Loading, insertions and deletions call this function
+        /// to perform the actual indexing. Use the GetState method
+        /// to monitor progress and readiness for Search.
+        /// </summary>
+        /// <summary>Monitors of loads and index builds that are running right now, so the console can
+        /// show progress for them. <see cref="_shadowMonitors"/> does the same for shadow rebuilds;
+        /// this covers the first-time load and index, whose monitors used to be created, used and
+        /// dropped inside the call, leaving a dataset sitting on "Indexing" with nothing to report.
+        /// An entry lives only for the duration of the operation.</summary>
+        private readonly ConcurrentDictionary<string, ProcessMonitor> _activeMonitors = new();
+
+        /// <summary>Publishes <paramref name="monitor"/> as this dataset's running operation until the
+        /// returned scope is disposed. Every path that loads or indexes goes through here, so
+        /// "is something working on this dataset right now" has one answer: warm-up at startup, a
+        /// wake-on-demand, a first-time load, an index build.</summary>
+        internal IDisposable TrackMonitor(string dataSetName, string teamId, ProcessMonitor monitor)
+        {
+            var key = MakeKey(dataSetName, teamId);
+            _activeMonitors[key] = monitor;
+            return new MonitorScope(_activeMonitors, key);
+        }
+
+        private sealed class MonitorScope(ConcurrentDictionary<string, ProcessMonitor> map, string key) : IDisposable
+        {
+            public void Dispose() => map.TryRemove(key, out _);
+        }
+
+        /// <summary>Datasets startup warm-up still intends to load. Warm-up works through its list one
+        /// at a time, so at any moment only one of them holds a monitor; without this the rest read as
+        /// hibernated, which is the opposite of true. An entry is removed when warm-up reaches the
+        /// dataset, so the set empties as the queue drains.</summary>
+        private readonly ConcurrentDictionary<string, byte> _warmUpPending = new();
+
+        /// <summary>True while a load or index is running for this dataset. A dataset with rows on
+        /// disk and no live engine is asleep; one with something working on it is on its way up, and
+        /// the console needs to tell those apart.</summary>
+        internal bool IsWorkInProgress(string dataSetName, string teamId)
+        {
+            var key = MakeKey(dataSetName, teamId);
+            return _activeMonitors.ContainsKey(key)
+                   || _wakes.ContainsKey(key) // covers the gap between a wake's load and its index build
+                   || _shadowMonitors.ContainsKey(key)
+                   || _warmUpPending.ContainsKey(key);
+        }
+
+        /// <summary>True while startup warm-up still has this dataset on its list and has not reached
+        /// it: on its way up, though nothing is working on it yet. The monitor shows it as queued.</summary>
+        internal bool IsWarmUpPending(string dataSetName, string teamId) =>
+            _warmUpPending.ContainsKey(MakeKey(dataSetName, teamId));
+
+        /// <summary>Progress of whatever is running for this dataset, 0-100, or null when nothing is.
+        /// Covers a load, an index build and a shadow rebuild; the caller does not need to know
+        /// which.</summary>
+        internal int? GetProgressPercent(string dataSetName, string teamId)
+        {
+            var key = MakeKey(dataSetName, teamId);
+            if (_activeMonitors.TryGetValue(key, out var m)) return m.ProgressPercent;
+            if (_shadowMonitors.TryGetValue(key, out var sm)) return sm.ProgressPercent;
+            return null;
+        }
+
+        /// <summary>
+        /// Starts the index build of a Loaded dataset and returns at once; false when there is no
+        /// such dataset or it is not Loaded. <c>Index</c> itself returns as soon as the build is
+        /// under way, so nothing here waits for it: the monitor stays published as the dataset's
+        /// running operation until the build ends, which is what status and the console read the
+        /// progress from. How it ended is on the engine's own status - Ready, or the state it fell
+        /// back to with <c>ErrorMessage</c> set. Until Oct 2026 this waited for the build and
+        /// <c>POST index</c> answered 202 only when it was over.
+        /// </summary>
+        internal bool StartIndex(string dataSetName, string teamId)
+        {
+            var engine = FindInstance(dataSetName, teamId);
+            if (engine == null || engine.Status.SystemState != SystemState.Loaded)
+                return false;
+
+            var pm = new ProcessMonitor();
+            var tracked = TrackMonitor(dataSetName, teamId, pm);
+            try
+            {
+                engine.Index(monitor: pm);
+            }
+            catch (System.Exception ex)
+            {
+                tracked.Dispose();
+                _logger.LogError(ex, "{Prefix}StartIndex failed", MakeLogPrefix(teamId, dataSetName));
+                throw;
+            }
+            _ = Task.Run(() =>
+            {
+                try { pm.WaitForCompletion(); }
+                finally { tracked.Dispose(); }
+            });
+            return true;
+        }
+
+        /// <summary>The dataset's status as GET status reports it: the engine's own, with what only
+        /// the server knows added. Null when the dataset does not exist. Resolves the engine, so a
+        /// hibernated timed or pinned dataset is loaded by asking.</summary>
+        internal ServerSystemStatus? GetServerStatus(string dataSetName, string teamId)
+        {
+            var status = GetState(dataSetName, teamId);
+            if (status == null)
+                return null;
+            var (recordsOnDisk, fieldsDiscovered) = GetStoreFacts(dataSetName, teamId);
+            return new ServerSystemStatus(status)
+            {
+                RecordsOnDisk = recordsOnDisk,
+                FieldsDiscovered = fieldsDiscovered,
+                ShadowBuildInProgress = IsShadowBuildInProgress(dataSetName, teamId),
+                ShadowBuildStartedUtc = ShadowBuildStartedUtc(dataSetName, teamId),
+                ShadowBuildFinishedUtc = ShadowBuildFinishedUtc(dataSetName, teamId),
+                ShadowBuildError = ShadowBuildError(dataSetName, teamId),
+            };
+        }
+
+        internal string[] GetFields(string dataSetName, string teamId, bool all, bool indexable, bool sortable, bool filterable, bool facetable)
+        {
+            try
+            {
+                var engine = ResolveEngine(dataSetName, teamId);
+                if (engine == null)
+                    return Array.Empty<string>();
+                var fields = engine.GetFieldList();
+                var returnList = new List<string>(fields.Count);
+                for (int i = 0; i < fields.Count; i++)
+                {
+                    if (all)
+                        returnList.Add(fields[i].Name);
+                    else if ((fields[i].WordMatching || fields[i].PatternMatching != null) && indexable)
+                        returnList.Add(fields[i].Name);
+                    else if (fields[i].Sortable && sortable)
+                        returnList.Add(fields[i].Name);
+                    else if (fields[i].Filterable && filterable)
+                        returnList.Add(fields[i].Name);
+                    else if (fields[i].Facetable && facetable)
+                        returnList.Add(fields[i].Name);
+                }
+                return returnList.ToArray();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "{Prefix}GetFields failed", MakeLogPrefix(teamId, dataSetName));
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Returns status of the system see the model
+        /// class for details.
+        /// </summary>
+        internal SystemStatus? GetState(string dataSetName, string teamId)
+        {
+            try
+            {
+                return ResolveEngine(dataSetName, teamId)?.Status;
+            }
+            catch (System.Exception ex)
+            {
+                _logger.LogError(ex, "{Prefix}GetState failed", MakeLogPrefix(teamId, dataSetName));
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Runs field analysis on <paramref name="jsonStream"/>, sets DocumentFields on the
+        /// engine, and persists the field configuration. Must be called after CreateOrOpen and
+        /// before Load. Returns null on success or an error message on failure.
+        /// </summary>
+        /// <remarks>
+        /// Goes through <c>Init</c> — the same call the REST analyze endpoint makes
+        /// (<c>DatasetsController.AnalyzeStreamAsync</c>) — rather than
+        /// <c>DocumentFields.AnalyzeAsync</c>, which the portal used to call.
+        /// <para>The old path handed the WHOLE stream to <c>JsonDocument.ParseAsync</c>: raw
+        /// bytes in a rented buffer plus a metadata row per JSON element, both alive at once.
+        /// Measured peak managed heap was 517 MB for a 225 MB file and 2048 MB for a 486 MB
+        /// one. Init streams through JsonParser a document at a time: 70 MB and 2 MB for the
+        /// same two files — its ceiling is the largest single document, not the file. The
+        /// numbers were measured by a memory probe of the parser.</para>
+        /// <para>The wait is the SYNCHRONOUS WaitForCompletion pushed onto a threadpool thread,
+        /// not <c>WaitForCompletionAsync</c>. Init dispatches the work to a background thread
+        /// and returns, so an async awaiter arrives before MarkStarted has run, and
+        /// WaitForCompletionAsync completes a not-yet-started monitor immediately by design
+        /// (pinned by ProcessMonitorTests.WaitForCompletionAsync_OnFreshMonitor_CompletesImmediately).
+        /// Awaiting it here returned instantly with Succeeded still false — every upload would
+        /// have reported a failure while the analyze ran on in the background.</para>
+        /// <para>Init sets DocumentFields on the engine itself, so there is no
+        /// SetDocumentFieldsInternal call, and it rewinds the stream afterwards, which the
+        /// caller relies on when it hands the same FileStream to the Load step.</para>
+        /// </remarks>
+        internal async Task<string?> InitFromStreamAsync(string dataSetName, string teamId, Stream jsonStream)
+        {
+            IServerSearchEngine? engine;
+            try { engine = FindSearchEngineForInit(dataSetName, teamId); }
+            catch (ShadowBusyException ex) { return ex.Message; }
+            if (engine == null)
+                return "Dataset not found";
+            using var monitor = new ProcessMonitor();
+            engine.Init(jsonStream, monitor);
+            await Task.Run(() => monitor.WaitForCompletion());
+            if (!monitor.Succeeded)
+                return string.IsNullOrEmpty(monitor.ErrorMessage)
+                    ? "Analyze failed - the stream is not parseable JSON."
+                    : monitor.ErrorMessage;
+            if (engine.DocumentFields == null)
+                return "Analyze returned no fields";
+            engine.Persistence?.SaveDocumentFields(engine.DocumentFields.GetSerialized());
+            return null;
+        }
+
+        /// <summary>
+        /// A load is refused with <see cref="ShadowBusyException"/> while the dataset's index is
+        /// being rebuilt beside it (16 Nov 2026). The engine takes a load when it is Ready, so the
+        /// load went through, into the store and the live engine, and the rebuild then swapped in
+        /// its clone of the documents from before: the store held the new ones and the index
+        /// served the old until the next wake.
+        /// </summary>
+        private void RefuseLoadWhileRebuilding(string dataSetName, string teamId)
+        {
+            if (_shadowBuildsInProgress.ContainsKey(MakeKey(dataSetName, teamId)))
+                throw new ShadowBusyException(dataSetName);
+        }
+
+        internal bool Load(string dataSetName, string teamId, Stream jsonData, ProcessMonitor pm)
+        {
+            RefuseLoadWhileRebuilding(dataSetName, teamId);
+            var instance = FindInstance(dataSetName, teamId);
+            if (instance == null)
+                return false;
+            ApplyDeclaredKeyField(instance, dataSetName, teamId);
+            // Published so the console can report this load's progress; the caller owns the monitor
+            // and waits on it, so the entry is cleared once the load returns.
+            var monitorKey = MakeKey(dataSetName, teamId);
+            _activeMonitors[monitorKey] = pm;
+            try
+            {
+                instance.Load(jsonData, pm);
+            }
+            finally
+            {
+                _activeMonitors.TryRemove(monitorKey, out _);
+            }
+            return true;
+        }
+
+        internal bool LoadFromDatabase(string dataSetName, string teamId, ProcessMonitor monitor)
+        {
+            RefuseLoadWhileRebuilding(dataSetName, teamId);
+            var instance = FindInstance(dataSetName, teamId);
+            if (instance == null)
+            {
+                monitor.MarkFinished();
+                return false;
+            }
+            else
+            {
+                // A shell built after a restart has no field configuration yet; without one there
+                // is nothing to load into. LoadDocumentFieldsFromDb answers whether it read one:
+                // until 16 Nov 2026 the answer was taken the other way round, so the first load
+                // from the database of a client-managed dataset after a restart failed, and the
+                // second, the configuration now read, went through.
+                if (instance.DocumentFields == null && !instance.LoadDocumentFieldsFromDb())
+                {
+                    monitor.MarkFinished();
+                    return false;
+                }
+
+                UseSavedEmbeddings(instance, dataSetName, teamId);
+                instance.LoadFromDatabaseSync(monitor);
+                return true;
+            }
+        }
+
+        internal async Task<(bool success, string errorMessage)> LoadJsonStreamAsync(string dataSetName, string teamId, Stream jsonData)
+        {
+            RefuseLoadWhileRebuilding(dataSetName, teamId);
+            var instance = FindInstance(dataSetName, teamId);
+            if (instance == null)
+                return (false, $"{nameof(LoadJsonStreamAsync)} SearchEngine not found");
+            ApplyDeclaredKeyField(instance, dataSetName, teamId);
+            var pm = new ProcessMonitor();
+            await instance.LoadAsync(jsonData, pm);
+            return (pm.Succeeded, pm.ErrorMessage);
+        }
+
+        /// <summary>
+        /// Starts an async load and returns the <see cref="ProcessMonitor"/> so the caller can
+        /// poll progress. Returns null if the dataset is not found.
+        /// The returned task completes when the load finishes.
+        /// </summary>
+        internal (Task loadTask, ProcessMonitor monitor)? StartLoadAsync(string dataSetName, string teamId, Stream jsonData)
+        {
+            RefuseLoadWhileRebuilding(dataSetName, teamId);
+            var instance = FindInstance(dataSetName, teamId);
+            if (instance == null)
+                return null;
+            ApplyDeclaredKeyField(instance, dataSetName, teamId);
+            var pm = new ProcessMonitor();
+            // Run on thread-pool so MemoryStream reads (which complete synchronously) don't
+            // block the Blazor server thread and freeze the UI on large files.
+            // Tracked, so a page that is reopened mid-load can show the percentage.
+            var task = Task.Run(async () =>
+            {
+                using (TrackMonitor(dataSetName, teamId, pm))
+                    await instance.LoadAsync(jsonData, pm);
+            });
+            return (task, pm);
+        }
+
+        /// <summary>
+        /// Performs a search. See the model class for details.
+        /// Make sure to check for search readiness after a call
+        /// to DoIndexAsync.
+        /// </summary>
+        internal Result Search(Indx.Http.QueryProxy queryProxy, string dataSetName, string teamId) =>
+            Search(queryProxy, dataSetName, teamId, out _);
+
+        /// <summary>Performs a search, and gives the filter it ran with.</summary>
+        /// <param name="queryProxy">The search as the request sent it.</param>
+        /// <param name="dataSetName">The dataset searched.</param>
+        /// <param name="teamId">The team that owns it.</param>
+        /// <param name="filterKey">The key of the filter the search ran with: its token and its
+        /// filter expression ANDed, resolved. Null when it had none. What statistics record, so a
+        /// filter given as an expression is counted as one given as a token is.</param>
+        internal Result Search(Indx.Http.QueryProxy queryProxy, string dataSetName, string teamId, out string? filterKey) =>
+            Search(queryProxy, dataSetName, teamId, out filterKey, refocus: false);
+
+        /// <summary>Performs a search, gives the filter it ran with, and refocuses when asked.</summary>
+        /// <param name="queryProxy">The search as the request sent it.</param>
+        /// <param name="dataSetName">The dataset searched.</param>
+        /// <param name="teamId">The team that owns it.</param>
+        /// <param name="filterKey">The key of the filter the search ran with, as above.</param>
+        /// <param name="refocus">Order a search no record holds every word of by BM25F
+        /// (Services.Refocusing): the caller's own ask, <c>?refocus=true</c>.</param>
+        internal Result Search(Indx.Http.QueryProxy queryProxy, string dataSetName, string teamId, out string? filterKey, bool refocus)
+        {
+            filterKey = null;
+            try
+            {
+                var engine = ResolveEngine(dataSetName, teamId);
+                // An empty / not-yet-indexed dataset has no DocumentFields, so building the query
+                // (FromQueryProxy) would NullReference. Return an empty result instead —
+                // "search works, just returns nothing" until documents are loaded and indexed.
+                if (engine == null || engine.DocumentFields == null)
+                    return Result.MakeEmptyResult();
+                Query query = FromQueryProxy(queryProxy, engine, teamId, dataSetName);
+                filterKey = query.Filter?.SerializedKey;
+                return refocus ? Services.Refocusing.Search(engine, query) : engine.Search(query);
+            }
+            catch (Exception ex) when (ex is UnknownFilterException or InvalidFilterExpressionException or ArgumentException)
+            {
+                // A client error, answered 400 by the controller - not a fault worth an error log.
+                throw;
+            }
+            catch (System.Exception ex)
+            {
+                _logger.LogError(ex, "{Prefix}Search failed", MakeLogPrefix(teamId, dataSetName));
+                throw;
+            }
+        }
+
+        /// <summary>What one of <see cref="SearchMany"/>'s searches came to: its result and its
+        /// filter's key, or the client error that refused it (an unknown filter, an expression that
+        /// makes none, an argument), which the controller answers as a single search would.</summary>
+        internal readonly record struct Searched(Result? Result, string? FilterKey, Exception? Error);
+
+        /// <summary>
+        /// Several searches of one dataset, answered in their order: each query built as
+        /// <see cref="Search(Indx.Http.QueryProxy, string, string, out string?, bool)"/> builds it,
+        /// then all searched in one call to the engine (<see cref="ISearchEngine.Search(Query[])"/>),
+        /// which runs them at once on the search slots it has free (12 Nov 2026). A null in
+        /// <paramref name="proxies"/> is not searched and answers default. With
+        /// <paramref name="refocus"/> each is searched by Refocusing, one after the other.
+        /// </summary>
+        internal Searched[] SearchMany(Indx.Http.QueryProxy?[] proxies, string dataSetName, string teamId, bool refocus)
+        {
+            var searched = new Searched[proxies.Length];
+            var engine = ResolveEngine(dataSetName, teamId);
+            if (engine == null || engine.DocumentFields == null)
+            {
+                for (int i = 0; i < proxies.Length; i++)
+                    if (proxies[i] != null) searched[i] = new(Result.MakeEmptyResult(), null, null);
+                return searched;
+            }
+            var queries = new List<(int Index, Query Query)>(proxies.Length);
+            for (int i = 0; i < proxies.Length; i++)
+            {
+                if (proxies[i] is not { } proxy) continue;
+                try
+                {
+                    queries.Add((i, FromQueryProxy(proxy, engine, teamId, dataSetName)));
+                }
+                catch (Exception ex) when (ex is UnknownFilterException or InvalidFilterExpressionException or ArgumentException)
+                {
+                    searched[i] = new(null, null, ex);
+                }
+            }
+            Result Single(Query query) => refocus ? Services.Refocusing.Search(engine, query) : engine.Search(query);
+            try
+            {
+                var results = refocus
+                    ? [.. queries.Select(q => Single(q.Query))]
+                    : engine.Search([.. queries.Select(q => q.Query)]);
+                for (int j = 0; j < queries.Count; j++)
+                    searched[queries[j].Index] = new(results[j], queries[j].Query.Filter?.SerializedKey, null);
+            }
+            catch (Exception batchFailed) when (batchFailed is AggregateException or ArgumentException)
+            {
+                // One search threw (a client error, see Search): each again on its own, so only it
+                // answers an error and the others are answered.
+                foreach (var (index, query) in queries)
+                {
+                    try
+                    {
+                        searched[index] = new(Single(query), query.Filter?.SerializedKey, null);
+                    }
+                    catch (ArgumentException ex)
+                    {
+                        searched[index] = new(null, null, ex);
+                    }
+                    catch (System.Exception ex)
+                    {
+                        _logger.LogError(ex, "{Prefix}Search failed", MakeLogPrefix(teamId, dataSetName));
+                        throw;
+                    }
+                }
+            }
+            catch (System.Exception ex)
+            {
+                _logger.LogError(ex, "{Prefix}Search failed", MakeLogPrefix(teamId, dataSetName));
+                throw;
+            }
+            return searched;
+        }
+
+        /// <summary>
+        /// Removes and disposes all SearchEngine instances owned by a specific team.
+        /// Call before deleting a team.
+        /// </summary>
+        internal void DisposeTeamInstances(string teamId)
+        {
+            // Collect the team's entries under the lock, then dispose outside. Each
+            // SearchEngine.Dispose can take seconds; doing N of them inside _dictionaryLock
+            // would freeze every other Blazor session that needs an engine reference.
+            List<(string Key, SearchEngineInstance Instance)> toDispose;
+            lock (_dictionaryLock)
+            {
+                var keysToRemove = _instances.Keys
+                    .Where(k => k.StartsWith(teamId))
+                    .ToList();
+
+                toDispose = new List<(string, SearchEngineInstance)>(keysToRemove.Count);
+                foreach (var key in keysToRemove)
+                {
+                    if (_instances.TryGetValue(key, out var instance) && instance != null)
+                    {
+                        toDispose.Add((key, instance));
+                        _instances.Remove(key);
+                    }
+                }
+            }
+
+            _lifecycleLogger.LogInformation("Disposing {Count} SearchEngine instances for team {Team}", toDispose.Count, TeamLabel(teamId));
+            foreach (var (key, instance) in toDispose)
+                DisposeInstance(instance, key);
+        }
+
+        /// <summary>
+        /// Disposes an instance's engine under the instance's own <c>DbLock</c>, so it waits out
+        /// an auto-load or wake already running rather than disposing the engine under it.
+        ///
+        /// <para>Removing the entry from <c>_instances</c> only stops NEW lookups: a request that
+        /// already holds the engine and is queued on <c>DbLock</c> goes on to load it. Without the
+        /// lock here the load ran <c>Index()</c> on a disposed engine (ObjectDisposedException,
+        /// HTTP 500 — <c>Sweeper_EvictingUnderSearchFire_NeverReturns5xx</c>). With it, the
+        /// request finds the engine disposed once it gets the lock, and
+        /// <see cref="ResolveEngine"/> resolves again.</para>
+        ///
+        /// <para>The lock is per dataset, so a slow dispose holds up only requests for that
+        /// dataset — not the Blazor sessions <c>_dictionaryLock</c> would freeze. The cost is that
+        /// a delete arriving mid-load waits for the load to finish.</para>
+        /// </summary>
+        private void DisposeInstance(SearchEngineInstance instance, string key)
+        {
+            try
+            {
+                lock (instance.DbLock)
+                    instance.theInstance?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error disposing SearchEngine instance {Key}", key);
+            }
+        }
+
+        /// <summary>
+        /// Removes and disposes a specific SearchEngine instance for a dataset.
+        /// This should be called before deleting a dataset from the database.
+        /// </summary>
+        internal void DisposeDataSetInstance(string dataSetName, string teamId)
+        {
+            // Remove the entry under the lock so concurrent FindInstance calls
+            // immediately stop seeing it, but Dispose outside — SearchEngine.Dispose
+            // can take seconds (task.Wait timeouts, native pool free) and holding
+            // _dictionaryLock during that freezes every other Blazor session that
+            // needs an engine reference.
+            var key = MakeKey(dataSetName, teamId);
+            SearchEngineInstance? instance;
+            lock (_dictionaryLock)
+            {
+                if (!_instances.TryGetValue(key, out instance))
+                    return;
+                _instances.Remove(key);
+            }
+
+            DisposeInstance(instance, key);
+            Services.DatasetRecordCounts.Forget(dataSetName, teamId);
+            _lifecycleLogger.LogInformation("Disposed SearchEngine instance for team {Team}, dataset {DataSet}", TeamLabel(teamId), dataSetName);
+        }
+
+        /// <summary>
+        /// The server's sleep, shared by the console's Hibernate button and the idle sweeper's
+        /// eviction: <see cref="ISearchEngine.Unload"/> on a Ready engine, so the shell stays
+        /// registered in Created with the documents in the store, and the next access (or an
+        /// explicit wake) restores it. When Unload's guard refuses — the engine is mid-load,
+        /// mid-index or already asleep — falls back to <see cref="DisposeDataSetInstance"/>, which
+        /// handles every state and leaves the same Created-with-records picture behind, at the
+        /// price of a fresh shell.
+        /// </summary>
+        internal void SleepDataSetInstance(string dataSetName, string teamId)
+        {
+            var engine = FindInstance(dataSetName, teamId);
+            if (engine == null || engine.IsDisposed)
+                return;
+            SaveEmbeddingsForSleep(engine, dataSetName, teamId);
+            if (engine.Unload(out _))
+            {
+                Services.DatasetRecordCounts.Forget(dataSetName, teamId);
+                _lifecycleLogger.LogInformation("Unloaded SearchEngine instance for team {Team}, dataset {DataSet} (sleep)", TeamLabel(teamId), dataSetName);
+                return;
+            }
+            DisposeDataSetInstance(dataSetName, teamId);
+        }
+
+        /// <summary>
+        /// Persistence facts for the server's status extension, read straight from the store so
+        /// asking never resolves — and so never wakes — the engine: how many records the dataset
+        /// has on disk, and how many fields its stored configuration holds (0 = not analyzed).
+        /// Created with records on disk is what "hibernated" means on this server.
+        /// </summary>
+        internal (int RecordsOnDisk, int FieldsDiscovered) GetStoreFacts(string dataSetName, string teamId)
+        {
+            var db = new SqLiteManager(SearchDbConnectionString);
+            int records = db.NumberOfJsonRecordsInDataSet(dataSetName, teamId);
+            int fields = 0;
+            var serialized = db.ReadDocumentFields(dataSetName, teamId);
+            if (!string.IsNullOrWhiteSpace(serialized))
+            {
+                try
+                {
+                    // The stored form is a dictionary keyed by field name (DocumentFields'
+                    // serialization); the count is all that is wanted here, so the values stay
+                    // unread rather than round-tripping through the engine's own deserializer.
+                    fields = System.Text.Json.JsonSerializer
+                        .Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(serialized)?.Count ?? 0;
+                }
+                catch (System.Text.Json.JsonException)
+                {
+                    // A configuration that will not parse reads as not analyzed; the load path is
+                    // where a corrupt configuration gets reported, not a status poll.
+                }
+            }
+            return (records, fields);
+        }
+
+        /// <summary>
+        /// Sets a dataset's keep-alive policy (hours): <see cref="int.MaxValue"/> = autoload + never
+        /// dispose, <c>0</c> = no autoload (client-managed), other = idle-eviction countdown. Persists
+        /// to the store and updates the live instance's cached value if loaded. Does not load or
+        /// dispose anything itself. Intended for the website (admin UI), not the public REST API.
+        /// </summary>
+        /// <returns><c>true</c> if the dataset existed and was updated.</returns>
+        internal bool SetKeepAliveHrs(string dataSetName, string teamId, int keepAliveHrs)
+        {
+            var db = new SqLiteManager(SearchDbConnectionString);
+            bool updated = db.UpdateKeepAliveHrs(dataSetName, teamId, keepAliveHrs);
+            if (updated)
+            {
+                lock (_dictionaryLock)
+                    if (_instances.TryGetValue(MakeKey(dataSetName, teamId), out var inst))
+                        inst.KeepAliveTimeHrs = keepAliveHrs;
+            }
+            return updated;
+        }
+
+        /// <summary>
+        /// Reads a dataset's keep-alive policy plus live runtime state: whether its engine is Ready
+        /// (fully loaded and indexed), whether a stale disposed instance lingers, when it was last
+        /// used, and how long until idle-eviction. <see cref="KeepAliveInfo.Remaining"/> is null for
+        /// non-Ready datasets and for the non-counting policies (0 and <see cref="int.MaxValue"/>).
+        /// </summary>
+        /// <param name="dataSetName">The dataset.</param>
+        /// <param name="teamId">The team that owns it, as the storage layer's owner column holds it.</param>
+        /// <param name="countRecordsOnDisk">
+        /// False to skip the on-disk record count and report it as -1. That count is
+        /// <c>SELECT COUNT(*)</c> over the dataset's rows, which is cheap on a small dataset and
+        /// not on a large one, and the monitor asks for this every second: it needs the live state
+        /// at that rate and the row count far more rarely.
+        /// </param>
+        internal KeepAliveInfo GetKeepAliveInfo(string dataSetName, string teamId, bool countRecordsOnDisk = true)
+        {
+            SearchEngineInstance? inst;
+            lock (_dictionaryLock)
+                _instances.TryGetValue(MakeKey(dataSetName, teamId), out inst);
+
+            var db = new SqLiteManager(SearchDbConnectionString);
+            int hrs = inst?.KeepAliveTimeHrs ?? db.ReadKeepAliveHrs(dataSetName, teamId);
+
+            var engine = inst?.theInstance;
+            // A disposed engine can briefly remain referenced; check IsDisposed first so we never read
+            // Status off it (would throw ObjectDisposedException) nor report its stale state as Ready.
+            bool disposed = engine?.IsDisposed == true;
+            bool ready = !disposed && engine?.Status.SystemState == SystemState.Ready;
+            DateTimeOffset? lastUsed = inst != null ? inst.LastUsedUtc : null;
+
+            TimeSpan? remaining = null;
+            if (ready && inst != null && hrs != 0 && hrs != int.MaxValue)
+            {
+                var rem = TimeSpan.FromHours(hrs) - (TimeProvider.GetUtcNow() - inst.LastUsedUtc);
+                remaining = rem > TimeSpan.Zero ? rem : TimeSpan.Zero;
+            }
+
+            // On-disk record count — non-zero on a Created dataset means it's hibernated (data
+            // persisted, engine not loaded) rather than empty. The website uses this to offer a wake.
+            int recordCount = countRecordsOnDisk ? db.NumberOfJsonRecordsInDataSet(dataSetName, teamId) : -1;
+            return new KeepAliveInfo(hrs, ready, lastUsed, remaining, recordCount, disposed);
+        }
+
+        /// <summary>
+        /// Disposes loaded instances whose idle time has passed their keep-alive countdown. Policies
+        /// 0 (client-managed) and <see cref="int.MaxValue"/> (pinned) are never evicted. Called on an
+        /// interval by <c>DatasetIdleSweeper</c>; also callable directly in tests after advancing the
+        /// clock.
+        ///
+        /// <para>A victim is selected as an instance and evicted only if the registry still maps its
+        /// key to that same instance and it is still idle. Evicting by name instead disposed whatever
+        /// engine held the key by then: two sweeps racing (every test host runs its own
+        /// <c>DatasetIdleSweeper</c> against the one static Manager) let the second dispose the fresh
+        /// engine a request was auto-loading after the first had evicted the old one.</para>
+        /// </summary>
+        /// <param name="afterSelectForTest">Runs between selection and eviction — the window the
+        /// race lives in. Tests only.</param>
+        /// <returns>The number of instances disposed.</returns>
+        internal int SweepIdleInstances(Action? afterSelectForTest = null)
+        {
+            var now = TimeProvider.GetUtcNow();
+            List<SearchEngineInstance> toEvict = new();
+            lock (_dictionaryLock)
+            {
+                foreach (var inst in _instances.Values)
+                    if (IsIdle(inst, now))
+                        toEvict.Add(inst);
+            }
+
+            afterSelectForTest?.Invoke();
+
+            int evicted = 0;
+            foreach (var inst in toEvict)
+                if (EvictIfStillIdle(inst))
+                    evicted++;
+            return evicted;
+        }
+
+        /// <summary>The registered engines and their states, for MemoryReturn: read without resolving
+        /// or touching a dataset. A disposed engine is left out, as one no longer in memory.</summary>
+        internal List<(string Key, object Engine, SystemState State, DateTimeOffset LastUsed)> EnginesInMemory()
+        {
+            List<(string Key, SearchEngineInstance Instance)> instances;
+            lock (_dictionaryLock)
+                instances = [.. _instances.Select(e => (e.Key, e.Value))];
+            var engines = new List<(string, object, SystemState, DateTimeOffset)>(instances.Count);
+            foreach (var (key, instance) in instances)
+                if (instance.theInstance is { IsDisposed: false } engine)
+                    engines.Add((key, engine, engine.Status.SystemState, instance.LastUsedUtc));
+            return engines;
+        }
+
+        private static bool IsIdle(SearchEngineInstance inst, DateTimeOffset now)
+        {
+            int hrs = inst.KeepAliveTimeHrs;
+            if (hrs == 0 || hrs == int.MaxValue)
+                return false;
+            var engine = inst.theInstance;
+            if (engine == null || engine.IsDisposed || engine.Status.SystemState != SystemState.Ready)
+                return false;
+            return now - inst.LastUsedUtc > TimeSpan.FromHours(hrs);
+        }
+
+        // Re-checked under the lock: a sweep that lost the race — to a newer instance under the same
+        // key, or to a request that touched this one since it was selected — evicts nothing.
+        private bool EvictIfStillIdle(SearchEngineInstance inst)
+        {
+            var key = MakeKey(inst.DataSetName, inst.TeamId);
+            lock (_dictionaryLock)
+            {
+                if (!_instances.TryGetValue(key, out var current) || !ReferenceEquals(current, inst))
+                    return false;
+                if (!IsIdle(inst, TimeProvider.GetUtcNow()))
+                    return false;
+            }
+
+            // Unload, not Dispose: the shell stays registered in Created and the documents stay in
+            // the store, which removes the whole disposed-instance race family (d544c60c and kin) —
+            // a request that raced the sweep finds a live engine that auto-loads, never a corpse.
+            // Outside the dictionary lock: Unload drains in-flight searches and can wait.
+            var engine = inst.theInstance;
+            if (engine == null || engine.IsDisposed)
+                return false;
+            SaveEmbeddingsForSleep(engine, inst.DataSetName, inst.TeamId);
+            if (!engine.Unload(out var unloadError))
+            {
+                // The engine left Ready since it was selected (a request or build got in): it is
+                // not idle after all, so it is not evicted. Dispose stays reserved for deletion
+                // and teardown, where a corpse is the point.
+                _logger.LogInformation("{Prefix}idle-unload skipped: {Reason}", MakeLogPrefix(inst.TeamId, inst.DataSetName), unloadError);
+                return false;
+            }
+            Services.DatasetRecordCounts.Forget(inst.DataSetName, inst.TeamId);
+            _logger.LogInformation("{Prefix}idle-unloaded (keep-alive countdown elapsed); documents remain in the store", MakeLogPrefix(inst.TeamId, inst.DataSetName));
+            ReportChange(inst.DataSetName, inst.TeamId, Services.DatasetChangeKind.Hibernate, new { reason = "idle" });
+            return true;
+        }
+
+        /// <summary>
+        /// Returns all datasets across all teams, each with the owning team id.
+        /// </summary>
+        internal List<(string DataSetName, string TeamId)> GetAllDataSets()
+        {
+            var db = new SqLiteManager(SearchDbConnectionString);
+            return db.GetAllDataSets()
+                .Select(row => (row.DataSetName, row.UserName))
+                .ToList();
+        }
+
+        /// <summary>Returns the names of all datasets owned by a team.</summary>
+        internal List<string> GetTeamDataSets(string teamId)
+        {
+            var db = new SqLiteManager(SearchDbConnectionString);
+            return db.GetUserDataSets(teamId);
+        }
+
+        /// <summary>
+        /// Deletes a dataset: disposes the in-memory engine and removes the SQLite row.
+        /// Single entry point so every caller (REST controller, Blazor UI, etc.) shares
+        /// the same cleanup order and cannot accidentally skip the _instances eviction.
+        /// </summary>
+        /// <returns><c>true</c> if the dataset existed and was deleted; <c>false</c> if it did not exist.</returns>
+        internal bool DeleteDataSet(string dataSetName, string teamId)
+        {
+            var persistence = new Persistence(SearchDbConnectionString, dataSetName, teamId);
+            if (!persistence.DataSetExists())
+                return false;
+
+            // Rows first, instance second. GetOrCreateInstance builds a shell for any dataset
+            // that still has a DataSet row, and ResolveEngine auto-loads a shell that has
+            // records — so disposing first left a window in which a concurrent status poll
+            // (the panel polls once a second while loading/indexing) re-created the engine and
+            // loaded the rows that were about to be deleted. That zombie then answered for a
+            // dataset re-created under the same name. With the row gone before the dispose,
+            // nothing can appear behind the removal.
+            persistence.DeleteDataSet();
+            DisposeDataSetInstance(dataSetName, teamId);
+            ForgetOutcomes(dataSetName, teamId);
+            // A sleeping dataset has no instance for the dispose to forget it by.
+            Services.DatasetRecordCounts.Forget(dataSetName, teamId);
+            DeleteSavedEmbeddings(dataSetName, teamId);
+            Carry(() => _boostStore?.Delete(teamId, dataSetName), dataSetName, teamId);
+            Carry(() => _buryStore?.Delete(teamId, dataSetName), dataSetName, teamId);
+            Carry(() => _metadataStore?.Delete(teamId, dataSetName), dataSetName, teamId);
+            Carry(() => _queryParameterStore?.Delete(teamId, dataSetName), dataSetName, teamId);
+            Carry(() => _filterSetupStore?.Delete(teamId, dataSetName), dataSetName, teamId);
+            Carry(() => _textRuleStore?.Delete(teamId, dataSetName), dataSetName, teamId);
+            Carry(() => _fieldProfileStore?.Delete(teamId, dataSetName), dataSetName, teamId);
+            Carry(() => _dataCheckStore?.Delete(teamId, dataSetName), dataSetName, teamId);
+            Carry(() => _coldStore?.DeleteDataset(teamId, dataSetName), dataSetName, teamId);
+            Carry(() => _searchOrAskStore?.Delete(teamId, dataSetName), dataSetName, teamId);
+            Carry(() => _observrStore?.Delete(teamId, dataSetName), dataSetName, teamId);
+            Carry(() => _observrConversations?.Delete(teamId, dataSetName), dataSetName, teamId);
+            Carry(() => _webhookStore?.DeleteDataset(teamId, dataSetName), dataSetName, teamId);
+            // Statistics survive a delete by design, so the history says where the gap came from.
+            ReportChange(dataSetName, teamId, Services.DatasetChangeKind.Delete);
+            return true;
+        }
+
+        /// <summary>
+        /// One store's part of a delete, rename or transfer, which the others do not wait on (16
+        /// Nov 2026). The stores are told one after the other, after the dataset's own rows have
+        /// gone or moved; one that threw (the database locked by another dataset's load) ended
+        /// the sequence there, and what the later stores held stayed under the old key, for the
+        /// next dataset of that name to find. Now it is logged and the rest go on.
+        /// </summary>
+        private void Carry(Action store, string dataSetName, string teamId)
+        {
+            try { store(); }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "{Prefix}a store could not follow the dataset; the others were carried on with", MakeLogPrefix(teamId, dataSetName));
+            }
+        }
+
+        internal EmbeddingResultEntry[] VectorSearch(VectorQueryProxy query, string dataSetName, string teamId)
+        {
+            try
+            {
+                var engine = ResolveEngine(dataSetName, teamId) as SearchEngine;
+                if (engine == null)
+                    return [];
+                if (!engine.EmbeddingFields.TryGetValue(query.FieldName, out var index))
+                    throw new UnknownEmbeddingFieldException(query.FieldName, engine.EmbeddingFields.Keys);
+                Filter? filter = ResolveRequestFilter(engine, query.Filter, query.FilterExpression, query.FilterParameters);
+                var results = index.Search(query.Vector, query.MaxResults, filter);
+                return results.Select(r => new EmbeddingResultEntry(r.documentKey, r.score) { Key = engine.GetKeyText(r.documentKey) }).ToArray();
+            }
+            catch (Exception ex) when (ex is UnknownFilterException or InvalidFilterExpressionException)
+            {
+                throw;
+            }
+            catch (Exception ex) when (ex is UnknownEmbeddingFieldException or ArgumentException or InvalidOperationException)
+            {
+                // Caller mistakes (unknown field, wrong vector length, a field whose index was
+                // never built because no document carried a vector). The controller turns these
+                // into 400s; logging them as server exceptions would be noise.
+                throw;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "{Prefix}VectorSearch failed", MakeLogPrefix(teamId, dataSetName));
+                throw;
+            }
+        }
+
+        internal EmbeddingResultEntry[] HybridSearch(HybridQueryProxy query, string dataSetName, string teamId)
+        {
+            try
+            {
+                var engine = ResolveEngine(dataSetName, teamId) as SearchEngine;
+                if (engine == null)
+                    return [];
+                if (!engine.EmbeddingFields.TryGetValue(query.EmbeddingField, out var index))
+                    throw new UnknownEmbeddingFieldException(query.EmbeddingField, engine.EmbeddingFields.Keys);
+
+                // Text search — fetch a larger pool to feed the merge
+                int poolSize = query.MaxNumberOfRecordsToReturn * 2;
+                var queryProxy = new QueryProxy
+                {
+                    Text = query.Text,
+                    MaxNumberOfRecordsToReturn = poolSize,
+                    Filter = query.Filter,
+                    FilterExpression = query.FilterExpression,
+                    FilterParameters = query.FilterParameters,
+                    TimeOutLimitMilliseconds = query.TimeOutLimitMilliseconds,
+                    Mode = SearchMode.Bm25f,
+                    Ranking = new RankingProxy { Rerank = false }
+                };
+                Query textQuery = FromQueryProxy(queryProxy, engine, teamId, dataSetName);
+                var textResult = engine.Search(textQuery);
+
+                // Embedding search — also fetch a larger pool
+                Filter? filter = ResolveRequestFilter(engine, query.Filter, query.FilterExpression, query.FilterParameters);
+                var embeddingResults = index.Search(query.Vector, poolSize, filter);
+
+                // Merge and trim
+                var merged = IEmbeddingIndex.MergeHybrid(textResult.Records, embeddingResults, query.Alpha);
+                return merged
+                    .Take(query.MaxNumberOfRecordsToReturn)
+                    .Select(r => new EmbeddingResultEntry(r.documentKey, r.score) { Key = engine.GetKeyText(r.documentKey) })
+                    .ToArray();
+            }
+            catch (Exception ex) when (ex is UnknownFilterException or InvalidFilterExpressionException)
+            {
+                throw;
+            }
+            catch (Exception ex) when (ex is UnknownEmbeddingFieldException or ArgumentException or InvalidOperationException)
+            {
+                throw; // caller mistake — see the note in VectorSearch
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "{Prefix}HybridSearch failed", MakeLogPrefix(teamId, dataSetName));
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// Moves a dataset from one team to another (the team-ownership equivalent of the old
+        /// per-user ownership transfer): evicts the old engine, updates SQLite atomically,
+        /// then warms up the engine under the new owning team.
+        /// </summary>
+        /// <summary>
+        /// The dataset's synonym list, or null when it has none. Read from the live engine, which
+        /// was given the stored list when it was built.
+        /// </summary>
+        internal SynonymList? GetSynonyms(string dataSetName, string teamId)
+        {
+            return FindInstance(dataSetName, teamId)?.SynonymList;
+        }
+
+        /// <summary>
+        /// Stores the dataset's synonym list and applies it to the live engine, or removes both when
+        /// <paramref name="list"/> is null. Takes effect on the next search — synonyms are applied to
+        /// the query text, so nothing has to be re-indexed. Returns false when the dataset does not
+        /// exist in storage.
+        /// <para>Inside the dataset's write gate, on the engine live there (<see cref="RunSmallWrite{T}"/>,
+        /// 16 Nov 2026), whoever calls: while a rebuild runs it throws
+        /// <see cref="ShadowBusyException"/>, since the rebuilt engine takes the list it was cloned
+        /// with and a list set meanwhile would be gone at the swap. Until then only the HTTP route
+        /// took the gate, and a list saved in the console or by Observr during a rebuild was lost.</para>
+        /// </summary>
+        internal bool SetSynonyms(string dataSetName, string teamId, SynonymList? list)
+        {
+            try { return RunSmallWrite(dataSetName, teamId, engine => SetSynonymsOn(engine, dataSetName, teamId, list)); }
+            catch (KeyNotFoundException) { return false; }
+        }
+
+        private bool SetSynonymsOn(IServerSearchEngine engine, string dataSetName, string teamId, SynonymList? list)
+        {
+            if (engine.Persistence == null)
+                return false;
+            // Every path to a synonym change lands here (HTTP, console, copy from another
+            // dataset). A replace restores the stored list directly and is not a change.
+            int entriesBefore = engine.SynonymList?.Entries.Count ?? 0;
+
+            if (list == null)
+            {
+                engine.Persistence.DeleteSynonyms();
+                engine.SynonymList = null;
+                _logger.LogInformation("{Prefix}synonym list removed", MakeLogPrefix(teamId, dataSetName));
+                ReportChange(dataSetName, teamId, Services.DatasetChangeKind.Synonyms, new { entriesBefore, entries = 0 });
+                return true;
+            }
+
+            list.UpdatedUtc = TimeProvider.GetUtcNow();
+            if (!engine.Persistence.SaveSynonyms(list.GetSerialized()))
+                return false;
+
+            engine.SynonymList = list;
+            _logger.LogInformation("{Prefix}synonym list set ({Count} entries)", MakeLogPrefix(teamId, dataSetName), list.Entries.Count);
+            ReportChange(dataSetName, teamId, Services.DatasetChangeKind.Synonyms, new { entriesBefore, entries = list.Entries.Count });
+            return true;
+        }
+
+        /// <summary>
+        /// Copies the synonym list from one of the team's datasets onto another, replacing whatever
+        /// list the target had. The two end up with independent copies: editing one afterwards does
+        /// not touch the other.
+        ///
+        /// <para>Intended for the portal, which reaches this directly — the REST surface deliberately
+        /// stays at GET/PUT, and a client there can copy by reading one and writing the other.</para>
+        ///
+        /// <para>Both datasets must belong to <paramref name="teamId"/>. A source with no list is a
+        /// failure rather than a way to clear the target: "copy nothing onto it" is far more likely
+        /// to be a mistake than an intention, and <see cref="SetSynonyms"/> with null already exists
+        /// for clearing.</para>
+        /// </summary>
+        /// <returns>True on success; otherwise false with <paramref name="error"/> describing why.</returns>
+        internal bool CopySynonyms(string fromDataSetName, string toDataSetName, string teamId, out string error)
+        {
+            error = string.Empty;
+
+            if (string.Equals(fromDataSetName, toDataSetName, StringComparison.Ordinal))
+            {
+                error = "The source and the target are the same dataset.";
+                return false;
+            }
+
+            var source = FindInstance(fromDataSetName, teamId);
+            if (source == null)
+            {
+                error = $"The dataset '{fromDataSetName}' was not found.";
+                return false;
+            }
+
+            // The engine holds the stored list from the moment it is built, so this reads what the
+            // source's searches actually use, and works even on a dataset that is not loaded.
+            var original = source.SynonymList;
+            if (original == null)
+            {
+                error = $"The dataset '{fromDataSetName}' has no synonym list to copy.";
+                return false;
+            }
+
+            if (FindInstance(toDataSetName, teamId) == null)
+            {
+                error = $"The dataset '{toDataSetName}' was not found.";
+                return false;
+            }
+
+            // Round-trip through the serialized form for a genuine deep copy. Sharing the instance
+            // would leave the two datasets holding the same object, so a later in-place edit or
+            // Invalidate() on one would silently reach into the other.
+            var copy = SynonymList.Deserialize(original.GetSerialized());
+
+            if (!SetSynonyms(toDataSetName, teamId, copy))
+            {
+                error = $"The synonym list could not be stored on '{toDataSetName}'.";
+                return false;
+            }
+
+            _logger.LogInformation("{Prefix}synonym list copied from '{From}' ({Count} entries)",
+                MakeLogPrefix(teamId, toDataSetName), fromDataSetName, copy.Entries.Count);
+            return true;
+        }
+
+        /// <summary>
+        /// Renames a dataset within its team. The pair (name, team) is the dataset's identity
+        /// everywhere — the registry key, the engine's Persistence binding, four indx.db tables and
+        /// the two server-owned ones — so a rename is a key rewrite in each, in the same shape as
+        /// <see cref="TransferOwnership"/>: dispose the engine, rewrite the rows, reload under the
+        /// new key. Every client that addressed the dataset by the old name is broken by design;
+        /// there is no alias. Returns the message to show on refusal, null on success.
+        /// </summary>
+        internal string? RenameDataSet(string dataSetName, string teamId, string newName)
+        {
+            newName = newName.Trim();
+            if (newName.Length == 0) return "Enter a name.";
+            if (!Indx.Utilities.FileNameValidity.IsValid(newName)) return "Invalid dataset name.";
+            if (string.Equals(newName, dataSetName, StringComparison.Ordinal)) return "That is already the dataset's name.";
+            var source = new Persistence(SearchDbConnectionString, dataSetName, teamId);
+            if (!source.DataSetExists()) return $"Dataset '{dataSetName}' not found.";
+            if (new Persistence(SearchDbConnectionString, newName, teamId).DataSetExists()) return $"Dataset '{newName}' already exists.";
+            if (_shadowBuildsInProgress.ContainsKey(MakeKey(dataSetName, teamId))) return "A field-configuration or replace build is in progress; try again when it has finished.";
+
+            var wasReady = FindInstance(dataSetName, teamId)?.Status.SystemState == SystemState.Ready;
+            // Rows first, instance second, as DeleteDataSet does and for its reason: with the
+            // instance gone and the row still under the old name, a request for that name built
+            // a new engine and loaded it, and that engine answered for the old name until a
+            // restart (16 Nov 2026).
+            var db = new SqLiteManager(SearchDbConnectionString);
+            db.RenameDataSet(dataSetName, teamId, newName);
+            DisposeDataSetInstance(dataSetName, teamId);
+            ForgetOutcomes(dataSetName, teamId);
+            Services.DatasetRecordCounts.Forget(dataSetName, teamId);
+            Services.DatasetRecordCounts.Forget(newName, teamId);
+            Carry(() => _boostStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
+            Carry(() => _buryStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
+            Carry(() => _metadataStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
+            Carry(() => _queryParameterStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
+            Carry(() => _filterSetupStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
+            Carry(() => _textRuleStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
+            Carry(() => _fieldProfileStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
+            Carry(() => _dataCheckStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
+            Carry(() => _coldStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
+            Carry(() => _searchOrAskStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
+            Carry(() => _observrStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
+            Carry(() => _observrConversations?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
+            Carry(() => _webhookStore?.Rename(teamId, dataSetName, newName), dataSetName, teamId);
+            MoveSavedEmbeddings(dataSetName, teamId, newName, teamId);
+            _logger.LogInformation("{Prefix}renamed to '{NewName}'", MakeLogPrefix(teamId, dataSetName), newName);
+
+            // Bring the renamed dataset back to where it was: a Ready engine reloads under the new
+            // key the way TransferOwnership does; a Created shell just gets created on next touch.
+            var instance = FindInstance(newName, teamId);
+            if (wasReady && instance?.Persistence != null && instance.Persistence.NumberOfJsonRecords() > 0)
+            {
+                var loadMonitor = new ProcessMonitor();
+                using (TrackMonitor(newName, teamId, loadMonitor))
+                {
+                    UseSavedEmbeddings(instance, newName, teamId);
+                    instance.LoadFromDatabaseSync(loadMonitor);
+                    loadMonitor.WaitForCompletion();
+                }
+                // Only on a load that succeeded. The engine refuses to index one that failed, so
+                // asking would change nothing; the point is to say here what happened. The rename
+                // itself is done and stands: the dataset is under its new name, in Error, and the
+                // next request for it loads it again.
+                if (loadMonitor.Succeeded)
+                {
+                    var indexMonitor = new ProcessMonitor();
+                    instance.Index(monitor: indexMonitor);
+                    indexMonitor.WaitForCompletion();
+                }
+                else
+                    _logger.LogError(loadMonitor.Exception, "{Prefix}reload after rename failed: {Error}; the dataset stays non-Ready until reloaded",
+                        MakeLogPrefix(teamId, newName), loadMonitor.ErrorMessage);
+            }
+            // Under the new name: the statistics move there, and an event under the old one could
+            // be written after the move and be left behind.
+            ReportChange(newName, teamId, Services.DatasetChangeKind.Rename, new { from = dataSetName });
+            return null;
+        }
+
+        internal void TransferOwnership(string dataSetName, string currentTeamId, string newTeamId)
+        {
+            // Rows first, instance second: see RenameDataSet.
+            var db = new SqLiteManager(SearchDbConnectionString);
+            db.TransferOwnership(dataSetName, currentTeamId, newTeamId);
+            DisposeDataSetInstance(dataSetName, currentTeamId);
+            ForgetOutcomes(dataSetName, currentTeamId);
+            Services.DatasetRecordCounts.Forget(dataSetName, currentTeamId);
+            Services.DatasetRecordCounts.Forget(dataSetName, newTeamId);
+            Carry(() => _boostStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
+            Carry(() => _buryStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
+            Carry(() => _metadataStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
+            Carry(() => _queryParameterStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
+            Carry(() => _filterSetupStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
+            Carry(() => _textRuleStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
+            Carry(() => _fieldProfileStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
+            Carry(() => _dataCheckStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
+            Carry(() => _coldStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
+            Carry(() => _searchOrAskStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
+            Carry(() => _observrStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
+            Carry(() => _observrConversations?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
+            Carry(() => _webhookStore?.Transfer(currentTeamId, newTeamId, dataSetName), dataSetName, currentTeamId);
+            MoveSavedEmbeddings(dataSetName, currentTeamId, dataSetName, newTeamId);
+
+            // Warm up the engine for the new owning team, same as InitializeSystem does on startup.
+            var instance = FindInstance(dataSetName, newTeamId);
+            if (instance?.Persistence != null && instance.Persistence.NumberOfJsonRecords() > 0)
+            {
+                var loadMonitor = new ProcessMonitor();
+                using (TrackMonitor(dataSetName, newTeamId, loadMonitor))
+                {
+                    UseSavedEmbeddings(instance, dataSetName, newTeamId);
+                    instance.LoadFromDatabaseSync(loadMonitor);
+                    loadMonitor.WaitForCompletion();
+                }
+                // Only on a load that succeeded - see RenameDataSet.
+                if (loadMonitor.Succeeded)
+                {
+                    var indexMonitor = new ProcessMonitor();
+                    instance.Index(monitor: indexMonitor);
+                    indexMonitor.WaitForCompletion();
+                }
+                else
+                    _logger.LogError(loadMonitor.Exception, "{Prefix}reload after transfer failed: {Error}; the dataset stays non-Ready until reloaded",
+                        MakeLogPrefix(newTeamId, dataSetName), loadMonitor.ErrorMessage);
+            }
+        }
+
+        internal LicenseInfo? GetLicenseInfo()
+        {
+            try
+            {
+                var licensePath = GetLicensePath();
+
+                using var tempEngine = new SearchEngine(licensePath);
+
+                var minimalJson = "[{\"field\":\"value\"}]";
+                using var jsonStream = new MemoryStream(System.Text.Encoding.UTF8.GetBytes(minimalJson));
+
+                tempEngine.Init(jsonStream);
+                tempEngine.GetField("field")!.WordMatching = true;
+                jsonStream.Position = 0;
+                tempEngine.Load(jsonStream);
+                tempEngine.Index();
+
+                if (tempEngine?.Status?.LicenseInfo == null)
+                    return null;
+
+                return tempEngine.Status.LicenseInfo;
+            }
+            catch (System.Exception ex)
+            {
+                _logger.LogError(ex, "IndxServerInternalAPI.GetLicenseInfo exception");
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// True when at least one live dataset engine is still running under a valid license.
+        /// Running engines validate their license once at construction and keep that state for
+        /// their lifetime, so this can be true even after every .license file has been removed
+        /// from disk — the UI uses it to warn that a restart would drop those engines to the
+        /// free-tier document limit.
+        /// </summary>
+        internal bool AnyRunningInstanceLicensed()
+        {
+            lock (_dictionaryLock)
+            {
+                foreach (var instance in _instances.Values)
+                {
+                    if (instance?.theInstance?.Status?.LicenseInfo?.Licensed == true)
+                        return true;
+                }
+            }
+            return false;
+        }
+
+        internal IReadOnlyList<LicenseFileInfo> GetLicenseFiles()
+        {
+            var dataDir = IndxServer.Services.DataPaths.Current;
+            if (!Directory.Exists(dataDir))
+                return [];
+            var activePath = GetLicensePath();
+            return Directory.GetFiles(dataDir, "*.license")
+                .Select(f => new LicenseFileInfo(
+                    Path.GetFileName(f),
+                    string.Equals(Path.GetFullPath(f), activePath, StringComparison.OrdinalIgnoreCase)))
+                .OrderBy(f => f.Filename)
+                .ToList();
+        }
+
+        internal async Task SaveLicenseFileAsync(string filename, Stream content)
+        {
+            var safeName = Path.GetFileName(filename);
+            if (!safeName.EndsWith(".license", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("Only .license files are accepted.");
+            var dataDir = IndxServer.Services.DataPaths.Current;
+            Directory.CreateDirectory(dataDir);
+            using var fs = File.Create(Path.Combine(dataDir, safeName));
+            await content.CopyToAsync(fs);
+        }
+
+        internal void DeleteLicenseFile(string filename)
+        {
+            var safeName = Path.GetFileName(filename);
+            if (!safeName.EndsWith(".license", StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("Only .license files can be deleted.");
+            var dataDir = Path.GetFullPath(IndxServer.Services.DataPaths.Current);
+            var fullPath = Path.GetFullPath(Path.Combine(IndxServer.Services.DataPaths.Current, safeName));
+            if (!fullPath.StartsWith(dataDir + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                throw new ArgumentException("Invalid file path.");
+            if (File.Exists(fullPath))
+                File.Delete(fullPath);
+        }
+        #endregion Internal Methods
+
+        #region Private Fields
+        private readonly object _dictionaryLock = new();
+        private readonly Dictionary<string, SearchEngineInstance> _instances = [];
+        private readonly ILogger<IndxServerInternalApi> _logger;
+        private readonly ILoggerFactory _loggerFactory;
+        /// <summary>
+        /// Instances being disposed: mechanics the terminal monitor already shows as a phase change,
+        /// read by polling. Its own category so the monitor's pane can leave them out
+        /// (<see cref="Monitor.MonitorLoggerProvider.Minimum"/>) while the file keeps them; for a
+        /// deleted dataset this is the only line the file gets.
+        /// </summary>
+        private readonly ILogger _lifecycleLogger;
+        internal const string LifecycleLogCategory = "IndxServer.Engine.IndxServerInternalApi.Lifecycle";
+        private static IndxServerInternalApi? _manager;
+        #endregion Private Fields
+
+        #region Private Constructors
+        private IndxServerInternalApi(string searchDbConnectionString, ILoggerFactory loggerFactory)
+        {
+            _loggerFactory = loggerFactory;
+            _logger = loggerFactory.CreateLogger<IndxServerInternalApi>();
+            _lifecycleLogger = loggerFactory.CreateLogger(LifecycleLogCategory);
+            SearchDbConnectionString = searchDbConnectionString;
+        }
+        #endregion Private Constructors
+
+        #region Private Methods
+        private void InitializeSystem()
+        {
+            const string tag = nameof(IndxServerInternalApi) + "." + nameof(InitializeSystem);
+            _logger.LogInformation("{Tag} starting up", tag);
+            if (string.IsNullOrEmpty(SearchDbConnectionString))
+            {
+                _logger.LogError("{Tag} SearchDbConnectionString is null or empty", tag);
+                throw new InvalidOperationException("SearchDbConnectionString is null or empty");
+            }
+
+            var sqLiteManager = new SqLiteManager(SearchDbConnectionString);
+            if (!sqLiteManager.DatabaseExists())
+            {
+                _logger.LogInformation("{Tag} no database found at {Database}", tag, SearchDbConnectionString);
+                return;
+            }
+            // Add the KeepAliveTimeHrs column to databases that predate it (existing rows backfill
+            // to int.MaxValue = warm-at-startup, never disposed). No-op once present. Stays on the
+            // boot path: requests read the column as soon as the server is listening.
+            sqLiteManager.EnsureKeepAliveColumn();
+        }
+
+        /// <summary>
+        /// Loads and indexes every persisted dataset (except KeepAliveTimeHrs == 0, which is
+        /// client-managed). Runs in the background after the server starts listening — pre-warming
+        /// is an optimization, not a prerequisite: a request that arrives first auto-loads its
+        /// dataset on demand in ResolveEngine under the same per-dataset DbLock, and both paths
+        /// re-check the state inside the lock so the work happens exactly once. Startup must never
+        /// block on this: a large persisted store on slow storage (Azure SMB content shares) takes
+        /// minutes, and IIS/ANCM kills the process after its startup time limit (120 s by default)
+        /// — the boot loop this caused when it ran inline before the server was up.
+        /// </summary>
+        internal void WarmUpPersistedDatasets()
+        {
+            const string tag = nameof(IndxServerInternalApi) + "." + nameof(WarmUpPersistedDatasets);
+            var sqLiteManager = new SqLiteManager(SearchDbConnectionString);
+            if (!sqLiteManager.DatabaseExists())
+                return;
+
+            // Owner keys in the storage layer are team ids. Warm up every dataset under each.
+            var owners = sqLiteManager.GetUsers();
+            var work = owners
+                .SelectMany(teamId => sqLiteManager.GetUserDataSets(teamId)
+                    .Select(dataSet => (teamId, dataSet)))
+                .ToList();
+            var total = work.Count;
+            // Claim the whole queue up front. Everything on it is on its way up, whether or not
+            // warm-up has reached it yet.
+            foreach (var (teamId, dataSet) in work)
+                _warmUpPending[MakeKey(dataSet, teamId)] = 0;
+            _logger.LogInformation("{Tag} warming up {Total} dataset(s) across {Teams} team(s), workingSet {WorkingSetMb} MB", tag, total, owners.Count, WorkingSetMb());
+
+            var overallSw = System.Diagnostics.Stopwatch.StartNew();
+            int i = 0, loaded = 0, skipped = 0, failed = 0;
+            foreach (var (teamId, dataSet) in work)
+            {
+                i++;
+                // Per-dataset containment: one broken dataset (corrupt rows, OOM, a wedged build)
+                // must not abort the warm-up of everything behind it in the list.
+                try
+                {
+                    // Off the queue: from here it either holds a monitor or it has finished, and a
+                    // dataset warm-up skips or fails must not stay "on its way up" forever.
+                    _warmUpPending.TryRemove(MakeKey(dataSet, teamId), out _);
+                    var wrapper = GetOrCreateInstance(dataSet, teamId);
+                    var engine = wrapper?.theInstance;
+                    if (wrapper == null || engine == null)
+                    {
+                        _logger.LogWarning("{Tag} [{I}/{Total}] no engine instance for team {Team} dataset '{DataSet}', skipping", tag, i, total, TeamLabel(teamId), dataSet);
+                        skipped++;
+                        continue;
+                    }
+                    if (engine.Persistence == null)
+                    {
+                        _logger.LogWarning("{Tag} [{I}/{Total}] instance.Persistence is null for team {Team} dataset '{DataSet}', skipping", tag, i, total, TeamLabel(teamId), dataSet);
+                        skipped++;
+                        continue;
+                    }
+                    // KeepAliveTimeHrs == 0 means "do not autoload at startup" — the client manages
+                    // loading itself. The engine shell stays registered but unloaded.
+                    if (engine.Persistence.ReadKeepAliveHrs() == 0)
+                    {
+                        _logger.LogInformation("{Tag} [{I}/{Total}] skipping '{DataSet}' team {Team}: KeepAliveTimeHrs=0 (client-managed)", tag, i, total, dataSet, TeamLabel(teamId));
+                        skipped++;
+                        continue;
+                    }
+                    var records = engine.Persistence.NumberOfJsonRecords();
+                    if (records == 0)
+                    {
+                        _logger.LogInformation("{Tag} [{I}/{Total}] skipping '{DataSet}' team {Team}: 0 records", tag, i, total, dataSet, TeamLabel(teamId));
+                        skipped++;
+                        continue;
+                    }
+
+                    var beforeMb = WorkingSetMb();
+                    var sw = System.Diagnostics.Stopwatch.StartNew();
+                    lock (wrapper.DbLock)
+                    {
+                        // A request may have auto-loaded (or a client begun loading) this dataset
+                        // while we worked through the list — same double-check as ResolveEngine.
+                        if (engine.Status.SystemState != SystemState.Created)
+                        {
+                            _logger.LogInformation("{Tag} [{I}/{Total}] '{DataSet}' team {Team} already {State}, skipping", tag, i, total, dataSet, TeamLabel(teamId), engine.Status.SystemState);
+                            skipped++;
+                            continue;
+                        }
+
+                        _logger.LogInformation("{Tag} [{I}/{Total}] loading '{DataSet}' team {Team}: {Records} records, workingSet {WorkingSetMb} MB", tag, i, total, dataSet, TeamLabel(teamId), records, beforeMb);
+                        var monitor = new ProcessMonitor { TimeoutSeconds = 600 };
+                        using var warmUpScope = TrackMonitor(dataSet, teamId, monitor);
+                        UseSavedEmbeddings(engine, dataSet, teamId);
+                        engine.LoadFromDatabaseSync(monitor);
+                        // Finished and succeeded - see ResolveEngine. A load that finished with an
+                        // error used to pass this and be indexed.
+                        if (!monitor.WaitForCompletion() || !monitor.Succeeded)
+                        {
+                            // A thrown failure is logged, with its stack, by the engine itself; this says what it
+                            // means for the warm-up. Exception is null when it timed out instead.
+                            _logger.LogError(monitor.Exception, "{Tag} [{I}/{Total}] load of '{DataSet}' team {Team} did not complete; dataset stays non-Ready", tag, i, total, dataSet, TeamLabel(teamId));
+                            failed++;
+                            continue;
+                        }
+                        monitor = new ProcessMonitor { TimeoutSeconds = 600 };
+                        engine.Index(monitor: monitor);
+                        if (!monitor.WaitForCompletion())
+                        {
+                            _logger.LogError(monitor.Exception, "{Tag} [{I}/{Total}] index of '{DataSet}' team {Team} did not complete; dataset stays non-Ready", tag, i, total, dataSet, TeamLabel(teamId));
+                            failed++;
+                            continue;
+                        }
+                    }
+
+                    sw.Stop();
+                    var afterMb = WorkingSetMb();
+                    loaded++;
+                    _logger.LogInformation("{Tag} [{I}/{Total}] loaded '{DataSet}' in {ElapsedMs} ms, workingSet now {WorkingSetMb} MB (delta {DeltaMb} MB)", tag, i, total, dataSet, sw.ElapsedMilliseconds, afterMb, afterMb - beforeMb);
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    _logger.LogError(ex, "{Tag} [{I}/{Total}] failed warming '{DataSet}' team {Team}", tag, i, total, dataSet, TeamLabel(teamId));
+                }
+            }
+
+            overallSw.Stop();
+            _logger.LogInformation("{Tag} completed: {Loaded} loaded, {Skipped} skipped, {Failed} failed, {ElapsedMs} ms, workingSet {WorkingSetMb} MB", tag, loaded, skipped, failed, overallSw.ElapsedMilliseconds, WorkingSetMb());
+        }
+
+        /// <summary>
+        /// Current process working set in whole megabytes. Reflects total resident memory,
+        /// including the unmanaged native allocations made by the search engine (which managed
+        /// GC counters do not see), so it is the right gauge for startup memory pressure.
+        /// </summary>
+        private static long WorkingSetMb()
+        {
+            using var proc = System.Diagnostics.Process.GetCurrentProcess();
+            return proc.WorkingSet64 / (1024 * 1024);
+        }
+
+        /// <summary>The registry, or null before StartUpSystem - for services that attach to it from
+        /// their own start-up and must not throw when it is not there (a test host without it).</summary>
+        internal static IndxServerInternalApi? ManagerOrNull => _manager;
+
+        // Where changes to a dataset are reported.
+        // A list, not one: the registry is process-wide and a test process runs a host per test,
+        // each with its own statistics. In production there is exactly one.
+        private ImmutableArray<Services.IDatasetChangeSink> _changeSinks = ImmutableArray<Services.IDatasetChangeSink>.Empty;
+
+        internal void AttachChangeSink(Services.IDatasetChangeSink sink) =>
+            ImmutableInterlocked.Update(ref _changeSinks, s => s.Contains(sink) ? s : s.Add(sink));
+
+        internal void DetachChangeSink(Services.IDatasetChangeSink sink) =>
+            ImmutableInterlocked.Update(ref _changeSinks, s => s.Remove(sink));
+
+        /// <summary>Reports a change to every attached sink. Never throws: a change has already
+        /// happened by the time it is reported, and its statistics must not undo it.</summary>
+        internal void ReportChange(string dataSetName, string teamId, string kind, object? summary = null)
+        {
+            foreach (var sink in _changeSinks)
+            {
+                try { sink.Changed(teamId, dataSetName, kind, summary); }
+                catch (Exception ex) { _logger.LogWarning(ex, "{Prefix}change event not recorded", MakeLogPrefix(teamId, dataSetName)); }
+            }
+        }
+
+        // Per-dataset boost rules (server-owned). Wired in once at startup; null until then.
+        private Services.BoostRuleStore? _boostStore;
+        private int _boostCeiling = 6;
+
+        /// <summary>Attaches the boost-rule store + saturation ceiling to the search path (startup-only).</summary>
+        internal void AttachBoostStore(Services.BoostRuleStore store, int saturationCeiling)
+        {
+            _boostStore = store;
+            _boostCeiling = EffectiveBoostCeiling(saturationCeiling);
+            if (_boostCeiling != saturationCeiling)
+                _logger.LogWarning("Indx:BoostSaturationCeiling is {Configured}; read as {Effective}, the most a search can carry",
+                    saturationCeiling, _boostCeiling);
+        }
+
+        // Per-dataset bury rules (25 Oct 2026), the boost rules' twin: wired in at startup.
+        private Services.BuryRuleStore? _buryStore;
+        private int _buryCeiling = 6;
+
+        /// <summary>Attaches the bury-rule store + its saturation ceiling to the search path (startup-only).</summary>
+        internal void AttachBuryStore(Services.BuryRuleStore store, int saturationCeiling)
+        {
+            _buryStore = store;
+            _buryCeiling = EffectiveBoostCeiling(saturationCeiling);
+            if (_buryCeiling != saturationCeiling)
+                _logger.LogWarning("Indx:BurySaturationCeiling is {Configured}; read as {Effective}, the most a search can carry",
+                    saturationCeiling, _buryCeiling);
+        }
+
+        /// <summary>The most a search's boosts may sum to: the library refuses a search past it
+        /// (SearchEngine.MaxBoostStrengthSum, 65535 / 257).</summary>
+        internal const int MaxBoostStrengthSum = ushort.MaxValue / 257;
+
+        /// <summary>
+        /// The ceiling the rules are added up to. One of 0 or less - documented as "no cap" - or
+        /// past <see cref="MaxBoostStrengthSum"/> is read as that maximum, so the saved rules can
+        /// never take a search past what the library serves and have it refused. Only a client's
+        /// own boosts can, and that is the client's error, refused with the reason.
+        /// </summary>
+        internal static int EffectiveBoostCeiling(int configured) =>
+            configured <= 0 || configured > MaxBoostStrengthSum ? MaxBoostStrengthSum : configured;
+
+        // Per-dataset metadata incl. the declared key field (server-owned). Wired in once at startup.
+        private Services.DatasetMetadataStore? _metadataStore;
+
+        // Stored when the user explicitly chooses auto-generated keys even though a real key field is
+        // available. Distinct from "" (undeclared) — which falls back to the engine default (the "id"
+        // field when present, else auto). Never a real JSON field name.
+        internal const string KeyFieldAutoSentinel = "__indx_auto_key__";
+
+        /// <summary>Attaches the metadata store (description + declared key field) (startup-only).</summary>
+        internal void AttachMetadataStore(Services.DatasetMetadataStore store) => _metadataStore = store;
+
+        // Per-dataset query parameters: the coverage values a search takes when it leaves them out.
+        private Services.QueryParameterStore? _queryParameterStore;
+
+        /// <summary>Attaches the query-parameter store to the search path (startup-only).</summary>
+        internal void AttachQueryParameterStore(Services.QueryParameterStore store) => _queryParameterStore = store;
+
+        // The dataset's filters as its owner set them: they follow the dataset.
+        private Services.FilterSetupStore? _filterSetupStore;
+
+        /// <summary>Attaches the filter setup store, so a delete, rename or transfer carries it (startup-only).</summary>
+        internal void AttachFilterSetupStore(Services.FilterSetupStore store) => _filterSetupStore = store;
+
+        // Per-dataset text rules: the engine's normalizer, read where an engine is built.
+        private Services.DatasetTextRuleStore? _textRuleStore;
+
+        /// <summary>Attaches the text-rule store (startup-only).</summary>
+        internal void AttachTextRuleStore(Services.DatasetTextRuleStore store) => _textRuleStore = store;
+
+        /// <summary>The dataset's own text rules, null for none.</summary>
+        internal Services.DatasetTextRules? GetTextRules(string dataSetName, string teamId) => _textRuleStore?.Load(teamId, dataSetName);
+
+        private Services.FieldProfileStore? _fieldProfileStore;
+
+        /// <summary>Attaches the field profile store, so a dataset's profiles follow it on delete,
+        /// rename and transfer (startup-only).</summary>
+        internal void AttachFieldProfileStore(Services.FieldProfileStore store) => _fieldProfileStore = store;
+
+        // The dataset's last data check (server-owned), moved and deleted with the dataset.
+        private Services.DataCheckStore? _dataCheckStore;
+
+        internal void AttachDataCheckStore(Services.DataCheckStore store) => _dataCheckStore = store;
+
+        // Cold storage beside the records (server-owned): follows its dataset
+        // through delete, rename and transfer.
+        private Services.ColdStore? _coldStore;
+
+        internal void AttachColdStore(Services.ColdStore store) => _coldStore = store;
+
+        /// <summary>The cold store, for the routes that delete a record (its items go with it), and the
+        /// search, which says which of its records hold some; null before startup attaches it.</summary>
+        internal Services.ColdStore? Cold => _coldStore;
+
+        // Per-dataset Search or ask settings: follow the dataset through delete, rename and transfer.
+        private Services.SearchOrAsk.SearchOrAskStore? _searchOrAskStore;
+
+        /// <summary>Attaches the Search or ask store (startup-only).</summary>
+        internal void AttachSearchOrAskStore(Services.SearchOrAsk.SearchOrAskStore store) => _searchOrAskStore = store;
+
+        // Observr's findings follow the dataset the same way.
+        private Services.Observr.ObservrFindingStore? _observrStore;
+        internal void AttachObservrStore(Services.Observr.ObservrFindingStore store) => _observrStore = store;
+        private Services.Observr.ObservrConversationStore? _observrConversations;
+        internal void AttachObservrConversations(Services.Observr.ObservrConversationStore store) => _observrConversations = store;
+        // A dataset's webhooks and their key registry, likewise.
+        private Services.Webhooks.WebhookStore? _webhookStore;
+        internal void AttachWebhookStore(Services.Webhooks.WebhookStore store) => _webhookStore = store;
+
+        /// <summary>
+        /// Applies the dataset's server-declared key field to the engine's <see cref="DocumentFields"/>
+        /// just before an external Load assigns and persists document keys. The lib does not persist the
+        /// key-field name, so this re-establishes it on every fresh load (incl. replace).
+        /// <list type="bullet">
+        ///   <item>undeclared ("") → no-op: the engine keeps its default — the "id" field if present, else auto.</item>
+        ///   <item>explicit auto (sentinel) → clears the key field so the engine auto-generates keys.</item>
+        ///   <item>a field name → that field becomes the key.</item>
+        /// </list>
+        /// </summary>
+        private void ApplyDeclaredKeyField(IServerSearchEngine instance, string dataSetName, string teamId)
+        {
+            var declared = _metadataStore?.LoadKeyField(teamId, dataSetName);
+            if (string.IsNullOrEmpty(declared)) return; // undeclared → engine default (id if present, else auto)
+            var df = instance.DocumentFields;
+            if (df == null) return;
+            df.NameOfDocumentKeyField = declared == KeyFieldAutoSentinel ? "" : declared;
+        }
+
+        /// <summary>
+        /// True when the dataset declares a named key field that <paramref name="instance"/>'s analyzed
+        /// schema does not contain. The engine then falls back to its default key (an "id" field if
+        /// present, else auto-generated) — the same thing it does for an undeclared key — so this is
+        /// a warning for the caller to surface, not a failure.
+        /// </summary>
+        private bool DeclaredKeyFieldIsMissing(IServerSearchEngine instance, string dataSetName, string teamId, out string declared)
+        {
+            declared = _metadataStore?.LoadKeyField(teamId, dataSetName) ?? "";
+            if (string.IsNullOrEmpty(declared) || declared == KeyFieldAutoSentinel) return false;
+            var df = instance.DocumentFields;
+            var name = declared;
+            return df != null && df.GetFieldList().All(f => f.Name != name);
+        }
+
+        /// <summary>
+        /// The dataset's declared key field for API consumers: a field name, or "" meaning the default
+        /// (the "id" field when present, otherwise auto-generated). Explicit auto-generated maps to "".
+        /// </summary>
+        internal string GetDeclaredKeyField(string dataSetName, string teamId)
+        {
+            var raw = _metadataStore?.LoadKeyField(teamId, dataSetName) ?? "";
+            return raw == KeyFieldAutoSentinel ? "" : raw;
+        }
+
+        /// <summary>
+        /// The fields eligible to be the document key: numeric AND non-optional (present + set on every
+        /// analyzed document). A key field must identify every document, so optional fields — which the
+        /// lib's Init flags when a field is null/empty/absent on some document — are excluded.
+        /// </summary>
+        internal string[] GetKeyFieldCandidates(string dataSetName, string teamId)
+        {
+            var df = FindInstance(dataSetName, teamId)?.DocumentFields;
+            if (df == null) return Array.Empty<string>();
+            return df.GetFieldList()
+                .Where(f => f.Type == System.Text.Json.JsonValueKind.Number && !f.Optional)
+                .Select(f => f.Name)
+                .ToArray();
+        }
+
+        /// <summary>
+        /// UX-only pre-check for the field-config UI: when the user picks a custom key field, dry-run the
+        /// whole Load+Index in memory (NO persistence) against the buffered upload and return an error
+        /// message if that key can't identify the documents (missing on some, or non-unique), else null.
+        /// A no-op (null) for the default/auto key, or when fields aren't configured.
+        ///
+        /// This is purely to tell the user *at selection time* that a key won't work — it catches the one
+        /// thing the lib can't surface cheaply yet (uniqueness; see indx_lib_fixes.md #3). It is NOT used
+        /// on the actual load path: the lib's external Load is now atomic + state-resetting, so a bad key
+        /// fails cleanly there on its own. Runs during setup (no live engine), so peak memory is ~1×.
+        /// </summary>
+        internal string? ValidateExternalLoadForCustomKey(string dataSetName, string teamId, Stream jsonStream)
+        {
+            var declared = _metadataStore?.LoadKeyField(teamId, dataSetName) ?? "";
+            if (declared.Length == 0 || declared == KeyFieldAutoSentinel) return null; // no custom key → cheap path
+            if (!jsonStream.CanSeek) return null; // can't re-read to dry-run; don't buffer a huge body
+
+            var liveConfig = FindInstance(dataSetName, teamId)?.GetFieldConfiguration();
+            if (liveConfig == null || liveConfig.Length == 0) return null;
+
+            ConfigurationParameters configuration;
+            using (var cfg = new Persistence(SearchDbConnectionString, dataSetName, teamId))
+                configuration = ConfigurationFor(cfg.ReadDataSetConfiguration(), dataSetName, teamId);
+
+            // Persistence stays null → nothing this engine does can touch or lock the database.
+            using var validate = new SearchEngine(
+                MakeLogPrefix(teamId, dataSetName),
+                _loggerFactory,
+                configuration,
+                GetLicensePath());
+            try
+            {
+                jsonStream.Position = 0;
+                validate.Init(jsonStream);
+                ApplyDeclaredKeyField(validate, dataSetName, teamId);
+
+                // Cheap guard: the declared key field must be present (as a numeric/string field) in
+                // this data. If it is absent from every document, Haskey() is false and the engine would
+                // silently auto-key — the Load below would "succeed" with surrogate keys and mask that
+                // the chosen key isn't in this data. Catch it here, before paying for the full load.
+                if (validate.DocumentFields?.Haskey() != true)
+                    return DescribeKeyedLoadFailure(declared, $"field '{declared}' is not present in the data");
+
+                if (!validate.TrySetFieldConfiguration(liveConfig, out var cfgErr))
+                    return $"Field configuration error: {cfgErr}";
+
+                jsonStream.Position = 0;
+                var pm = new ProcessMonitor();
+                validate.Load(jsonStream, pm);
+                pm.WaitForCompletion();
+                if (!pm.Succeeded) return DescribeKeyedLoadFailure(declared, pm.ErrorMessage);
+
+                var im = new ProcessMonitor();
+                validate.Index(im);
+                im.WaitForCompletion();
+                if (!im.Succeeded) return DescribeKeyedLoadFailure(declared, im.ErrorMessage);
+                return null;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "{Prefix}validating the key field '{KeyField}' threw", MakeLogPrefix(teamId, dataSetName), declared);
+                return DescribeKeyedLoadFailure(declared, ex.Message);
+            }
+        }
+
+        private static string DescribeKeyedLoadFailure(string keyField, string? raw) =>
+            $"The data can't be loaded with key field '{keyField}'. A key must be a whole number that is " +
+            $"unique and present on every document (a price or rank won't work — values repeat). Pick a " +
+            $"field that uniquely identifies each document, or choose Auto-generated." +
+            (string.IsNullOrEmpty(raw) ? "" : $" (engine: {raw})");
+
+        /// <summary>
+        /// Turns a raw external-load failure message into something actionable when the dataset has a
+        /// custom key field declared — e.g. a non-unique key throws a bare "An item with the same key
+        /// has already been added", which becomes the "must be unique and present on every document"
+        /// guidance. Returns the raw message unchanged when no custom key is declared.
+        /// </summary>
+        internal string DescribeLoadFailure(string dataSetName, string teamId, string? rawError)
+        {
+            var declared = GetDeclaredKeyField(dataSetName, teamId);
+            return string.IsNullOrEmpty(declared)
+                ? (rawError ?? "Load failed")
+                : DescribeKeyedLoadFailure(declared, rawError);
+        }
+
+        /// <summary>
+        /// Declares a key field for a dataset that has none, ahead of a replace whose documents
+        /// carry it: a webhook's full sync writes each document's number into the field before the
+        /// data exists, so <see cref="SetKeyField"/>'s check against the analyzed fields cannot apply.
+        /// The replace's build keys by it (ApplyDeclaredKeyField). False when one is declared already.
+        /// </summary>
+        internal bool DeclareKeyFieldForReplace(string dataSetName, string teamId, string fieldName)
+        {
+            if (_metadataStore == null || GetDeclaredKeyField(dataSetName, teamId).Length > 0) return false;
+            _metadataStore.SaveKeyField(teamId, dataSetName, fieldName);
+            return true;
+        }
+
+        /// <summary>
+        /// Declares <paramref name="fieldName"/> (empty = auto-generated) as the dataset's key field:
+        /// validates it exists and is numeric (the engine key is a long; a non-numeric key would silently
+        /// collide via digit-stripping), persists the choice server-side, and applies it to the live engine.
+        /// Returns null on success or an error message. <paramref name="needsReloadToReKey"/> is true when
+        /// the dataset already holds loaded documents — their keys are frozen, so the new key field only
+        /// takes effect on the next replace/reload.
+        /// </summary>
+        internal string? SetKeyField(string dataSetName, string teamId, string fieldName, out bool needsReloadToReKey)
+        {
+            needsReloadToReKey = false;
+            if (_metadataStore == null)
+                return "Key-field store is not available";
+
+            var instance = FindInstance(dataSetName, teamId);
+            var df = instance?.DocumentFields;
+            if (df == null)
+                return "Analyze the dataset (upload a sample) before declaring its key field";
+
+            fieldName ??= "";
+            string storeValue, applyValue;
+            if (fieldName.Length == 0)
+            {
+                // Explicit auto-generated: force the engine off any default key field.
+                storeValue = KeyFieldAutoSentinel;
+                applyValue = "";
+            }
+            else
+            {
+                var field = df.GetField(fieldName);
+                if (field == null)
+                    return $"Field '{fieldName}' does not exist in this dataset";
+                if (field.Type != System.Text.Json.JsonValueKind.Number)
+                    return $"The key field must be numeric (the engine key is a whole number); " +
+                           $"'{fieldName}' is {field.Type}. Pick a numeric id field, or choose auto-generated.";
+                if (field.Optional)
+                    return $"The key field must identify every document, but '{fieldName}' is missing or " +
+                           $"empty on some documents. Pick a field that's always set, or choose auto-generated.";
+                storeValue = applyValue = fieldName;
+            }
+
+            _metadataStore.SaveKeyField(teamId, dataSetName, storeValue);
+            df.NameOfDocumentKeyField = applyValue; // apply to the live engine for the next load
+
+            // If documents are already loaded, their JsonData.Id keys are persisted and won't change
+            // until the data is reloaded (a replace).
+            var state = instance!.Status.SystemState;
+            needsReloadToReKey = state is SystemState.Ready or SystemState.Loaded or SystemState.Indexing;
+            return null;
+        }
+
+        /// <summary>
+        /// Turns a client-supplied filter token into a live <see cref="Filter"/>, or throws
+        /// <see cref="UnknownFilterException"/> when it cannot be resolved.
+        /// <para>
+        /// GetFilterFromKey returns null for a token it cannot parse or rebuild. Assigning that
+        /// null onward means "no filter", so a mistyped, truncated or stale token used to widen
+        /// the search to the entire dataset and answer 200 — the caller asked to narrow and got
+        /// the opposite, with nothing in the response to say so. Failing here is the whole point:
+        /// a filter that cannot be honoured must not be silently dropped.
+        /// </para>
+        /// </summary>
+        /// <summary>
+        /// The filter a request asks for: its token, its filter expression, or both - a document
+        /// must then match both. Null when it asks for neither. Throws
+        /// <see cref="UnknownFilterException"/> for a token, or a placeholder's token, that does not
+        /// resolve, and <see cref="InvalidFilterExpressionException"/> for an expression that makes
+        /// no filter: never null for a filter that was asked for (see ResolveFilterOrThrow).
+        /// </summary>
+        internal static Filter? ResolveRequestFilter(IServerSearchEngine engine, FilterProxy? token, string? expression,
+            Dictionary<string, FilterProxy>? parameters)
+        {
+            var byToken = token != null ? ResolveFilterOrThrow(engine, token) : null;
+            if (expression == null)
+                return byToken;
+            var bound = new Dictionary<string, Filter>();
+            if (parameters != null)
+                foreach (var (name, proxy) in parameters)
+                    bound[name] = ResolveFilterOrThrow(engine, proxy ?? new FilterProxy(string.Empty));
+            var byExpression = engine.CreateFilter(expression, bound, out var errors)
+                ?? throw new InvalidFilterExpressionException(expression, errors);
+            return byToken == null ? byExpression : Filter.And(byToken, byExpression);
+        }
+
+        private static Filter ResolveFilterOrThrow(IServerSearchEngine engine, FilterProxy proxy)
+        {
+            // An empty token never reaches a filter, and it does not merely fail to resolve: the
+            // key parser yields an empty RPN list, which the derived-filter builder cannot handle.
+            // Caught here so it is a 400 like every other unusable token rather than a 500 - and
+            // it is reachable by default, FilterFieldUpdateProxy.Filter initialises to exactly this.
+            if (string.IsNullOrWhiteSpace(proxy.HashString))
+                throw new UnknownFilterException(proxy.HashString, "the key is empty.");
+            var filter = engine.GetFilterFromKey(proxy.HashString, out var reason);
+            if (filter == null)
+                throw new UnknownFilterException(proxy.HashString, reason);
+            return filter;
+        }
+
+        private Query FromQueryProxy(QueryProxy queryProxy, IServerSearchEngine engine, string teamId, string dataSetName)
+        {
+            // Each value: the request's if it sent one, else the dataset's query parameters, else
+            // the engine default. The engine always gets the complete parts.
+            var resolved = Services.QueryParameterResolution.Resolve(queryProxy,
+                _queryParameterStore?.Load(teamId, dataSetName));
+            Query query = new Query(queryProxy.Text, queryProxy.MaxNumberOfRecordsToReturn)
+            {
+                LogPrefix = queryProxy.LogPrefix,
+                MeasureFit = queryProxy.MeasureFit,
+                Mode = resolved.Mode,
+                EnableMatchReport = queryProxy.EnableMatchReport,
+                EnableFacets = queryProxy.EnableFacets,
+                FacetFields = queryProxy.FacetFields ?? [],
+                CollapseBy = queryProxy.CollapseBy ?? [],
+                FacetValueLimit = queryProxy.FacetValueLimit,
+                Offset = queryProxy.Offset,
+                SortAscending = queryProxy.SortAscending,
+                SortBy = queryProxy.SortBy != null ? engine.DocumentFields.GetField(queryProxy.SortBy) : null,
+                TimeOutLimitMilliseconds = queryProxy.TimeOutLimitMilliseconds
+            };
+            query.Match = resolved.Match;
+            query.Candidates = resolved.Candidates;
+            query.Ranking = resolved.Ranking;
+            var ranking = queryProxy.Ranking;
+            // Null is no filter, which a new query already has: Query.Filter is declared non-null.
+            if (ResolveRequestFilter(engine, queryProxy.Filter, queryProxy.FilterExpression, queryProxy.FilterParameters) is { } requestFilter)
+                query.Filter = requestFilter;
+            // The facet selections, and the facet ranges an expression each (13 Nov 2026); one that
+            // makes no filter is a 400.
+            if (queryProxy.FacetSelections != null)
+                foreach (var (name, values) in queryProxy.FacetSelections)
+                    query.FacetSelections[name] = values ?? [];
+            if (queryProxy.FacetRanges != null)
+                foreach (var (name, expression) in queryProxy.FacetRanges)
+                    query.FacetRanges[name] = ResolveRequestFilter(engine, null, expression ?? string.Empty, queryProxy.FilterParameters)!;
+            // The named counts, an expression each (12 Nov 2026); one that makes no filter is a 400.
+            if (queryProxy.Counts != null)
+                foreach (var (name, expression) in queryProxy.Counts)
+                    query.Counts[name] = ResolveRequestFilter(engine, null, expression ?? string.Empty, queryProxy.FilterParameters)!;
+
+            // The client's boosts merged with the dataset's stored, currently active boost rules,
+            // which apply to every search (6.0: until then only with the client's EnableBoost).
+            var merged = new List<Boost>();
+            if (ranking?.Boosts != null)
+                for (int i = 0; i < ranking.Boosts.Length; i++)
+                {
+                    var b = ranking.Boosts[i];
+                    if (b?.FilterProxy == null)
+                        throw new ArgumentException($"boosts[{i}] needs a filterProxy with a hashString.");
+                    merged.Add(engine.CreateBoost(ResolveFilterOrThrow(engine, b.FilterProxy), b.BoostStrength, out var boostError)
+                        ?? throw new ArgumentException($"boosts[{i}]: {boostError}"));
+                }
+
+            if (_boostStore != null)
+            {
+                var today = DateOnly.FromDateTime(DateTime.UtcNow);
+                var ruleBoosts = _boostStore.BuildActiveBoosts(engine, teamId, dataSetName, today)
+                                            .OrderByDescending(b => (int)b.BoostStrength);
+                // Saturation cap: keep client boosts, then add rule boosts greedily while the total
+                // summed strength stays within the ceiling. Additive boosts subtract MaxBoost*257
+                // flatly, so an unbounded sum underflows the 16-bit score and flattens ranking.
+                // The ceiling is 1..255 (EffectiveBoostCeiling): a configured "no cap" is 255.
+                var sum = merged.Sum(b => (int)b.BoostStrength);
+                foreach (var rb in ruleBoosts)
+                {
+                    if (sum + (int)rb.BoostStrength > _boostCeiling) continue;
+                    merged.Add(rb);
+                    sum += (int)rb.BoostStrength;
+                }
+            }
+
+            if (merged.Count > 0)
+                query.Ranking.Boosts = merged.ToArray();
+
+            // The buries the same way (25 Oct 2026): the client's, then the dataset's active bury
+            // rules, up to the bury ceiling.
+            var buries = new List<Bury>();
+            if (ranking?.Buries != null)
+                for (int i = 0; i < ranking.Buries.Length; i++)
+                {
+                    var b = ranking.Buries[i];
+                    if (b?.FilterProxy == null)
+                        throw new ArgumentException($"buries[{i}] needs a filterProxy with a hashString.");
+                    buries.Add(engine.CreateBury(ResolveFilterOrThrow(engine, b.FilterProxy), b.BuryStrength, out var buryError)
+                        ?? throw new ArgumentException($"buries[{i}]: {buryError}"));
+                }
+            if (_buryStore != null)
+            {
+                var today = DateOnly.FromDateTime(DateTime.UtcNow);
+                var sum = buries.Sum(b => (int)b.BuryStrength);
+                foreach (var rb in _buryStore.BuildActiveBuries(engine, teamId, dataSetName, today).OrderByDescending(b => (int)b.BuryStrength))
+                {
+                    if (sum + (int)rb.BuryStrength > _buryCeiling) continue;
+                    buries.Add(rb);
+                    sum += (int)rb.BuryStrength;
+                }
+            }
+            if (buries.Count > 0)
+                query.Ranking.Buries = buries.ToArray();
+
+            return query;
+        }
+
+        /// <summary>
+        /// Returns the engine for a team-owned dataset, or null if the dataset doesn't exist.
+        /// Authorization is the controller's responsibility (team membership) — this only resolves.
+        /// </summary>
+        internal IServerSearchEngine? ResolveEngine(string dataSetName, string teamId)
+        {
+            var instance = GetOrCreateInstance(dataSetName, teamId);
+            var engine = instance?.theInstance;
+            if (instance == null || engine == null)
+                return null;
+
+            // Mark used so the idle sweeper sees activity (resets the keep-alive countdown).
+            instance.Touch(TimeProvider.GetUtcNow());
+
+            // Transparent auto-load for an evicted / not-yet-loaded dataset, EXCEPT when KeepAlive == 0
+            // (those are client-managed: the client loads explicitly, the server never auto-loads).
+            // Gate on Created + records-in-store: that combination only happens for a fresh shell whose
+            // data is already persisted (restart or post-eviction) — never mid explicit client load
+            // (which is Loading/Indexing) and never for a brand-new dataset (0 persisted records).
+            if (instance.KeepAliveTimeHrs != 0
+                && engine.Status.SystemState == SystemState.Created
+                && engine.Persistence != null
+                && engine.Persistence.NumberOfJsonRecords() > 0)
+            {
+                bool disposedWhileQueued;
+                lock (instance.DbLock)
+                {
+                    // Disposed while this request queued for the lock: the entry has already left
+                    // the registry (see DisposeInstance), so resolving again finds or builds its
+                    // successor rather than loading a dead engine. Done after the lock is released,
+                    // so the dead instance's lock is not held while the successor loads.
+                    disposedWhileQueued = engine.IsDisposed;
+                    if (!disposedWhileQueued && engine.Status.SystemState == SystemState.Created)
+                    {
+                        // Bounded waits: DbLock is held for the duration, and every
+                        // other request for this dataset queues behind it. An
+                        // unbounded WaitForCompletion here turns a wedged build
+                        // (e.g. a build thread that died under memory pressure and
+                        // left the state at Indexing) into a permanently bricked
+                        // dataset with a growing pile of blocked request threads.
+                        var loadMonitor = new ProcessMonitor { TimeoutSeconds = 600 };
+                        using var wakeScope = TrackMonitor(dataSetName, teamId, loadMonitor);
+                        UseSavedEmbeddings(engine, dataSetName, teamId);
+                        engine.LoadFromDatabaseSync(loadMonitor);
+                        // Finished AND succeeded. WaitForCompletion answers only the first, and
+                        // until Oct 2026 that was all that was asked: a load that failed part-way,
+                        // or was still running at the timeout, went on to Index(), which built on
+                        // the documents read so far and left the dataset Ready on part of itself.
+                        // The engine refuses that Index() now; this is what keeps it from being
+                        // asked, and from being logged as an auto-load that worked.
+                        bool loaded = loadMonitor.WaitForCompletion() && loadMonitor.Succeeded;
+
+                        var indexMonitor = new ProcessMonitor { TimeoutSeconds = 600 };
+                        bool indexed = false;
+                        if (loaded)
+                        {
+                            engine.Index(monitor: indexMonitor);
+                            indexed = indexMonitor.WaitForCompletion();
+                        }
+
+                        if (loaded && indexed)
+                        {
+                            _logger.LogInformation("{Prefix}auto-loaded on demand (KeepAliveTimeHrs={KeepAliveTimeHrs})", MakeLogPrefix(teamId, dataSetName), instance.KeepAliveTimeHrs);
+                            ReportChange(dataSetName, teamId, Services.DatasetChangeKind.Wake, new { reason = "onDemand" });
+                        }
+                        else
+                            // A thrown failure is logged, with its stack, by the engine itself;
+                            // Exception is null when a wait timed out instead.
+                            _logger.LogError(loadMonitor.Exception ?? indexMonitor.Exception,
+                                "{Prefix}auto-load did not complete (load succeeded:{Loaded}, index completed:{Indexed}) — "
+                                + "releasing the request; the dataset stays non-Ready until reloaded", MakeLogPrefix(teamId, dataSetName), loaded, indexed);
+                    }
+                }
+                if (disposedWhileQueued)
+                    return ResolveEngine(dataSetName, teamId);
+                instance.Touch(TimeProvider.GetUtcNow());
+            }
+
+            return engine;
+        }
+
+        private static string MakeKey(string dataSetName, string teamId)
+        {
+            return teamId + dataSetName;
+        }
+
+        /// <summary>
+        /// Turns a team id into its name for log lines. Set once at startup; until then, and when
+        /// the name cannot be resolved, lines carry the id.
+        ///
+        /// <para>A hook rather than an injected service because this registry is process-wide and
+        /// built before the container is usable, which is the same reason
+        /// <see cref="TimeProvider"/> is one. The name lives in identity.db while the dataset
+        /// knows only the id from indx.db, so resolving it means a second database and a cache —
+        /// both of which the monitor's TeamNames already has.</para>
+        /// </summary>
+        internal static Func<string, string>? TeamNameResolver { get; set; }
+
+        /// <summary>The team as a reader knows it: its name when it can be resolved, its id when it
+        /// cannot. Every log line that mentions a team goes through this.</summary>
+        private static string TeamLabel(string teamId) => TeamNameResolver?.Invoke(teamId) ?? teamId;
+
+        private static string MakeLogPrefix(string teamId, string dataSetName)
+        {
+            // A GUID in a log line helps nobody: it cannot be pasted into the console, it does not
+            // match what the reader sees on the page, and two teams' lines cannot be told apart at
+            // a glance. The monitor's events were fixed for this in 09c5c3f0; the engine registry
+            // kept writing the raw id.
+            return "Team:" + TeamLabel(teamId) + " dataSet:" + dataSetName + " ";
+        }
+
+        private IServerSearchEngine? FindInstance(string dataSetName, string teamId)
+        {
+            return GetOrCreateInstance(dataSetName, teamId)?.theInstance;
+        }
+
+        // Returns the instance wrapper (engine + keep-alive bookkeeping), creating an unloaded engine
+        // shell on first touch. The actual data load happens at startup (InitializeSystem) or lazily
+        // (ResolveEngine) — not here. Returns null if the dataset doesn't exist in the store.
+        private SearchEngineInstance? GetOrCreateInstance(string dataSetName, string teamId)
+        {
+            string key = MakeKey(dataSetName, teamId);
+
+            lock (_dictionaryLock)
+            {
+                if (_instances.TryGetValue(key, out var existing))
+                    return existing;
+
+                var persistence = new Persistence(SearchDbConnectionString, dataSetName, teamId);
+                var configuration = persistence.ReadDataSetConfiguration();
+                if (configuration == null)
+                    return null;
+
+                var licensePath = GetLicensePath();
+                var matcher = new SearchEngine(
+                    MakeLogPrefix(teamId, dataSetName),
+                    _loggerFactory,
+                    ConfigurationFor(configuration, dataSetName, teamId),
+                    licensePath,
+                    FilterCacheMBFor(dataSetName, teamId))
+                {
+                    Persistence = persistence
+                };
+
+                // The dataset's synonym list is engine configuration, so it is restored here — the
+                // one place an engine is built — rather than looked up per search. A stored list
+                // that will not parse is logged and skipped: a bad list must not brick the dataset.
+                try
+                {
+                    var storedSynonyms = persistence.ReadSynonyms();
+                    if (!string.IsNullOrWhiteSpace(storedSynonyms))
+                        matcher.SynonymList = SynonymList.Deserialize(storedSynonyms);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "{Prefix}stored synonym list could not be parsed — continuing without it", MakeLogPrefix(teamId, dataSetName));
+                }
+
+                var instance = new SearchEngineInstance
+                {
+                    theInstance = matcher,
+                    DataSetName = dataSetName,
+                    TeamId = teamId,
+                    KeepAliveTimeHrs = persistence.ReadKeepAliveHrs()
+                };
+                instance.Touch(TimeProvider.GetUtcNow());
+                _instances.Add(key, instance);
+                return instance;
+            }
+        }
+        #endregion Private Methods
+
+        #region Private Classes
+        internal record LicenseFileInfo(string Filename, bool IsActive);
+
+        /// <summary>
+        /// Snapshot of a dataset's keep-alive policy and live runtime state, for the website to show
+        /// the setting and the countdown.
+        /// <para><paramref name="Ready"/> is true only when a live, non-disposed engine has reached
+        /// <see cref="SystemState.Ready"/> (fully loaded and indexed) — i.e. it can serve queries.</para>
+        /// <para><paramref name="Disposed"/> is true when the engine reference still exists but has
+        /// already been disposed (a stale instance). In the normal eviction/delete path the instance is
+        /// removed from the registry before it is disposed, so this is rarely observed; it exists as a
+        /// guard so a disposed engine is never reported as <paramref name="Ready"/>.</para>
+        /// <para><paramref name="Remaining"/> is null when not Ready or for the non-counting policies
+        /// (0 / int.MaxValue).</para>
+        /// </summary>
+        internal sealed record KeepAliveInfo(int KeepAliveTimeHrs, bool Ready, DateTimeOffset? LastUsedUtc, TimeSpan? Remaining, int RecordCount, bool Disposed);
+
+        private sealed class SearchEngineInstance
+        {
+            #region Internal Fields
+            // Serializes lazy auto-load (ResolveEngine) for this one dataset so two concurrent cold
+            // requests don't both LoadFromDatabaseSync + Index the same engine.
+            internal readonly object DbLock = new();
+            /// <summary>
+        /// The live engine. <b>volatile is load-bearing:</b> replace publishes a
+        /// fully built shadow here from inside <c>_dictionaryLock</c>, but every
+        /// reader — <c>ResolveEngine</c>, <c>FindInstance</c> — reads it without
+        /// taking that lock. Without the acquire barrier a reader can observe the
+        /// new reference before the writes that built the object behind it are
+        /// visible, and answer a search from an engine that looks empty: HTTP 200,
+        /// no timeout, no records. x86 hides this; ARM64 does not.
+        /// </summary>
+        internal volatile IServerSearchEngine? theInstance;
+            // Identity, kept so the idle sweeper can call DisposeDataSetInstance (the dictionary key
+            // teamId+dataSetName is a non-reversible concatenation).
+            internal string DataSetName = string.Empty;
+            internal string TeamId = string.Empty;
+            // Persisted keep-alive policy (hours), cached in memory: int.MaxValue = autoload + never
+            // dispose, 0 = no autoload (client-managed), other = idle-eviction countdown.
+            internal int KeepAliveTimeHrs = int.MaxValue;
+            // Wall-clock of the last resolve (search/status/fields/...). In-memory only — the idle
+            // sweeper compares (now - LastUsed) against KeepAliveTimeHrs. Written/read atomically.
+            private long _lastUsedUtcTicks;
+            #endregion Internal Fields
+
+            #region Internal Methods
+            internal void Touch(DateTimeOffset now) => Volatile.Write(ref _lastUsedUtcTicks, now.UtcTicks);
+            internal DateTimeOffset LastUsedUtc => new(Volatile.Read(ref _lastUsedUtcTicks), TimeSpan.Zero);
+            #endregion Internal Methods
+        }
+        #endregion Private Classes
+    }
+}

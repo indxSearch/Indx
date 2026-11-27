@@ -1,0 +1,100 @@
+@page "/account/confirm-email"
+@layout UnauthenticatedLayout
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.WebUtilities
+@using System.Text
+@using IndxServer.Data
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager NavigationManager
+@inject IndxServer.Services.NotificationService NotificationService
+@inject IndxServer.Services.UserProvisioningService UserProvisioning
+
+<PageTitle>Confirm email</PageTitle>
+
+<h3>Confirm email</h3>
+
+@if (isLoading)
+{
+    <div style="text-align: center; margin: 40px 0;">
+        <p>Confirming your email...</p>
+    </div>
+}
+else if (success)
+{
+    <div style="padding: 20px; border: 1px solid var(--CTeal); border-radius: var(--radius); background: rgba(114, 245, 198, 0.1); margin: 20px 0;">
+        <h4>Email confirmed</h4>
+        <p>Thank you for confirming your email address.</p>
+        <div style="margin-top: 20px;">
+            <Button Href="/account/login" Variant="primary">Log in</Button>
+        </div>
+    </div>
+}
+else
+{
+    <div style="padding: 20px; border: 1px solid var(--CSignal); border-radius: var(--radius); background: rgba(255, 66, 56, 0.1); margin: 20px 0;">
+        <h4>Error</h4>
+        <p>@errorMessage</p>
+        <div style="margin-top: 20px;">
+            <Button Href="/" Variant="secondary">Go to home</Button>
+        </div>
+    </div>
+}
+
+@code {
+    private bool isLoading = true;
+    private bool success = false;
+    private string? errorMessage;
+
+    [SupplyParameterFromQuery]
+    public string? UserId { get; set; }
+
+    [SupplyParameterFromQuery]
+    public string? Code { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (string.IsNullOrEmpty(UserId) || string.IsNullOrEmpty(Code))
+        {
+            errorMessage = "Invalid email confirmation link.";
+            isLoading = false;
+            return;
+        }
+
+        var user = await UserManager.FindByIdAsync(UserId);
+        if (user == null)
+        {
+            errorMessage = $"Unable to load user with ID '{UserId}'.";
+            isLoading = false;
+            return;
+        }
+
+        try
+        {
+            var decodedCode = Encoding.UTF8.GetString(WebEncoders.Base64UrlDecode(Code));
+            var result = await UserManager.ConfirmEmailAsync(user, decodedCode);
+
+            if (result.Succeeded)
+            {
+                success = true;
+                // Invites to this address waited for it to be shown to be theirs.
+                await UserProvisioning.AddressConfirmedAsync(user);
+                await NotificationService.CreateForAdminsAsync(
+                    IndxServer.Data.NotificationType.UserConfirmedEmail,
+                    $"{user.Email} confirmed their email",
+                    $"{user.Email} has verified their email address and can now log in.");
+            }
+            else
+            {
+                errorMessage = "Error confirming your email. " + string.Join(", ", result.Errors.Select(e => e.Description));
+            }
+        }
+        catch (Exception ex)
+        {
+            errorMessage = "An error occurred while confirming your email: " + ex.Message;
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+}

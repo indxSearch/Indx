@@ -1,0 +1,14 @@
+@if (!string.IsNullOrEmpty(Message))
+{
+    var isError = Message.StartsWith("Error");
+    var borderColor = isError ? "var(--CSignal)" : "var(--CTeal)";
+    var bgColor = isError ? "rgba(255, 66, 56, 0.1)" : "rgba(114, 245, 198, 0.1)";
+    <div style="padding: 20px; border: 1px solid @borderColor; border-radius: var(--radius); background: @bgColor; margin: 20px 0;">
+        @Message
+    </div>
+}
+
+@code {
+    [Parameter]
+    public string? Message { get; set; }
+}

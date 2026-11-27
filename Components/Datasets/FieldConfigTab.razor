@@ -1,0 +1,234 @@
+@* Field configuration for a Ready dataset: the editable table, key field, import/export,
+   and Save — which reindexes on a shadow engine when the change requires it, with progress. *@
+@using Indx.Api
+@using IndxServer.Models
+@using IndxServer.Services
+
+@inherits DatasetTabBase
+@inject IndxServer.Services.Observr.AgentPanelState Agent
+@inject IServiceProvider Services
+@inject IndxServer.Services.FieldProfileStore ProfileStore
+@inject IndxServer.Services.QueryParameterStore QueryParameters
+@if (!Active) { return; }
+
+@if (!Ctx.IsSaving)
+{
+    <FieldConfigToolbar @bind-Filter="_filter" @bind-ShowUnused="_showUnused" @bind-ShowAdvanced="_showAdvanced">
+        @if (Ctx.IsEditor && Ctx.EditedFields != null)
+        {
+            <Button Variant="ghost" Size="micro" IconLeft="DatasetIcons.Profiles" @onclick="() => _dialogs?.OpenManager()">Profile manager</Button>
+        }
+        <ObservrPageAction Label="Review my setup" OnClick="ReviewInAgent" Disabled="@Ctx.IsDirty" />
+    </FieldConfigToolbar>
+}
+
+@if (!string.IsNullOrEmpty(_saveError))
+{
+    <p class="fc-error">@_saveError</p>
+}
+
+@if (Ctx.IsSaving)
+{
+    <div class="indx-field-config-saving">
+        <ProgressBar Value="Ctx.ShadowBuildPercent" ShowLabel FulfilledColor />
+        <p class="indx-field-config-saving-label">@(Ctx.ShadowBuildPercent == 0 ? "Preparing…" : "Reindexing…")</p>
+    </div>
+}
+else if (Ctx.EditedFields is { } fields)
+{
+    @* Pattern matching alone orders a list but cannot narrow it: only WordMatching fields are
+       counted (8 Nov 2026). Said from the working copy, so it goes as soon as one is switched on. *@
+    @if (Ctx.HasSearchable && !fields.Any(f => f.WordMatching == true))
+    {
+        <Alert Variant="info">
+            <Title>No field is matched by its words</Title>
+            <Description>Every search is broad: records are ordered, never narrowed to the ones that match. Turn on WordMatching on the name or title field.</Description>
+        </Alert>
+    }
+    <FieldConfigTable Fields="fields" Editable="@Ctx.IsEditor" ShowUnused="_showUnused" ShowAdvanced="_showAdvanced" Filter="@_filter"
+                      Scoring="@(Ctx.FindEngine()?.Scoring ?? ScoringSetup.Default)"
+                      @bind-SearchableTouched="_searchableTouched" OnChanged="Ctx.NotifyChanged"
+                      Profiles="@Ctx.EditedProfiles" OnEditProfile="e => _dialogs?.Edit(e)" OnNewProfile="f => _dialogs?.NewFor(f)"
+                      Saved="@Ctx.SavedFields" SavedProfiles="@Ctx.SavedProfiles" />
+    @if (Ctx.EditedProfiles is { } own)
+    {
+        <FieldProfileDialogs @ref="_dialogs" Fields="fields" Profiles="own" SavedProfiles="@Ctx.SavedProfiles" Editable="@Ctx.IsEditor" OnChanged="Ctx.NotifyChanged"
+                             FallbackOff="@(QueryParameters.Load(Ctx.TeamId, Ctx.Name)?.Candidates?.Fallback == false)" />
+    }
+    @* The page action pattern (app.css): Save / Cancel in a bar that appears once something
+       changed and sticks to the window bottom, since this table is often taller than the screen.
+       Export and import close the page. The document key follows below. *@
+    @if (ChangedUnderEdit)
+    {
+        <Alert Variant="warning">
+            <Title>Observr changed the saved field setup</Title>
+            <Description>You have unsaved changes here. Save keeps yours; Cancel shows the ones Observr applied.</Description>
+        </Alert>
+    }
+    <SaveBar Visible="@(Ctx.IsEditor && Ctx.IsDirty)" Message="Unsaved changes">
+        <Button Variant="primary" Size="micro" IconLeft="DatasetIcons.Save" @onclick="Save" disabled="@(!Ctx.HasSearchable)">Save</Button>
+        <Button Variant="secondary" Size="micro" @onclick="Cancel">Cancel</Button>
+        @if (_searchableTouched && !Ctx.HasSearchable)
+        {
+            <span class="indx-field-config-error">At least one field must be searchable</span>
+        }
+    </SaveBar>
+    <div class="indx-file-actions">
+        <FieldConfigFileActions CanImport="@Ctx.IsEditor" IdSuffix="-ready" OnImported="StateHasChanged" />
+    </div>
+    <KeyFieldRow Editable="@Ctx.IsEditor" />
+}
+
+@code {
+
+    private bool _showUnused;
+    /// <summary>The review runs in the Agent panel as a turn; a Yes there applies the field
+    /// changes through the same path as Save. While that rebuilds, the tab shows its progress bar
+    /// as it does for its own Save; after, it re-reads the engine's fields.</summary>
+    private void ReviewInAgent() => Agent.Run(new IndxServer.Services.Observr.AgentAction("Review my field setup",
+        ct => Observr().AskFieldReviewAsync(Ctx.TeamId, Ctx.Name, ct),
+        OnApplied: () => InvokeAsync(() =>
+        {
+            _applyPolling?.Cancel();
+            _applyPolling = null;
+            Ctx.RefreshFieldsFromEngine();
+            Ctx.IsSaving = false;
+            Ctx.ShadowBuildPercent = 0;
+            Ctx.RefreshStatus();
+            Ctx.NotifyChanged();
+        }),
+        OnApplying: () => InvokeAsync(() =>
+        {
+            Ctx.IsSaving = true;
+            Ctx.ShadowBuildPercent = 0;
+            Ctx.NotifyChanged();
+            _applyPolling = new CancellationTokenSource();
+            _ = ProgressPoller.RunAsync(TimeSpan.FromMilliseconds(100),
+                () => { Ctx.ShadowBuildPercent = Ctx.Engines.GetShadowBuildPercent(Ctx.Name, Ctx.TeamId); return true; },
+                () => InvokeAsync(() => { StateHasChanged(); Ctx.NotifyChanged(); }), _applyPolling.Token);
+        })));
+    private CancellationTokenSource? _applyPolling;
+    private IndxServer.Services.Observr.ObservrClient Observr() => Microsoft.Extensions.DependencyInjection.ServiceProviderServiceExtensions.GetRequiredService<IndxServer.Services.Observr.ObservrClient>(Services);
+
+    private string? _filter;
+    private bool _showAdvanced;
+    private bool _searchableTouched;
+    private string? _saveError;
+    private CancellationTokenSource? _pollCts;
+
+    // ── Field profiles (Nov 2026) ─────────────────────────────────────────
+    // The editor and the manager are FieldProfileDialogs, shared with the upload (6 Nov 2026).
+    private FieldProfileDialogs? _dialogs;
+
+    protected override void OnParametersSet()
+    {
+        base.OnParametersSet();
+        if (Active && Ctx.EditedProfiles == null)
+            Ctx.SetSavedProfiles(ProfileStore.Load(Ctx.TeamId, Ctx.Name));
+    }
+
+    private void Cancel()
+    {
+        Ctx.CancelEdits();
+        Ctx.NotifyChanged();
+    }
+
+    private void Save()
+    {
+        var edited = Ctx.EditedFields;
+        if (edited == null || !Ctx.HasSearchable) return;
+
+        Ctx.IsSaving = true;
+        Ctx.ShadowBuildPercent = 0;
+        _saveError = null;
+        Ctx.NotifyChanged();
+
+        _ = RunSaveAsync(edited);
+    }
+
+    private async Task RunSaveAsync(FieldProxy[] edited)
+    {
+        _pollCts?.Dispose();
+        _pollCts = new CancellationTokenSource();
+        var pollingTask = ProgressPoller.RunAsync(TimeSpan.FromMilliseconds(100),
+            () => { Ctx.ShadowBuildPercent = Ctx.Engines.GetShadowBuildPercent(Ctx.Name, Ctx.TeamId); return true; },
+            Render, _pollCts.Token);
+
+        try
+        {
+            await Task.Run(() =>
+            {
+                var engine = Ctx.FindEngine();
+                if (engine == null) return;
+                var df = engine.DocumentFields;
+                // Refused as a whole and before anything is changed, as the HTTP route does. A
+                // refusal throws with the reason, which the catch below shows.
+                if (!engine.TryValidateFieldConfiguration(edited, out var invalid))
+                    throw new ArgumentException(invalid);
+                // Also for a field getting its first role: see FieldConfigurationChange.
+                bool needsReindex = df != null && FieldConfigurationChange.NeedsRebuild(df, edited);
+                // Before applying: afterwards the old configuration is gone and there is nothing
+                // left to diff against.
+                FieldConfigurationChange.Announce(df, edited, Ctx.Name, Ctx.TeamId);
+                if (needsReindex && engine.Status.SystemState == SystemState.Ready)
+                    Ctx.Engines.RunFieldConfigurationOnShadow(Ctx.Name, Ctx.TeamId, edited);
+                else
+                    FieldConfigurationChange.ApplyInPlace(engine, edited, Ctx.Name, Ctx.TeamId);
+            });
+
+            Ctx.RefreshFieldsFromEngine();
+            // The profiles after the fields: a profile names values the engine now has.
+            if (Ctx.EditedProfiles is { } profiles)
+            {
+                ProfileStore.Save(Ctx.TeamId, Ctx.Name, profiles);
+                Ctx.SetSavedProfiles(profiles);
+            }
+        }
+        catch (ShadowBusyException)
+        {
+            _saveError = "A shadow build is already in progress. Please wait for it to complete.";
+        }
+        catch (ObjectDisposedException) { }
+        catch (Exception ex)
+        {
+            _saveError = $"Save failed: {ex.Message}";
+        }
+        finally
+        {
+            _pollCts.Cancel();
+            try { await pollingTask; } catch { }
+            Ctx.IsSaving = false;
+            Ctx.ShadowBuildPercent = 0;
+            Ctx.RefreshStatus();
+            try { await Render(); }
+            catch (ObjectDisposedException) { }
+        }
+    }
+
+    /// <summary>Set when Observr changed the saved fields while the working copy held unsaved edits.</summary>
+    private bool _changedUnderEdit;
+    /// <summary>The notice, while the edits it is about are still unsaved: a Save or a Cancel ends
+    /// them, and with them the notice, so a later edit does not show it for an old change.</summary>
+    private bool ChangedUnderEdit { get { if (!Ctx.IsDirty) _changedUnderEdit = false; return _changedUnderEdit; } }
+
+    /// <summary>A field change Observr applied (the rebuild is done by then): the fields are read
+    /// again, unless the working copy holds edits, which stay with a notice.</summary>
+    protected override void OnObservrApplied(IReadOnlySet<string> kinds)
+    {
+        if (!kinds.Contains(IndxServer.Services.Observr.ObservrProposal.FieldKind)
+            && !kinds.Contains(IndxServer.Services.Observr.ObservrProposal.ProfileKind)) return;
+        if (Ctx.IsDirty) { _changedUnderEdit = true; return; }
+        _changedUnderEdit = false;
+        Ctx.RefreshFieldsFromEngine();
+        // The profiles too: a Yes may have made one, or given a field another.
+        Ctx.SetSavedProfiles(ProfileStore.Load(Ctx.TeamId, Ctx.Name));
+        Ctx.RefreshStatus();
+    }
+
+    public override void Dispose()
+    {
+        base.Dispose();
+        _pollCts?.Cancel();
+        _pollCts?.Dispose();
+    }
+}

@@ -1,0 +1,46 @@
+@* Engine alerts that must interrupt (license limit exceeded, invalid argument/state, too-long
+   search text, truncated indexed text). Renders nothing in the normal case, so the panel has no
+   status row unless something is wrong. Subscribes to the context itself for the same reason
+   DatasetStatus does.
+
+   The engine's error message is deliberately NOT here. On a Ready dataset it is the last call the
+   engine refused (a search naming a non-searchable field boost, say): history, not a condition of
+   the dataset, and it stays set until something clears it. As a banner it sat above every tab
+   with no way to dismiss it, so it lives on the Status tab with a Clear action instead. *@
+@using Indx.Api
+@implements IDisposable
+
+@if (Ctx.Status is { } status && status.SystemState == SystemState.Ready && Alerts(status) is { Count: > 0 } alerts)
+{
+    <div class="indx-dataset-alerts">
+        @foreach (var (label, detail, variant) in alerts)
+        {
+            <Alert Variant="@variant" Title="@Text(label)" Description="@(detail == null ? null : Text(detail))" />
+        }
+    </div>
+}
+
+@code {
+    [Parameter, EditorRequired] public DatasetContext Ctx { get; set; } = default!;
+
+    private static RenderFragment Text(string text) => builder => builder.AddContent(0, text);
+
+    protected override void OnInitialized() => Ctx.Changed += OnChanged;
+    private void OnChanged() => _ = InvokeAsync(StateHasChanged);
+    public void Dispose() => Ctx.Changed -= OnChanged;
+
+    // Destructive for what blocks or breaks; warning for what degrades quietly.
+    private static List<(string Label, string? Detail, string Variant)> Alerts(SystemStatus status)
+    {
+        var list = new List<(string, string?, string)>();
+        if (status.LicenseInfo?.DocumentLimitExceeded == true)
+            // Every document is stored and loaded; the ones past the limit are left out of search
+            // (12 Nov 2026: it said loading stopped, which it does not).
+            list.Add(("License limit exceeded", $"Only the first {status.LicenseInfo.DocumentLimit:N0} of {status.DocumentCount:N0} documents are searched. A free license from license.indx.co lifts the limit.", "destructive"));
+        if (status.InvalidArgument) list.Add(("Invalid argument", "The last operation was rejected; see the server log.", "warning"));
+        if (status.InvalidState) list.Add(("Invalid state", "An operation was attempted in a state that does not allow it.", "warning"));
+        if (status.TooLongSearchText) list.Add(("Too long search text", "A query exceeded the search-text ceiling and was refused, not cut.", "warning"));
+        if (status.IndexedTextTruncated) list.Add(("Indexed text truncated", "Some documents exceed the indexed-text ceiling; the tail of those fields is not searchable.", "warning"));
+        return list;
+    }
+}

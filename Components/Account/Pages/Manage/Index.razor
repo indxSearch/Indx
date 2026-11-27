@@ -1,0 +1,376 @@
+@page "/account/manage"
+@rendermode @(new InteractiveServerRenderMode(prerender: false))
+@inject ToastService Toasts
+@using Microsoft.EntityFrameworkCore
+@inject IndxServer.Data.ApplicationDbContext Db
+@using Microsoft.AspNetCore.Authorization
+@using Microsoft.AspNetCore.Identity
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.AspNetCore.Identity.UI.Services
+@using Microsoft.AspNetCore.WebUtilities
+@using System.Text
+@using System.Text.Encodings.Web
+@using IndxServer.Data
+@using IndxServer.Services
+@attribute [Authorize]
+@inject UserManager<ApplicationUser> UserManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject IEmailSender EmailSender
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JS
+@inject ILogger<Index> Logger
+@inject IndxServer.Services.InstanceSettingsService InstanceSettingsService
+
+<PageTitle>Manage account</PageTitle>
+
+<h2>Manage your account</h2>
+<p style="color: var(--lv5); margin-bottom: 40px;">Manage your account settings and preferences.</p>
+
+@if (user != null)
+{
+    <div style="margin-bottom: 40px;">
+        <h3>Account information</h3>
+
+        <div style="margin-top: 20px;">
+            <p><strong>Email:</strong> @user.Email</p>
+
+            <div style="margin-bottom: 20px;">
+                <p>
+                    <strong>Email confirmed:</strong>
+                    @if (user.EmailConfirmed)
+                    {
+                        @* A good state in the plain ink with an icon, never green text. *@
+                        <span style="display: inline-flex; align-items: center; gap: 6px; color: var(--lv7); margin-left: 10px;"><Indx.Systm.Blazor.Icons.Check Size="14" Color="currentColor" />Confirmed</span>
+                    }
+                    else
+                    {
+                        <span style="color: var(--CWarning); margin-left: 10px;">⚠ Not confirmed</span>
+                    }
+                </p>
+                @if (!user.EmailConfirmed)
+                {
+                    @if (emailResendSuccess)
+                    {
+                        <div style="color: var(--CTeal); margin-top: 10px;">Confirmation email sent!</div>
+                    }
+                    else if (!string.IsNullOrEmpty(emailResendError))
+                    {
+                        <div style="color: var(--CSignal); margin-top: 10px;">@emailResendError</div>
+                    }
+                    else
+                    {
+                        <Button Variant="ghost" Size="micro" style="margin-top: 10px;" IconLeft="_iconMail" @onclick="ResendConfirmationEmail" Disabled="@isResending">
+                            @if (isResending) { <span>Sending...</span> }
+                            else { <span>Resend confirmation email</span> }
+                        </Button>
+                    }
+                }
+            </div>
+
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top: 16px;">
+                <form method="post" action="account/logout" style="display:contents;">
+                    <AntiforgeryToken />
+                    <input type="hidden" name="returnUrl" value="" />
+                    <Button Type="submit" Variant="ghost" Size="micro" IconLeft="_iconLogout">Log out</Button>
+                </form>
+                <Button Href="/account/change-password" Variant="ghost" Size="micro" IconLeft="_iconKey">Change password</Button>
+            </div>
+        </div>
+
+        @if (_providers.Count > 0)
+        {
+            @* How the account is signed in to. A provider's login is added here, signed in, and
+               nowhere else: an account is not found by the address a provider gives. *@
+            <div style="margin-top: 28px;">
+                <h3 style="margin-bottom: 4px;">Sign-in methods</h3>
+                <p style="font:var(--text-xs); color:var(--lv4); margin:0 0 16px;">
+                    Add a Google or Microsoft account to sign in with it instead of your password.
+                </p>
+
+                @if (!string.IsNullOrEmpty(Linked))
+                {
+                    <Alert>You can now sign in with @Linked.</Alert>
+                }
+                else if (!string.IsNullOrEmpty(Unlinked))
+                {
+                    <Alert>@Unlinked no longer signs in to this account.</Alert>
+                }
+                else if (!string.IsNullOrEmpty(LinkError))
+                {
+                    <Alert Variant="destructive">@LinkError</Alert>
+                }
+
+                <div class="appearance-rows" style="margin-top: 12px;">
+                    @foreach (var provider in _providers)
+                    {
+                        var login = _logins.FirstOrDefault(l => l.LoginProvider == provider.Name);
+                        <span class="appearance-label">@(provider.DisplayName ?? provider.Name)</span>
+                        @if (login == null)
+                        {
+                            <form method="post" action="account/manage/link-external-login" data-enhance="false" style="display:contents;">
+                                <AntiforgeryToken />
+                                <input type="hidden" name="provider" value="@provider.Name" />
+                                <span><Button Type="submit" Variant="secondary" Size="micro">Add link</Button></span>
+                            </form>
+                        }
+                        else
+                        {
+                            <form method="post" action="account/manage/remove-external-login" data-enhance="false" style="display:contents;">
+                                <AntiforgeryToken />
+                                <input type="hidden" name="provider" value="@login.LoginProvider" />
+                                <input type="hidden" name="providerKey" value="@login.ProviderKey" />
+                                <span style="display:inline-flex; align-items:center; gap:12px;">
+                                    <span style="display:inline-flex; align-items:center; gap:6px; color: var(--lv7);"><Indx.Systm.Blazor.Icons.Check Size="14" Color="currentColor" />Added</span>
+                                    @if (_canRemoveLogin)
+                                    {
+                                        <Button Type="submit" Variant="ghost" Size="micro">Remove</Button>
+                                    }
+                                </span>
+                            </form>
+                        }
+                    }
+                </div>
+            </div>
+        }
+
+        <div style="margin-top: 28px;">
+            <h3 style="margin-bottom: 4px;">Display</h3>
+            <p style="font:var(--text-xs); color:var(--lv4); margin:0 0 16px;">
+                How the console looks for you. Changes apply at once.
+            </p>
+
+            <div class="appearance-rows">
+                <span class="appearance-label">Appearance</span>
+                <SegmentedControl Items="_schemeItems" Value="@(_appearance.Scheme ?? "auto")" ValueChanged="SetScheme" AriaLabel="Appearance" Size="default" />
+
+                <span class="appearance-label">Cursors</span>
+                <ToggleSwitch Label="Use pixl cursors" Checked="@_appearance.Cursors" CheckedChanged="SetCursors" />
+            </div>
+        </div>
+
+        <div style="margin-top: 28px;">
+            <h3 style="margin-bottom: 4px;">Notifications</h3>
+            <p style="font:var(--text-xs); color:var(--lv4); margin:0 0 16px;">
+                Choose how you're notified for each event. <strong>In-app</strong> shows in the bell menu; <strong>Email</strong> sends a message.
+            </p>
+
+            <table style="border-collapse: collapse; font-size: 13px;">
+                <thead>
+                    <tr style="color: var(--lv5);">
+                        <th style="padding: 6px 32px 6px 0;"></th>
+                        <th style="text-align:center; padding: 6px 16px; font-weight:500;">In-app</th>
+                        <th style="text-align:center; padding: 6px 16px; font-weight:500;">Email</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var info in _visibleNotificationTypes)
+                    {
+                        var state = _notificationPrefs[info.Type];
+                        <tr style="border-top: 1px solid var(--lv2);">
+                            <td style="padding: 12px 32px 12px 0;">
+                                <div style="color: var(--lv7);">@info.Label</div>
+                                <div style="font:var(--text-xs); color: var(--lv4);">@info.Description</div>
+                            </td>
+                            <td style="text-align:center; padding: 12px 16px;">
+                                <ToggleSwitch AriaLabel="@($"In-app: {info.Label}")" Checked="@state.InApp" CheckedChanged="@(v => SaveNotificationPref(info.Type, inApp: v))" />
+                            </td>
+                            <td style="text-align:center; padding: 12px 16px;">
+                                <ToggleSwitch AriaLabel="@($"Email: {info.Label}")" Checked="@state.Email" CheckedChanged="@(v => SaveNotificationPref(info.Type, email: v))" />
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    @if (InstanceSettingsService.Load().AllowUserSelfDeletion)
+    {
+    <div style="margin-bottom: 40px;">
+        <h3 style="color: var(--CSignal);">Danger zone</h3>
+        <p style="color: var(--lv5); margin-top: 10px;">
+            Deleting your account can't be undone. The teams you are in, and their datasets, stay.
+        </p>
+
+        <Button Variant="secondary" Size="micro" IconLeft="_iconDelete" style="margin-top: 8px;" @onclick="OpenDelete">Delete my account</Button>
+
+        <ConfirmModal @bind-Open="_deleteOpen" Title="Delete your account?" Consequences="_deleteLines"
+                      TypeToConfirm="@user?.Email" CanConfirm="@(_soleAdminOf.Count == 0)"
+                      ConfirmLabel="Delete my account" ConfirmIcon="_iconDelete" FormAction="account/manage/delete-account" />
+    </div>
+    }
+}
+else
+{
+    <p>Loading account information...</p>
+}
+
+@code {
+    private RenderFragment<int> _iconDelete => size => @<UserX Size="size" />;
+    private RenderFragment<int> _iconKey    => size => @<Key Size="size" />;
+    private RenderFragment<int> _iconMail   => size => @<Mail Size="size" />;
+    private RenderFragment<int> _iconLogout => size => @<Logout Size="size" />;
+
+    private ApplicationUser? user;
+
+    // Sign-in methods: what the redirects from the link and remove endpoints say.
+    [SupplyParameterFromQuery(Name = "linked")] private string? Linked { get; set; }
+    [SupplyParameterFromQuery(Name = "unlinked")] private string? Unlinked { get; set; }
+    [SupplyParameterFromQuery(Name = "linkError")] private string? LinkError { get; set; }
+
+    /// <summary>The providers a login can be added from: those set up, but for Entra ID, whose
+    /// accounts are the directory's and are not added to another.</summary>
+    private List<Microsoft.AspNetCore.Authentication.AuthenticationScheme> _providers = [];
+    private IList<UserLoginInfo> _logins = [];
+    /// <summary>A login is removed only while another way to sign in is left.</summary>
+    private bool _canRemoveLogin;
+    private bool isResending = false;
+    private bool emailResendSuccess = false;
+    private string? emailResendError = null;
+    private static readonly RenderFragment<int> _iconSaved = size => @<Check Size="size" Color="currentColor" />;
+
+    // Per-type notification channel state shown in the matrix.
+    private sealed class ChannelState { public bool InApp; public bool Email; }
+    private List<NotificationTypeInfo> _visibleNotificationTypes = new();
+
+    private Appearance _appearance = Appearance.Default;
+    private static readonly IReadOnlyList<SegmentedControl.Item> _schemeItems =
+        [new("auto", "Auto"), new("light", "Light"), new("dark", "Dark")];
+    private Dictionary<NotificationType, ChannelState> _notificationPrefs = new();
+
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthenticationStateProvider.GetAuthenticationStateAsync();
+        var userName = authState.User.Identity?.Name;
+        var isAdmin = authState.User.IsInRole("Admin");
+
+        if (userName != null)
+        {
+            user = await UserManager.FindByNameAsync(userName);
+        }
+
+        if (user != null)
+        {
+            _providers = (await SignInManager.GetExternalAuthenticationSchemesAsync())
+                .Where(p => p.Name != EntraSignIn.Scheme).ToList();
+            _logins = await UserManager.GetLoginsAsync(user);
+            _canRemoveLogin = await UserManager.HasPasswordAsync(user) || _logins.Count > 1;
+
+            _appearance = Appearance.Of(user);
+
+            // Admin-only event types are hidden from regular users (they never receive them).
+            _visibleNotificationTypes = NotificationPreferences.Catalog
+                .Where(i => !i.AdminOnly || isAdmin)
+                .ToList();
+            _notificationPrefs = _visibleNotificationTypes.ToDictionary(
+                i => i.Type,
+                i => new ChannelState
+                {
+                    InApp = NotificationPreferences.InAppEnabled(user, i.Type),
+                    Email = NotificationPreferences.EmailEnabled(user, i.Type),
+                });
+        }
+    }
+
+    private async Task ResendConfirmationEmail()
+    {
+        if (user == null || string.IsNullOrEmpty(user.Email))
+            return;
+
+        isResending = true;
+        emailResendSuccess = false;
+        emailResendError = null;
+
+        try
+        {
+            var userId = await UserManager.GetUserIdAsync(user);
+            var code = await UserManager.GenerateEmailConfirmationTokenAsync(user);
+            code = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(code));
+
+            var callbackUrl = NavigationManager.GetUriWithQueryParameters(
+                NavigationManager.ToAbsoluteUri("account/confirm-email").AbsoluteUri,
+                new Dictionary<string, object?> { ["userId"] = userId, ["code"] = code });
+
+            var instanceName = InstanceSettingsService.Load().InstanceName;
+            await EmailSender.SendEmailAsync(
+                user.Email,
+                IndxServer.Services.EmailTemplates.Subject(instanceName, "Confirm your new email address"),
+                IndxServer.Services.EmailTemplates.ConfirmEmailChange(instanceName, callbackUrl));
+
+            Logger.LogInformation("Resent confirmation email to {Email}", user.Email);
+            emailResendSuccess = true;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error resending email confirmation");
+            emailResendError = "Failed to send email. Please try again.";
+        }
+        finally
+        {
+            isResending = false;
+        }
+    }
+
+    private bool _deleteOpen;
+    private IReadOnlyList<string> _deleteLines = [];
+    private List<string> _soleAdminOf = [];
+
+    // Read when the modal opens, so it names the actual teams and keys.
+    private async Task OpenDelete()
+    {
+        if (user == null) return;
+        _soleAdminOf = await IndxServer.Services.TeamService.TeamsOnlyAdministeredByAsync(Db, user.Id);
+        var teams = await Db.TeamMembers.Where(m => m.UserId == user.Id)
+            .Join(Db.Teams, m => m.TeamId, t => t.Id, (m, t) => t.Name).OrderBy(n => n).ToListAsync();
+        var keys = await Db.ApiKeys.CountAsync(k => k.UserId == user.Id && !k.IsRevoked);
+        _deleteLines = _soleAdminOf.Count > 0
+            ? [$"You are the only Admin of {string.Join(", ", _soleAdminOf)}. Make someone else an Admin there, or delete the team, first: otherwise nobody could manage it."]
+            :
+            [
+                teams.Count == 0 ? "You are in no team." : $"You leave {string.Join(", ", teams)}. The teams and their datasets stay.",
+                keys switch
+                {
+                    0 => "You have no API keys.",
+                    1 => "Your personal API key is deleted, and whatever uses it gets errors.",
+                    _ => $"Your {keys} personal API keys are deleted, and whatever uses them gets errors.",
+                },
+                "Team keys you created keep working.",
+                "You are signed out, and this can't be undone.",
+            ];
+        _deleteOpen = true;
+    }
+
+    private async Task SaveNotificationPref(NotificationType type, bool? inApp = null, bool? email = null)
+    {
+        if (user == null || !_notificationPrefs.TryGetValue(type, out var state)) return;
+        if (inApp.HasValue) state.InApp = inApp.Value;
+        if (email.HasValue) state.Email = email.Value;
+
+        // Persist every visible type as an explicit preference.
+        var map = _notificationPrefs.ToDictionary(
+            kv => kv.Key,
+            kv => new NotificationChannelPref { InApp = kv.Value.InApp, Email = kv.Value.Email });
+        user.NotificationPreferences = NotificationPreferences.Serialize(map);
+        await UserManager.UpdateAsync(user);
+
+        Toasts.Show("Notification preferences saved.", _iconSaved);
+    }
+
+    private Task SetScheme(string value) => SaveAppearance(_appearance with { Scheme = value == "auto" ? null : value });
+    private Task SetCursors(bool on) => SaveAppearance(_appearance with { Cursors = on });
+
+    // Applied to the page first, so the change shows while it is saved; the next page load renders
+    // the saved one (App.razor).
+    private async Task SaveAppearance(Appearance next)
+    {
+        if (user == null) return;
+        _appearance = Appearance.From(next.Scheme, next.Cursors);
+        await JS.InvokeVoidAsync("indxAppearance.apply", _appearance.DataTheme, _appearance.DataCursors);
+        user.ColorScheme = _appearance.Scheme;
+        user.IndxCursors = _appearance.Cursors;
+        await UserManager.UpdateAsync(user);
+        Toasts.Show("Appearance saved.", _iconSaved);
+    }
+}

@@ -1,0 +1,345 @@
+using IndxServer.Engine;
+using Microsoft.Data.Sqlite;
+
+namespace IndxServer.Services
+{
+    /// <summary>
+    /// Server-owned per-dataset metadata. Holds an owner-authored <c>Description</c>, the Categories tab's category field and separator, (used by the MCP
+    /// <c>describe_dataset</c> tool to give agents domain context) and the declared <c>KeyField</c>
+    /// (the JSON field whose value is the document's primary key — see <c>indx_dataset_primary_key.md</c>).
+    /// The lib does not persist the key-field name anywhere, so the server owns it and re-applies it
+    /// before each external Load. Stored in its own table in indx.db — same pattern as
+    /// <see cref="BoostRuleStore"/>, so the lib (SqLiteManager) is untouched. Keyed by
+    /// (TeamId, DatasetName); cached in memory; writes invalidate the cache.
+    /// </summary>
+    public class DatasetMetadataStore(ILogger<DatasetMetadataStore> logger)
+    {
+        private const string Table = "DatasetMetadata";
+
+        private readonly StoreCache<string, string> _cache = new();
+        private readonly StoreCache<string, string> _keyFieldCache = new();
+        private readonly StoreCache<string, CategorySetting> _categoryCache = new();
+
+        /// <summary>The Categories tab's choice: which facetable field holds the category paths and what
+        /// separates the levels in them; an empty field means not chosen, an empty separator that the
+        /// values are flat, and a null separator that it is detected from the values. The scope limits
+        /// the tab to the documents with one value in one field ("contentType" = "publication");
+        /// null for the whole dataset.</summary>
+        public sealed record CategorySetting(string Field, string? Separator, string? ScopeField = null, string? ScopeValue = null)
+        {
+            public static readonly CategorySetting None = new("", null);
+        }
+
+        private static string Key(string teamId, string dataSetName) => $"{teamId}\0{dataSetName}";
+        private static string DbPath => IndxServer.Engine.IndxServerInternalApi.SearchDbConnectionString;
+        private static bool DbExists() => !string.IsNullOrEmpty(DbPath) && File.Exists(DbPath);
+        private static SqliteConnection Connection() => new($"Data Source={DbPath}");
+
+        /// <summary>Creates the metadata table if the search DB already exists. Idempotent; call once at startup.</summary>
+        public void EnsureTable()
+        {
+            if (!DbExists()) return; // fresh instance: created on first Save instead.
+            try
+            {
+                using var conn = Connection();
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText =
+                    $@"CREATE TABLE IF NOT EXISTS {Table} (
+                           TeamId      TEXT NOT NULL,
+                           DatasetName TEXT NOT NULL,
+                           Description TEXT NOT NULL,
+                           KeyField    TEXT NOT NULL DEFAULT '',
+                           CategoryField TEXT NOT NULL DEFAULT '',
+                           CategorySeparator TEXT NULL,
+                           CategoryScopeField TEXT NULL,
+                           CategoryScopeValue TEXT NULL,
+                           FilterCacheMB INTEGER NULL,
+                           UpdatedUtc  TEXT NOT NULL,
+                           PRIMARY KEY (TeamId, DatasetName)
+                       );";
+                cmd.ExecuteNonQuery();
+
+                // Migrate older DBs that predate the KeyField column. SQLite has no "ADD COLUMN IF
+                // NOT EXISTS", so just try and ignore the duplicate-column error.
+                try
+                {
+                    using var alter = conn.CreateCommand();
+                    alter.CommandText = $"ALTER TABLE {Table} ADD COLUMN KeyField TEXT NOT NULL DEFAULT '';";
+                    alter.ExecuteNonQuery();
+                }
+                catch (SqliteException) { /* column already exists */ }
+                foreach (var column in new[] { "CategoryField TEXT NOT NULL DEFAULT ''", "CategorySeparator TEXT NULL", "CategoryScopeField TEXT NULL", "CategoryScopeValue TEXT NULL", "FilterCacheMB INTEGER NULL" })
+                {
+                    try
+                    {
+                        using var alter = conn.CreateCommand();
+                        alter.CommandText = $"ALTER TABLE {Table} ADD COLUMN {column};";
+                        alter.ExecuteNonQuery();
+                    }
+                    catch (SqliteException) { /* column already exists */ }
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to ensure {Table} table", Table);
+            }
+        }
+
+        /// <summary>The dataset's description, or empty string if none. Cached after first read.</summary>
+        public string Load(string teamId, string dataSetName)
+        {
+            return _cache.Get(Key(teamId, dataSetName), () => ReadFromDb(teamId, dataSetName));
+        }
+
+        private string ReadFromDb(string teamId, string dataSetName)
+        {
+            if (!DbExists()) return "";
+            try
+            {
+                using var conn = Connection();
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"SELECT Description FROM {Table} WHERE TeamId = $t AND DatasetName = $d";
+                cmd.Parameters.AddWithValue("$t", teamId);
+                cmd.Parameters.AddWithValue("$d", dataSetName);
+                return cmd.ExecuteScalar() as string ?? "";
+            }
+            catch (Exception ex)
+            {
+                StoreRead.Failed(ex);
+                logger.LogError(ex, "Failed to read metadata for {Team}/{Dataset}", teamId, dataSetName);
+                return "";
+            }
+        }
+
+        /// <summary>Sets the dataset description and invalidates the cache.</summary>
+        public void Save(string teamId, string dataSetName, string description)
+        {
+            new Indx.Storage.SqLiteManager(DbPath, createOrOpenDatabase: true); // ensure base schema exists
+            EnsureTable();
+            using var conn = Connection();
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            // KeyField defaults to '' only when the row is first created; the ON CONFLICT branch
+            // updates Description alone so a previously declared key field is preserved.
+            cmd.CommandText =
+                $@"INSERT INTO {Table} (TeamId, DatasetName, Description, KeyField, UpdatedUtc)
+                   VALUES ($t, $d, $x, '', $u)
+                   ON CONFLICT(TeamId, DatasetName) DO UPDATE SET Description = $x, UpdatedUtc = $u;";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSetName);
+            cmd.Parameters.AddWithValue("$x", description ?? "");
+            cmd.Parameters.AddWithValue("$u", DateTime.UtcNow.ToString("o"));
+            cmd.ExecuteNonQuery();
+            _cache.Invalidate(Key(teamId, dataSetName));
+        }
+
+        /// <summary>
+        /// The dataset's declared key-field name, or empty string if none is declared (the engine then
+        /// falls back to its default "id"/auto-increment behaviour). Cached after first read.
+        /// </summary>
+        public string LoadKeyField(string teamId, string dataSetName)
+        {
+            return _keyFieldCache.Get(Key(teamId, dataSetName), () => ReadKeyFieldFromDb(teamId, dataSetName));
+        }
+
+        private string ReadKeyFieldFromDb(string teamId, string dataSetName)
+        {
+            if (!DbExists()) return "";
+            try
+            {
+                using var conn = Connection();
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"SELECT KeyField FROM {Table} WHERE TeamId = $t AND DatasetName = $d";
+                cmd.Parameters.AddWithValue("$t", teamId);
+                cmd.Parameters.AddWithValue("$d", dataSetName);
+                return cmd.ExecuteScalar() as string ?? "";
+            }
+            catch (Exception ex)
+            {
+                StoreRead.Failed(ex);
+                logger.LogError(ex, "Failed to read key field for {Team}/{Dataset}", teamId, dataSetName);
+                return "";
+            }
+        }
+
+        /// <summary>
+        /// Declares the dataset's key field (empty string = none / auto-generated) and invalidates the
+        /// cache. Validation (field exists, numeric) is the caller's responsibility.
+        /// </summary>
+        public void SaveKeyField(string teamId, string dataSetName, string keyField)
+        {
+            new Indx.Storage.SqLiteManager(DbPath, createOrOpenDatabase: true); // ensure base schema exists
+            EnsureTable();
+            using var conn = Connection();
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText =
+                $@"INSERT INTO {Table} (TeamId, DatasetName, Description, KeyField, UpdatedUtc)
+                   VALUES ($t, $d, '', $k, $u)
+                   ON CONFLICT(TeamId, DatasetName) DO UPDATE SET KeyField = $k, UpdatedUtc = $u;";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSetName);
+            cmd.Parameters.AddWithValue("$k", keyField ?? "");
+            cmd.Parameters.AddWithValue("$u", DateTime.UtcNow.ToString("o"));
+            cmd.ExecuteNonQuery();
+            _keyFieldCache.Invalidate(Key(teamId, dataSetName));
+        }
+
+        /// <summary>The dataset's category field and separator for the Categories tab; <see cref="CategorySetting.None"/>
+        /// when not chosen. Cached after first read.</summary>
+        public CategorySetting LoadCategory(string teamId, string dataSetName)
+        {
+            return _categoryCache.Get(Key(teamId, dataSetName), () => ReadCategoryFromDb(teamId, dataSetName));
+        }
+
+        private CategorySetting ReadCategoryFromDb(string teamId, string dataSetName)
+        {
+            if (!DbExists()) return CategorySetting.None;
+            try
+            {
+                using var conn = Connection();
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"SELECT CategoryField, CategorySeparator, CategoryScopeField, CategoryScopeValue FROM {Table} WHERE TeamId = $t AND DatasetName = $d";
+                cmd.Parameters.AddWithValue("$t", teamId);
+                cmd.Parameters.AddWithValue("$d", dataSetName);
+                using var reader = cmd.ExecuteReader();
+                if (!reader.Read()) return CategorySetting.None;
+                return new CategorySetting(reader.GetString(0), reader.IsDBNull(1) ? null : reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetString(2), reader.IsDBNull(3) ? null : reader.GetString(3));
+            }
+            catch (Exception ex)
+            {
+                StoreRead.Failed(ex);
+                logger.LogError(ex, "Failed to read category setting for {Team}/{Dataset}", teamId, dataSetName);
+                return CategorySetting.None;
+            }
+        }
+
+        /// <summary>Sets the category field, separator and scope and invalidates the cache.</summary>
+        public void SaveCategory(string teamId, string dataSetName, CategorySetting setting)
+        {
+            new Indx.Storage.SqLiteManager(DbPath, createOrOpenDatabase: true); // ensure base schema exists
+            EnsureTable();
+            using var conn = Connection();
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText =
+                $@"INSERT INTO {Table} (TeamId, DatasetName, Description, KeyField, CategoryField, CategorySeparator, CategoryScopeField, CategoryScopeValue, UpdatedUtc)
+                   VALUES ($t, $d, '', '', $f, $s, $sf, $sv, $u)
+                   ON CONFLICT(TeamId, DatasetName) DO UPDATE SET CategoryField = $f, CategorySeparator = $s,
+                       CategoryScopeField = $sf, CategoryScopeValue = $sv, UpdatedUtc = $u;";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSetName);
+            cmd.Parameters.AddWithValue("$f", setting.Field ?? "");
+            cmd.Parameters.AddWithValue("$s", (object?)setting.Separator ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$sf", (object?)setting.ScopeField ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$sv", (object?)setting.ScopeValue ?? DBNull.Value);
+            cmd.Parameters.AddWithValue("$u", DateTime.UtcNow.ToString("o"));
+            cmd.ExecuteNonQuery();
+            _categoryCache.Invalidate(Key(teamId, dataSetName));
+        }
+
+        /// <summary>The filter cache the dataset was created with, in megabytes; null when none was
+        /// given. Read when its engine is made, so not cached.</summary>
+        public int? LoadFilterCacheMB(string teamId, string dataSetName)
+        {
+            if (!DbExists()) return null;
+            try
+            {
+                using var conn = Connection();
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"SELECT FilterCacheMB FROM {Table} WHERE TeamId = $t AND DatasetName = $d";
+                cmd.Parameters.AddWithValue("$t", teamId);
+                cmd.Parameters.AddWithValue("$d", dataSetName);
+                return cmd.ExecuteScalar() is long megabytes ? (int)megabytes : null;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to read the filter cache size for {Team}/{Dataset}", teamId, dataSetName);
+                return null;
+            }
+        }
+
+        /// <summary>Sets the filter cache of a dataset being created, before its engine is made.</summary>
+        public void SaveFilterCacheMB(string teamId, string dataSetName, int megabytes)
+        {
+            new Indx.Storage.SqLiteManager(DbPath, createOrOpenDatabase: true); // ensure base schema exists
+            EnsureTable();
+            using var conn = Connection();
+            conn.Open();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText =
+                $@"INSERT INTO {Table} (TeamId, DatasetName, Description, KeyField, FilterCacheMB, UpdatedUtc)
+                   VALUES ($t, $d, '', '', $m, $u)
+                   ON CONFLICT(TeamId, DatasetName) DO UPDATE SET FilterCacheMB = $m, UpdatedUtc = $u;";
+            cmd.Parameters.AddWithValue("$t", teamId);
+            cmd.Parameters.AddWithValue("$d", dataSetName);
+            cmd.Parameters.AddWithValue("$m", megabytes);
+            cmd.Parameters.AddWithValue("$u", DateTime.UtcNow.ToString("o"));
+            cmd.ExecuteNonQuery();
+        }
+
+        /// <summary>Removes a dataset's description (on dataset delete) and invalidates the cache.</summary>
+        public void Delete(string teamId, string dataSetName)
+        {
+            if (!DbExists()) { _cache.Invalidate(Key(teamId, dataSetName)); _keyFieldCache.Invalidate(Key(teamId, dataSetName)); _categoryCache.Invalidate(Key(teamId, dataSetName)); return; }
+            try
+            {
+                using var conn = Connection();
+                conn.Open();
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = $"DELETE FROM {Table} WHERE TeamId = $t AND DatasetName = $d";
+                cmd.Parameters.AddWithValue("$t", teamId);
+                cmd.Parameters.AddWithValue("$d", dataSetName);
+                cmd.ExecuteNonQuery();
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to delete metadata for {Team}/{Dataset}", teamId, dataSetName);
+            }
+            finally
+            {
+                _cache.Invalidate(Key(teamId, dataSetName));
+                _keyFieldCache.Invalidate(Key(teamId, dataSetName));
+                _categoryCache.Invalidate(Key(teamId, dataSetName));
+            }
+        }
+
+        /// <summary>Moves a dataset's metadata (description + key field) to a new owning team.</summary>
+        public void Transfer(string fromTeamId, string toTeamId, string dataSetName) => Move(fromTeamId, dataSetName, toTeamId, dataSetName);
+
+        /// <summary>Re-keys the dataset's row under its new name (same team).</summary>
+        public void Rename(string teamId, string dataSetName, string newName) => Move(teamId, dataSetName, teamId, newName);
+
+        /// <summary>The row follows the dataset, moved in SQL (<see cref="DatasetRowMove"/>).</summary>
+        private void Move(string fromTeam, string fromName, string toTeam, string toName)
+        {
+            try
+            {
+                if (DbExists())
+                {
+                    using var conn = Connection();
+                    DatasetRowMove.Move(conn, Table, fromTeam, fromName, toTeam, toName);
+                }
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Failed to move the metadata of {Team}/{Dataset} to {NewTeam}/{NewDataset}", fromTeam, fromName, toTeam, toName);
+            }
+            finally
+            {
+            _cache.Invalidate(Key(fromTeam, fromName));
+            _cache.Invalidate(Key(toTeam, toName));
+            _keyFieldCache.Invalidate(Key(fromTeam, fromName));
+            _keyFieldCache.Invalidate(Key(toTeam, toName));
+            _categoryCache.Invalidate(Key(fromTeam, fromName));
+            _categoryCache.Invalidate(Key(toTeam, toName));
+            }
+        }
+    }
+}
